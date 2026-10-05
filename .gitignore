@@ -1,0 +1,8 @@
+build/
+output/
+*.ppm
+.vscode/
+.idea/
+*.o
+*.obj
+*.exe
