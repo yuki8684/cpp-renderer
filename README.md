@@ -42,7 +42,7 @@
 |:--:|---|:--:|
 | 1 | CMake 骨架、`vec3` / `ray` / `camera`、PPM 输出、渐变背景 | ✅ |
 | 2 | 球体求交、法线着色、`Hittable` 抽象、多物体场景 | ✅ |
-| 3 | 抗锯齿（三层循环循环 + 抖动采样）、Lambertian 漫反射（递归弹射） | ✅ |
+| 3 | 抗锯齿（三层循环 + 抖动采样）、Lambertian 漫反射（递归弹射） | ✅ |
 | 4 | 材质系统：`Lambertian` / `Metal` / `Dielectric`、递归深度限制 | ✅ |
 | 5 | 景深：薄透镜模型、`random_in_unit_disk`、弥散圆公式 | ✅ |
 | 6 | 可移动相机：基向量 `u/v/w`、`vfov`、`focus_dist` | ✅ |
