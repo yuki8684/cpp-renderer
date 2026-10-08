@@ -17,7 +17,10 @@ Set-Location (Join-Path $PSScriptRoot '..')
 
 Write-Host "[1/3] Building..." -ForegroundColor Cyan
 cmake --build build -j
-if (-not $?) {
+# ⚠️ 必须用 $LASTEXITCODE 而不是 $?：
+#    PowerShell 5.1 里，只要原生程序往 stderr 写了任何东西（哪怕是警告），
+#    $? 就可能变成 False —— 会造成"编译其实成功却报失败"的误判。
+if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "BUILD FAILED -- stopped. Fix the errors above, then re-run." -ForegroundColor Red
     exit 1
@@ -26,7 +29,7 @@ if (-not $?) {
 Write-Host ""
 Write-Host "[2/3] Rendering..." -ForegroundColor Cyan
 .\build\raytracer.exe
-if (-not $?) {
+if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "RENDER FAILED -- stopped." -ForegroundColor Red
     exit 1

@@ -129,3 +129,18 @@ inline Vec3 refract(const Vec3& uv, const Vec3& n, double eta_ratio) {
 
     return r_out_perp + r_out_parallel;
 }
+
+// 在单位【圆盘】内随机取点（z = 0 平面上的半径 1 圆）
+//
+// ⚠️ 和 random_unit_vector() 的区别（很容易混）：
+//     random_unit_vector()    三维：z 也随机 → 得到【球面】上的点，长度恒为 1
+//     random_in_unit_disk()   二维：z 恒为 0 → 得到【圆盘】内的点，长度 ≤ 1
+//
+// 用在：景深的"光圈采样"（光圈是个圆盘，不是球）
+inline Vec3 random_in_unit_disk() {
+    while (true) {
+        Vec3 p(random_double(-1, 1), random_double(-1, 1), 0);
+        if (p.length_squared() >= 1.0) continue;   // 落在圆外 → 重取
+        return p;
+    }
+}
