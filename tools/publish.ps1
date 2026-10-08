@@ -53,8 +53,14 @@ git status --short
 Write-Host ""
 Write-Host "[3/4] Committing..." -ForegroundColor Cyan
 git add -A
-git commit -m $Message
-if ($LASTEXITCODE -ne 0) {
+# ⚠️ 用 cmd /c 包一层：
+#    PowerShell 5.1 会把原生程序写到 stderr 的每一行都包装成红字 ErrorRecord，
+#    哪怕命令完全成功（git 的进度信息就是走 stderr 的）。
+#    cmd /c "... 2>&1" 在 cmd 层就把 stderr 并进 stdout，PowerShell 就安静了。
+$commitOut = cmd /c "git commit -m `"$Message`" 2>&1"
+$code = $LASTEXITCODE
+Write-Host $commitOut
+if ($code -ne 0) {
     Write-Host "COMMIT FAILED -- stopped." -ForegroundColor Red
     exit 1
 }
@@ -68,20 +74,18 @@ if ($NoPush) {
 
 Write-Host ""
 Write-Host "[4/4] Pushing..." -ForegroundColor Cyan
-# ⚠️ git 会把进度写到 stderr，PowerShell 会把它当成错误输出刷屏。
-#    用 Out-String 接住，再一次性打印，看起来就干净了。
-$pushOut = (& git push 2>&1 | Out-String)
+$pushOut = cmd /c "git push 2>&1"
 $code = $LASTEXITCODE
-Write-Host $pushOut.Trim()
+Write-Host $pushOut
 
 # 代理可能抽风，给最多 3 次重试
 $attempt = 1
 while ($code -ne 0 -and $attempt -lt 3) {
     $attempt++
     Write-Host "Push failed, retry $attempt/3 ..." -ForegroundColor Yellow
-    $pushOut = (& git push 2>&1 | Out-String)
+    $pushOut = cmd /c "git push 2>&1"
     $code = $LASTEXITCODE
-    Write-Host $pushOut.Trim()
+    Write-Host $pushOut
 }
 
 if ($code -ne 0) {
