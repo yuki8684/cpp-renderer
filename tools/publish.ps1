@@ -68,9 +68,26 @@ if ($NoPush) {
 
 Write-Host ""
 Write-Host "[4/4] Pushing..." -ForegroundColor Cyan
-git push
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "PUSH FAILED -- commit is local only. Check network / auth." -ForegroundColor Red
+# ⚠️ git 会把进度写到 stderr，PowerShell 会把它当成错误输出刷屏。
+#    用 Out-String 接住，再一次性打印，看起来就干净了。
+$pushOut = (& git push 2>&1 | Out-String)
+$code = $LASTEXITCODE
+Write-Host $pushOut.Trim()
+
+# 代理可能抽风，给最多 3 次重试
+$attempt = 1
+while ($code -ne 0 -and $attempt -lt 3) {
+    $attempt++
+    Write-Host "Push failed, retry $attempt/3 ..." -ForegroundColor Yellow
+    $pushOut = (& git push 2>&1 | Out-String)
+    $code = $LASTEXITCODE
+    Write-Host $pushOut.Trim()
+}
+
+if ($code -ne 0) {
+    Write-Host ""
+    Write-Host "PUSH FAILED -- commit saved locally. Try: .\\tools\\publish.ps1 -Message <same msg> -NoPush  (or just 'git push' later)" -ForegroundColor Red
+    Write-Host "Hint: check that your proxy (v2rayN, port 10808) is running." -ForegroundColor DarkYellow
     exit 1
 }
 
