@@ -40,26 +40,46 @@ if ($Image -ne "") {
 
 # ---------- 2. 检查有没有改动 ----------
 $status = git status --short
+$ahead  = (git rev-list --count 'origin/main..HEAD' 2>$null)
+if (-not $ahead) { $ahead = 0 }
+
 if ([string]::IsNullOrWhiteSpace($status)) {
-    Write-Host "Nothing to commit. Working tree is clean." -ForegroundColor Yellow
-    exit 0
+    Write-Host "[2/4] Working tree is clean." -ForegroundColor DarkGray
+    if ($ahead -eq 0) {
+        Write-Host "Nothing to commit and nothing to push. Done." -ForegroundColor Yellow
+        exit 0
+    }
+    # 重要：上次推送失败时，改动已经 commit 了。
+    #       这时候应该【跳过 commit，直接 push】，而不是直接退出。
+    Write-Host "  but $ahead local commit(s) are not pushed yet. Skipping commit, going to push." -ForegroundColor Yellow
+    $skipCommit = $true
+} else {
+    Write-Host ""
+    Write-Host "[2/4] Changes:" -ForegroundColor Cyan
+    git status --short
+    $skipCommit = $false
 }
 
-Write-Host ""
-Write-Host "[2/4] Changes:" -ForegroundColor Cyan
-git status --short
-
 # ---------- 3. 提交 ----------
-Write-Host ""
-Write-Host "[3/4] Committing..." -ForegroundColor Cyan
-git add -A
-# ⚠️ 用 cmd /c 包一层：
-#    PowerShell 5.1 会把原生程序写到 stderr 的每一行都包装成红字 ErrorRecord，
-#    哪怕命令完全成功（git 的进度信息就是走 stderr 的）。
-#    cmd /c "... 2>&1" 在 cmd 层就把 stderr 并进 stdout，PowerShell 就安静了。
-$commitOut = cmd /c "git commit -m `"$Message`" 2>&1"
-$code = $LASTEXITCODE
-Write-Host $commitOut
+if (-not $skipCommit) {
+    Write-Host ""
+    Write-Host "[3/4] Committing..." -ForegroundColor Cyan
+    git add -A
+    # ⚠️ 用 cmd /c 包一层：
+    #    PowerShell 5.1 会把原生程序写到 stderr 的每一行都包装成红字 ErrorRecord，
+    #    哪怕命令完全成功（git 的进度信息就是走 stderr 的）。
+    #    cmd /c "... 2>&1" 在 cmd 层就把 stderr 并进 stdout，PowerShell 就安静了。
+    $commitOut = cmd /c "git commit -m `"$Message`" 2>&1"
+    $code = $LASTEXITCODE
+    Write-Host $commitOut
+    if ($code -ne 0) {
+        Write-Host "COMMIT FAILED -- stopped." -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host ""
+    Write-Host "[3/4] Commit skipped (already committed)." -ForegroundColor DarkGray
+}
 if ($code -ne 0) {
     Write-Host "COMMIT FAILED -- stopped." -ForegroundColor Red
     exit 1
@@ -90,8 +110,9 @@ while ($code -ne 0 -and $attempt -lt 3) {
 
 if ($code -ne 0) {
     Write-Host ""
-    Write-Host "PUSH FAILED -- commit saved locally. Try: .\\tools\\publish.ps1 -Message <same msg> -NoPush  (or just 'git push' later)" -ForegroundColor Red
-    Write-Host "Hint: check that your proxy (v2rayN, port 10808) is running." -ForegroundColor DarkYellow
+    Write-Host "PUSH FAILED -- commit saved locally, nothing lost." -ForegroundColor Red
+    Write-Host "  1. Make sure your proxy (v2rayN, port 10808) is running." -ForegroundColor Yellow
+    Write-Host "  2. Then just run this script again (any -Message); it will skip the commit and push." -ForegroundColor Yellow
     exit 1
 }
 
