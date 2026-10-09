@@ -3,6 +3,7 @@
 #include "rtweekend.h"
 #include "ray.h"
 #include "vec3.h"
+#include "aabb.h"      // 为了 AABB（包围盒）
 #include "material.h"   // 为了 shared_ptr<Material>
                         // （material.h 用前向声明反向避免循环包含）
 
@@ -56,4 +57,22 @@ public:
     //   2. 带 t_min / t_max：由调用方告诉它"我只关心这个区间内的交点"
     virtual bool hit(const Ray& r, double t_min, double t_max,
                      HitRecord& rec) const = 0;
+
+    // --------------------------------------------------------
+    // 这个物体能不能被一个轴对齐包围盒框住？
+    //   能   -> 把盒子写进 output，返回 true
+    //   不能 -> 返回 false（比如理论上无限大的平面）
+    //
+    // 为什么要这个接口？
+    //   BVH 要先把一堆物体框成一个盒子，才知道"这根光线有没必要
+    //   走进这一块区域"。所以每个物体都得会报自己的盒子。
+    //
+    // 注意：它【不是】纯虚函数 —— 给了默认实现 false。
+    //   这样以后加新几何体时不用马上实现它，编译器也不会报错。
+    //   但代价是：如果忘了实现，整个世界的包围盒会静默地变成"没有"。
+    // --------------------------------------------------------
+    virtual bool bounding_box(AABB& output) const {
+        (void)output;      // 消除"未使用参数"警告
+        return false;
+    }
 };

@@ -9,6 +9,7 @@
 #include "ray.h"
 #include "camera.h"
 #include "rtweekend.h"
+#include "aabb.h"
 #include "hittable.h"
 #include "sphere.h"
 #include "hittable_list.h"
@@ -214,6 +215,18 @@ int main() {
     // ---------- 场景：一个装着所有物体的"世界" ----------
     // 想换场景只改这一行：simple_scene() 或 random_scene()
     HittableList world = random_scene();
+
+    // ---------- 验证 Sphere / HittableList 的包围盒 ----------
+    {
+        AABB world_box;
+        if (world.bounding_box(world_box)) {
+            std::cerr << "[AABB] 整个世界的包围盒\n"
+                      << "   最小角 = " << world_box.minimum << '\n'
+                      << "   最大角 = " << world_box.maximum << "\n\n";
+        } else {
+            std::cerr << "[AABB] 整个世界的包围盒：算不出来（有物体没实现 bounding_box）\n\n";
+        }
+    }
 
     Camera camera(Point3(13, 2, 3),      // 站远一点、高一点
                   Point3(0, 0, 0),       // 看向原点

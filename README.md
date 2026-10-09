@@ -9,6 +9,16 @@
 
 ## 效果展示
 
+### Day 8 · AABB 包围盒（基础设施，画面不变）
+
+![Day 8 AABB 概念图](gallery/day08-aabb-concept.svg)
+
+> 加速结构的第一步：给每个物体算一个"外接轴对齐长方体"。
+> 光线先试盒子（便宜、无开方），没中就直接排除整个物体，中了才做精确求交。
+>
+> **验收**：单元测试 23/23 通过；世界包围盒输出与手工验算一致；
+> 渲染结果与 Day 7 **字节级完全一致**（172,127 B）—— 加速结构的第一原则是"结果不变，只是变快"。
+
 ### Day 7 · 程序化随机场景（480 个球）
 
 ![Day 7 随机场景](gallery/day07-random-scene.png)
@@ -47,7 +57,7 @@
 | 5 | 景深：薄透镜模型、`random_in_unit_disk`、弥散圆公式 | ✅ |
 | 6 | 可移动相机：基向量 `u/v/w`、`vfov`、`focus_dist` | ✅ |
 | 7 | 程序化随机场景（480 个球） + 性能测量方法论 | ✅ |
-| 8 | AABB 包围盒 | ⏳ |
+| 8 | **AABB 包围盒**（slab method + 单元测试体系） | ✅ |
 | 9 | BVH 递归建树 | ⏳ |
 | 10 | BVH 接入渲染器（`main.cpp` 零改动） | ⏳ |
 | 11 | 性能对比：目标 **13 s → 0.3 s** | ⏳ |
@@ -63,7 +73,8 @@
 | `random_scene` | 480 | 2.75 | **37.96 亿** | **13.03 s** |
 
 求交吞吐量 ≈ **2.9 亿次 / 秒**（单线程）
-
+> 🎯 **Day 9-11 目标**：用 BVH 把 `random_scene` 从 **13 s 降到 0.3 s**（约 50×）。
+> BVH 把每层弹射需要测试的物体数从 `O(N)=480` 降到 `O(log N)≈9`。
 > ⚠️ 讨论渲染性能请**直接计时 `raytracer.exe`**。
 > `tools/run.ps1` 报的"总耗时"包含 CMake 编译（≈ 2.6 s），会严重干扰判断 —— 详见
 > [devlog Day 7「原理 3」](docs/devlog.md)。
@@ -81,9 +92,10 @@ cpp-renderer/
 │   ├── rtweekend.h        工具箱：公共头、常量、随机数
 │   ├── vec3.h             三维向量（身兼位置/方向/颜色）
 │   ├── ray.h              光线 P(t) = O + tD
+│   ├── aabb.h             轴对齐包围盒 + slab method 求交
 │   ├── camera.h           可移动相机：像素坐标 -> 光线
-│   ├── hittable.h         HitRecord + Hittable 抽象接口
-│   ├── sphere.h           球体求交
+│   ├── hittable.h         HitRecord + Hittable 抽象接口（hit / bounding_box）
+│   ├── sphere.h           球体求交 + 包围盒
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
 │   ├── lambertian.h       哑光
@@ -91,8 +103,11 @@ cpp-renderer/
 │   └── dielectric.h       玻璃 / 水 / 钻石（折射 + 全反射）
 ├── src/
 │   └── main.cpp            ray_color + 场景构建 + 主循环
+├── tests/
+│   └── aabb_test.cpp       AABB 单元测试（独立可执行，1 秒反馈）
 ├── tools/
-│   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG
+│   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
+│   ├── test.ps1           一键：编译 + 运行所有单元测试
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
 ├── docs/
@@ -115,8 +130,9 @@ cmake --build build -j
 一键脚本（推荐）：
 
 ```powershell
+.\tools\test.ps1                             # 单元测试（1 秒反馈）
 .\tools\run.ps1                              # 编译 + 渲染 + 转 PNG
-.\tools\publish.ps1 -Message "Day 8: AABB" -Image day08-aabb.png   # 发布到 GitHub
+.\tools\publish.ps1 -Message "Day 9: BVH" -Image day09-bvh.png   # 发布到 GitHub
 ```
 
 输出：`output/image.ppm` → `output/image.png`

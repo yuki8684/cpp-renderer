@@ -38,6 +38,36 @@ public:
         return hit_anything;
     }
 
+    // --------------------------------------------------------
+    // 整堆物体的包围盒 = 所有子物体包围盒的【并集】
+    //
+    // 做法：从头扫一遍，每次把当前结果和新物体的盒子"合并"成一个更大的盒。
+    //       第一个盒子要特殊处理（还不能和任何东西并）。
+    //
+    // ⚠️ 只要有一个子物体算不出盒子（返回 false），
+    //    整堆就算不出——因为漏装一个物体的话，盒子就不"保守"了，
+    //    BVH 会错得很难看。
+    // --------------------------------------------------------
+    bool bounding_box(AABB& output) const override {
+        if (objects.empty()) return false;
+
+        AABB temp_box;
+        bool first_box = true;
+
+        for (const auto& obj : objects) {
+            if (!obj->bounding_box(temp_box)) return false;
+
+            // TODO(你填 B2)：合并盒子
+            //   第一个物体：直接拿来当结果
+            //   之后的物体：用 AABB::surrounding(现有的 output, 新来的 temp_box)
+            //             得到一个"刚好装下两者"的大盒
+            output = first_box ? temp_box : AABB::surrounding(output, temp_box);
+
+            first_box = false;
+        }
+        return true;
+    }
+
 private:
     std::vector<std::shared_ptr<Hittable>> objects;
 };
