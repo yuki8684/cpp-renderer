@@ -1,0 +1,1651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 1 · 从一条光线开始 — 代码动画对照</title>
+<style>
+  :root{
+    --bg:#f2f5f9; --panel:#ffffff; --line:#e3e9f0; --line2:#eef2f7;
+    --text:#16202b; --muted:#65717e; --faint:#93a0ad;
+    --blue:#2563eb; --purple:#7c3aed; --green:#059669;
+    --amber:#d97706; --red:#dc2626; --cyan:#0891b2;
+    --codebg:#fbfcfe;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 10px 26px rgba(16,24,40,.07);
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.62; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1400px; margin:0 auto; padding:26px 22px 60px}
+
+  /* ---------- header ---------- */
+  header{margin-bottom:18px}
+  .eyebrow{display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700;
+    color:var(--purple); background:#f3eeff; border:1px solid #e3d8ff;
+    padding:3px 11px; border-radius:999px; letter-spacing:.03em}
+  h1{font-size:26px; margin:12px 0 6px; letter-spacing:-.02em; font-weight:750}
+  h1 small{font-weight:500; color:var(--faint); font-size:15px; letter-spacing:0}
+  header p{margin:0; color:var(--muted); max-width:920px}
+  header code{font-family:var(--mono); font-size:12.5px; background:#eaeef4; border:1px solid var(--line);
+    padding:1px 5px; border-radius:4px; color:#334155}
+
+  /* ---------- player bar ---------- */
+  .player{display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:var(--shadow); padding:10px 14px; margin:16px 0}
+  .player .grp{display:flex; align-items:center; gap:6px}
+  .btn{appearance:none; border:1px solid var(--line); background:#fff; color:var(--text);
+    font:inherit; font-weight:600; font-size:13px; padding:6px 13px; border-radius:8px;
+    cursor:pointer; transition:.15s; display:inline-flex; align-items:center; gap:6px}
+  .btn:hover{background:#f4f7fb; border-color:#cfd9e4}
+  .btn.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+  .btn.primary:hover{background:#1d4ed8; border-color:#1d4ed8}
+  .btn:disabled{opacity:.4; cursor:not-allowed}
+  .btn.icon{padding:6px 10px}
+  .player .sep{width:1px; height:22px; background:var(--line)}
+  .chapter{font-size:12px; font-weight:700; color:var(--purple); background:#f5f0ff;
+    border:1px solid #e6dbff; padding:3px 10px; border-radius:999px}
+  .counter{font-family:var(--mono); font-size:12.5px; color:var(--muted)}
+  .counter b{color:var(--text); font-size:14px}
+  .bar{flex:1 1 260px; min-width:180px; height:6px; background:#e8edf4; border-radius:99px; overflow:hidden}
+  .bar i{display:block; height:100%; width:0; background:linear-gradient(90deg,#60a5fa,#7c3aed);
+    border-radius:99px; transition:width .32s cubic-bezier(.4,0,.2,1)}
+  .steps{display:flex; gap:4px; flex-wrap:wrap}
+  .steps button{appearance:none; border:1px solid transparent; background:#eef2f7; color:var(--muted);
+    font:inherit; font-size:11.5px; font-weight:700; font-family:var(--mono);
+    width:24px; height:24px; border-radius:6px; cursor:pointer; transition:.13s; padding:0}
+  .steps button:hover{background:#dfe7f0; color:var(--text)}
+  .steps button.on{background:var(--blue); border-color:var(--blue); color:#fff}
+  .steps button.done{background:#dbeafe; color:#1d4ed8}
+
+  /* ---------- main grid ---------- */
+  .main{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start}
+  @media (max-width:1080px){ .main{grid-template-columns:1fr} }
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    box-shadow:var(--shadow); overflow:hidden}
+  .card-hd{display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 14px; border-bottom:1px solid var(--line2);
+    font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#4a586a}
+  .card-hd .hint{font-weight:500; letter-spacing:0; text-transform:none; color:var(--faint); font-size:11.5px}
+
+  /* ---------- code ---------- */
+  .tabs{display:flex; gap:2px; padding:8px 10px 0; flex-wrap:wrap; background:#fafbfd;
+    border-bottom:1px solid var(--line2)}
+  .tabs button{appearance:none; border:1px solid transparent; border-bottom:0; background:transparent;
+    font:inherit; font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--muted);
+    padding:6px 11px; border-radius:7px 7px 0 0; cursor:pointer; transition:.13s}
+  .tabs button:hover{color:var(--text); background:#eef2f7}
+  .tabs button.on{background:#fff; border-color:var(--line); color:var(--blue);
+    box-shadow:0 -2px 0 var(--blue) inset; position:relative; top:1px}
+  .codebox{max-height:552px; overflow:auto; background:var(--codebg); padding:8px 0 14px}
+  .cl{display:flex; align-items:flex-start; font-family:var(--mono); font-size:12.4px;
+    line-height:1.62; white-space:pre; transition:background .22s; position:relative}
+  .cl .ln{flex:0 0 42px; text-align:right; padding-right:13px; color:#b6c1cd;
+    user-select:none; font-size:11.5px}
+  .cl .ct{padding-right:14px; color:#28323d; flex:1 1 auto}
+  .cl.hl{background:#fff6d6}
+  .cl.hl .ln{color:#b4892f}
+  .cl.hl::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:#f0b429}
+  .cl.dim{opacity:.42}
+  .k{color:#a626a4}          /* 关键字 */
+  .t{color:#0b7285; font-weight:600}  /* 类型 */
+  .s{color:#0a7d4b}          /* 字符串 */
+  .c{color:#9aa5b1; font-style:italic}/* 注释 */
+  .n{color:#b45309}          /* 数字 */
+  .f{color:#1d4ed8}          /* 函数名 */
+  .p{color:#c2410c}          /* 预处理 */
+  .codebox::-webkit-scrollbar{width:9px;height:9px}
+  .codebox::-webkit-scrollbar-thumb{background:#cfd8e3; border-radius:9px}
+
+  /* ---------- stage ---------- */
+  .stage{} 
+  .stage-wrap{position:relative; background:linear-gradient(180deg,#fbfdff,#f4f8fc);
+    border-bottom:1px solid var(--line2)}
+  canvas{display:block; width:100%; height:430px}
+  @media (max-width:1080px){ canvas{height:380px} }
+  .readout{position:absolute; left:12px; bottom:10px; font-family:var(--mono); font-size:11.5px;
+    color:#334155; background:rgba(255,255,255,.9); border:1px solid var(--line);
+    padding:4px 9px; border-radius:7px; max-width:calc(100% - 24px); line-height:1.5}
+  .readout b{color:var(--blue)}
+  .legend{position:absolute; right:12px; top:10px; display:flex; flex-direction:column; gap:4px;
+    font-size:11px; font-family:var(--mono); color:#475569; background:rgba(255,255,255,.88);
+    border:1px solid var(--line); padding:6px 9px; border-radius:7px}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle}
+
+  .controls{display:flex; flex-wrap:wrap; gap:14px; padding:11px 15px; border-bottom:1px solid var(--line2);
+    background:#fafbfd; min-height:0}
+  .controls:empty{display:none}
+  .ctl{display:flex; align-items:center; gap:9px; flex:1 1 210px; min-width:190px}
+  .ctl label{font-size:11.5px; font-weight:700; color:#4a586a; font-family:var(--mono); white-space:nowrap}
+  .ctl input[type=range]{flex:1 1 auto; min-width:80px; accent-color:var(--blue); height:18px}
+  .ctl .val{font-family:var(--mono); font-size:11.5px; color:var(--blue); font-weight:700;
+    min-width:54px; text-align:right}
+
+  .narr{padding:14px 16px 16px}
+  .narr h3{margin:0 0 7px; font-size:15px; letter-spacing:-.01em; display:flex; align-items:center; gap:8px}
+  .narr h3 .num{font-family:var(--mono); font-size:11.5px; background:#eef2f7; color:var(--muted);
+    border-radius:5px; padding:1px 7px; font-weight:700}
+  .narr p{margin:0 0 10px; color:#3d4a58; font-size:13.4px}
+  .narr p:last-child{margin-bottom:0}
+  .narr b{color:#0f172a; background:linear-gradient(180deg,transparent 62%,#fde68a 62%)}
+  .narr code{font-family:var(--mono); font-size:12px; background:#eef2f7; border:1px solid var(--line);
+    padding:0 4px; border-radius:4px; color:#b91c1c}
+  .formula{margin:0; font-family:var(--mono); font-size:12.6px; line-height:1.75;
+    background:#0f172a; color:#c7f9ff; border-radius:9px; padding:11px 14px; white-space:pre-wrap;
+    overflow-x:auto}
+  .formula em{color:#fde68a; font-style:normal}
+  .formula .cm{color:#7c8ea3}
+
+  /* ---------- extra cards ---------- */
+  .extras{margin-top:20px; display:grid; grid-template-columns:repeat(auto-fit,minmax(330px,1fr)); gap:16px}
+  .qa{padding:6px 0 12px}
+  .qa details{border-bottom:1px solid var(--line2); padding:0 16px}
+  .qa details:last-child{border-bottom:0}
+  .qa summary{cursor:pointer; padding:11px 0; font-weight:650; font-size:13.4px; list-style:none;
+    display:flex; gap:9px; align-items:flex-start}
+  .qa summary::-webkit-details-marker{display:none}
+  .qa summary .q{font-family:var(--mono); font-size:11px; color:#fff; background:var(--purple);
+    border-radius:4px; padding:1px 6px; flex:0 0 auto; margin-top:3px}
+  .qa summary .arw{margin-left:auto; color:var(--faint); transition:.2s; font-size:11px}
+  .qa details[open] summary .arw{transform:rotate(90deg)}
+  .qa .ans{padding:0 0 13px 25px; color:#3d4a58; font-size:13.2px}
+  .qa .ans code{font-family:var(--mono); font-size:12px; background:#eef2f7; border:1px solid var(--line);
+    padding:0 4px; border-radius:4px; color:#b91c1c}
+  .qa .ans .kbd{font-family:var(--mono); background:#fef3c7; border:1px solid #fde68a;
+    color:#92400e; padding:0 4px; border-radius:4px}
+
+  table.tbl{width:100%; border-collapse:collapse; font-size:12.6px}
+  table.tbl th{text-align:left; font-size:11px; letter-spacing:.05em; text-transform:uppercase;
+    color:#7b8794; font-weight:700; padding:9px 14px 7px; border-bottom:1px solid var(--line)}
+  table.tbl td{padding:8px 14px; border-bottom:1px solid var(--line2); vertical-align:top}
+  table.tbl tr:last-child td{border-bottom:0}
+  table.tbl code{font-family:var(--mono); font-size:11.8px; color:var(--blue)}
+  table.tbl td:first-child code{color:#b45309}
+
+  .why{padding:13px 16px 16px; font-size:13.2px; color:#3d4a58}
+  .why dl{margin:0}
+  .why dt{font-weight:700; color:#0f172a; font-family:var(--mono); font-size:12.4px; margin-top:11px}
+  .why dt:first-child{margin-top:0}
+  .why dd{margin:3px 0 0; padding-left:0}
+  .why code{font-family:var(--mono); font-size:11.8px; background:#eef2f7; border:1px solid var(--line);
+    padding:0 4px; border-radius:4px; color:#b91c1c}
+
+  footer{margin-top:26px; text-align:center; color:var(--faint); font-size:12px}
+  footer code{font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">cpp-renderer · Day 1</span>
+    <h1>从一条光线开始 <small>代码 ⇄ 动画 逐行对照</small></h1>
+    <p>这是整个光线追踪的第一天：没有物体、没有材质、没有光照。只有三件事 ——
+      <code>Vec3</code>、<code>Ray</code>、<code>Camera</code>，最后渲染出一张蓝白渐变的天空图。
+      点「播放」或直接点步骤号，左边代码高亮到哪一行，右边动画就演到哪一步。</p>
+    <p style="margin-top:8px;font-size:12.5px;color:var(--faint)">
+      快捷键：<code>空格</code> 播放/暂停 · <code>← →</code> 上一步/下一步 ·
+      网址末尾加 <code>#3</code> 可直接跳到第 3 步（方便课上甩链接）</p>
+  </header>
+
+  <!-- ================= player ================= -->
+  <div class="player">
+    <div class="grp">
+      <button class="btn primary" id="btnPlay">▶ 播放</button>
+      <button class="btn icon" id="btnPrev" title="上一步">◀</button>
+      <button class="btn icon" id="btnNext" title="下一步">▶</button>
+      <button class="btn icon" id="btnReplay" title="重播当前步">⟲</button>
+    </div>
+    <div class="sep"></div>
+    <span class="chapter" id="chapter">① 总览</span>
+    <span class="counter"><b id="curNo">1</b> / <span id="totNo">11</span></span>
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="steps" id="stepDots"></div>
+  </div>
+
+  <!-- ================= main ================= -->
+  <div class="main">
+
+    <!-- code -->
+    <section class="card">
+      <div class="card-hd"><span>源代码 · 高亮处 = 当前动画</span><span class="hint" id="codeHint">main.cpp</span></div>
+      <div class="tabs" id="tabs"></div>
+      <div class="codebox" id="codebox"></div>
+    </section>
+
+    <!-- stage -->
+    <section class="card stage">
+      <div class="card-hd"><span>动画舞台</span><span class="hint">拖动滑块／观察高亮</span></div>
+      <div class="stage-wrap">
+        <canvas id="stage"></canvas>
+        <div class="legend" id="legend"></div>
+        <div class="readout" id="readout"></div>
+      </div>
+      <div class="controls" id="controls"></div>
+      <div class="narr">
+        <h3><span class="num" id="nNo">01</span><span id="nTitle"></span></h3>
+        <p id="nText"></p>
+        <pre class="formula" id="nFormula"></pre>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= extras ================= -->
+  <div class="extras">
+    <section class="card">
+      <div class="card-hd"><span>Day 1 四问四答</span><span class="hint">原文留给自己的思考题</span></div>
+      <div class="qa" id="qaBox"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-hd"><span>C++ 语法点</span><span class="hint">Day 1 新学</span></div>
+      <div class="why">
+        <dl id="cppBox"></dl>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-hd"><span>Vec3 运算符速查</span><span class="hint">写在类里的 vs 自由函数</span></div>
+      <table class="tbl">
+        <thead><tr><th>写法</th><th>返回</th><th>含义</th></tr></thead>
+        <tbody>
+          <tr><td><code>u + v</code></td><td>Vec3</td><td>逐元素相加（位置 + 位移）</td></tr>
+          <tr><td><code>u - v</code></td><td>Vec3</td><td>逐元素相减（方向 = 终点 − 起点）</td></tr>
+          <tr><td><code>v * t</code></td><td>Vec3</td><td>标量乘，三个分量同倍缩放</td></tr>
+          <tr><td><code>t * v</code></td><td>Vec3</td><td>同上（需要自由函数，标量在左边）</td></tr>
+          <tr><td><code>v / t</code></td><td>Vec3</td><td>标量除，<code>unit_vector</code> 靠它实现</td></tr>
+          <tr><td><code>dot(u, v)</code></td><td><b>double</b></td><td>点积：分量相乘再相加 → 一个数</td></tr>
+          <tr><td><code>unit_vector(v)</code></td><td>Vec3</td><td>长度变 1，方向不变</td></tr>
+          <tr><td><code>v.length()</code></td><td>double</td><td>√(x²+y²+z²)，内部先算 length_squared</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <footer>基于 <code>github.com/yuki8684/cpp-renderer</code> · Day 1（2026-09-29）· 交互式教学演示</footer>
+</div>
+
+<script>
+/* =========================================================================
+   0. 数学工具
+   ========================================================================= */
+const vsub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const vadd=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const vmul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const vdot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const vcross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const vlen=a=>Math.hypot(a[0],a[1],a[2]);
+const vnorm=a=>{const l=vlen(a)||1;return[a[0]/l,a[1]/l,a[2]/l];};
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+
+/* 天空渐变：直线方向 → 颜色（Day 1 ray_color） */
+const SKY_WHITE=[1.0,1.0,1.0];
+const SKY_BLUE =[0.5,0.7,1.0];
+function skyT(dir){ return 0.5*(vnorm(dir)[1]+1.0); }
+function skyColor(dir){
+  const t=skyT(dir);
+  return [0,1,2].map(k=>lerp(SKY_WHITE[k],SKY_BLUE[k],t));
+}
+function rgb255(c){ const f=x=>Math.round(clamp(x,0,1)*255); return [f(c[0]),f(c[1]),f(c[2])]; }
+function css(c,a){ const q=rgb255(c); return `rgba(${q[0]},${q[1]},${q[2]},${a===undefined?1:a})`; }
+
+/* 视口几何：原点在相机，视口在 z=-f 平面上 */
+function vpPt(u,v,f,W,H){ return [-W/2+u*W, -H/2+v*H, -f]; }
+function vpQuad(f,W,H){
+  return [[-W/2,-H/2,-f],[W/2,-H/2,-f],[W/2,H/2,-f],[-W/2,H/2,-f]];
+}
+
+/* =========================================================================
+   1. 3D → 2D 投影（自动适配画布，尺度恒定不抖动）
+   ========================================================================= */
+function makeProj(camCfg, canon, rect, pad){
+  pad = pad===undefined ? 0.86 : pad;
+  const pos=camCfg.pos;
+  const fwd=vnorm(vsub(camCfg.look,pos));
+  const right=vnorm(vcross(fwd,camCfg.up));
+  const up=vnorm(vcross(right,fwd));
+  const raw=p=>{ const d=vsub(p,pos); const z=Math.max(vdot(d,fwd),0.05);
+    return [vdot(d,right)/z, -vdot(d,up)/z]; };
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  for(const p of canon){ const r=raw(p);
+    x0=Math.min(x0,r[0]); x1=Math.max(x1,r[0]);
+    y0=Math.min(y0,r[1]); y1=Math.max(y1,r[1]); }
+  const bw=(x1-x0)||1, bh=(y1-y0)||1;
+  const s=Math.min(rect.w*pad/bw, rect.h*pad/bh);
+  const ox=rect.x+rect.w/2 - s*(x0+x1)/2;
+  const oy=rect.y+rect.h/2 - s*(y0+y1)/2;
+  return { s:s,
+    pt(p){ const r=raw(p); return {x:ox+r[0]*s, y:oy+r[1]*s}; } };
+}
+
+const CAM_SCENE={ pos:[3.30,1.60,1.90], look:[-0.35,-0.10,-0.85], up:[0,1,0] };
+const CAM_VEC  ={ pos:[-3.53,2.59,2.59], look:[0.55,0.55,0.55], up:[0,1,0] };
+const CAM_UNIT ={ pos:[1.10,0.90,5.00],  look:[0.00,0.00,0.05], up:[0,1,0] };
+
+function sceneCanon(fs, farLen){
+  // 只用"确实会被画出来"的点来定包围盒：原点 + 各 f 下的视口四角 (+ 角落射线的远端)
+  const c=[[0,0,0],[0,0,-3.9]];
+  const corners=[[0,0],[1,0],[1,1],[0,1]];
+  const rayCells=[[0.13,0.13],[0.87,0.13],[0.13,0.87],[0.87,0.87]];
+  fs.forEach(f=>{
+    corners.forEach(uv=>c.push(vpPt(uv[0],uv[1],f,2,2)));
+    if(farLen>0) rayCells.forEach(uv=>c.push(vmul(vnorm(vpPt(uv[0],uv[1],f,2,2)), farLen)));
+  });
+  return c;
+}
+const CANON_RAY  = sceneCanon([1.0], 3.35);   // 步骤 1：光线飞出很远
+const CANON_VIEW = sceneCanon([0.6,1.9], 0);  // 步骤 6/7：只看视口本身
+const CANON_SCAN = sceneCanon([1.0], 2.25);   // 步骤 8：扫描时射线到 3.0
+
+/* =========================================================================
+   2. 绘图原语
+   ========================================================================= */
+function rr(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function seg(ctx,proj,a,b,o){
+  o=o||{}; const A=proj.pt(a),B=proj.pt(b);
+  ctx.save(); ctx.globalAlpha=o.alpha===undefined?1:o.alpha;
+  ctx.strokeStyle=o.color||'#94a3b8'; ctx.lineWidth=o.width||1.4;
+  ctx.lineCap='round';
+  if(o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.stroke(); ctx.restore();
+}
+function poly(ctx,proj,pts,o){
+  o=o||{}; const P=pts.map(p=>proj.pt(p));
+  ctx.save(); ctx.globalAlpha=o.alpha===undefined?1:o.alpha;
+  ctx.beginPath();
+  P.forEach((p,i)=> i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
+  if(o.fill){ ctx.fillStyle=o.fill; ctx.fill(); }
+  if(o.stroke){ ctx.strokeStyle=o.stroke; ctx.lineWidth=o.width||1.4;
+    if(o.dash) ctx.setLineDash(o.dash); ctx.stroke(); }
+  ctx.restore();
+}
+function node(ctx,proj,p,o){
+  o=o||{}; const P=proj.pt(p);
+  ctx.save(); ctx.beginPath(); ctx.arc(P.x,P.y,o.r||4,0,7);
+  if(o.fill){ ctx.fillStyle=o.fill; ctx.fill(); }
+  if(o.stroke){ ctx.strokeStyle=o.stroke; ctx.lineWidth=o.width||1.6; ctx.stroke(); }
+  ctx.restore();
+}
+function tag(ctx,proj,p,text,o){
+  o=o||{}; const P=proj.pt(p);
+  const size=o.size||11.5, weight=o.weight||650;
+  ctx.save();
+  ctx.font=weight+' '+size+'px ui-monospace,Menlo,Consolas,monospace';
+  const w=ctx.measureText(text).width;
+  const x=P.x+(o.dx||0), y=P.y+(o.dy||0);
+  ctx.fillStyle=o.bg||'rgba(255,255,255,.92)';
+  rr(ctx,x-w/2-6,y-size/2-5,w+12,size+10,5); ctx.fill();
+  if(o.border){ ctx.strokeStyle=o.border; ctx.lineWidth=1; ctx.stroke(); }
+  ctx.fillStyle=o.color||'#334155'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(text,x,y+.5);
+  ctx.restore();
+}
+function arrow(ctx,proj,a,b,o){
+  o=o||{}; const A=proj.pt(a),B=proj.pt(b);
+  const head=o.head||9;
+  ctx.save(); ctx.globalAlpha=o.alpha===undefined?1:o.alpha;
+  ctx.strokeStyle=o.color||'#2563eb'; ctx.fillStyle=o.color||'#2563eb';
+  ctx.lineWidth=o.width||1.8; ctx.lineCap='round';
+  if(o.dash) ctx.setLineDash(o.dash);
+  const ang=Math.atan2(B.y-A.y,B.x-A.x);
+  const bx=B.x-head*Math.cos(ang), by=B.y-head*Math.sin(ang);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(bx,by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(B.x,B.y);
+  ctx.lineTo(B.x-head*1.35*Math.cos(ang-0.42), B.y-head*1.35*Math.sin(ang-0.42));
+  ctx.lineTo(B.x-head*1.35*Math.cos(ang+0.42), B.y-head*1.35*Math.sin(ang+0.42));
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function camIcon(ctx,proj,pos,sc){
+  sc=sc||1; const P=proj.pt(pos);
+  ctx.save(); ctx.translate(P.x,P.y); ctx.scale(sc,sc);
+  ctx.fillStyle='#1e293b'; rr(ctx,-15,-10,30,20,5); ctx.fill();
+  ctx.fillStyle='#93c5fd'; ctx.beginPath(); ctx.arc(3,0,6.5,0,7); ctx.fill();
+  ctx.strokeStyle='#1e293b'; ctx.lineWidth=2.6;
+  ctx.beginPath(); ctx.arc(3,0,6.5,0,7); ctx.stroke();
+  ctx.fillStyle='#64748b'; rr(ctx,-11,-5,7,10,2); ctx.fill();
+  ctx.restore();
+}
+/* 视口：把渐变画上去（等价于"这个视口上看到的画面"） */
+function vpImage(ctx,proj,f,W,H,nx,ny,alpha){
+  alpha=alpha===undefined?1:alpha;
+  const ex=1.02;
+  for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+    const uc=(i+0.5)/nx, vc=(j+0.5)/ny;
+    const col=skyColor(vpPt(uc,vc,f,W,H));
+    const x0=-W/2+(i/nx)*W*ex-(W*ex-W)/2, x1=x0+(W/nx)*ex;
+    const y0=-H/2+(j/ny)*H*ex-(H*ex-H)/2, y1=y0+(H/ny)*ex;
+    poly(ctx,proj,[[x0,y0,-f],[x1,y0,-f],[x1,y1,-f],[x0,y1,-f]],{fill:css(col,alpha)});
+  }
+  poly(ctx,proj,vpQuad(f,W,H),{stroke:'#0f766e',width:1.7});
+}
+
+/* 天空色光线：在浅色背景上必须加一层"描边"才看得见 */
+function skyRay(ctx,proj,a,b,col,w){
+  seg(ctx,proj,a,b,{color:'rgba(15,23,42,.22)',width:(w||2)+2});
+  seg(ctx,proj,a,b,{color:css(col),width:w||2});
+}
+
+/* =========================================================================
+   3. 源码（Day 1 真实代码）
+   ========================================================================= */
+const FILES={
+'main.cpp':[
+ '#include <iostream>',
+ '#include "color.h"',
+ '#include "ray.h"',
+ '#include "vec3.h"',
+ '',
+ '// ── 先决定"光线撞到天空"时该是什么颜色 ──',
+ 'Color ray_color(const Ray& r) {',
+ '    Vec3 unit_direction = unit_vector(r.direction());',
+ '    double t = 0.5 * (unit_direction.y() + 1.0);',
+ '    return (1.0 - t) * Color(1.0, 1.0, 1.0)',
+ '         + t * Color(0.5, 0.7, 1.0);',
+ '}',
+ '',
+ 'int main() {',
+ '    const int image_width  = 256;',
+ '    const int image_height = 256;',
+ '',
+ '    // 相机永远在原点，看向 -Z',
+ '    const double aspect_ratio    = 1.0;',
+ '    const double viewport_height = 2.0;',
+ '    const double viewport_width  = aspect_ratio * viewport_height;',
+ '    const double focal_length    = 1.0;',
+ '',
+ '    const Point3 origin = Point3(0, 0, 0);',
+ '    const Vec3 horizontal(viewport_width, 0.0, 0.0);',
+ '    const Vec3 vertical(0.0, viewport_height, 0.0);',
+ '    const Vec3 lower_left_corner = origin',
+ '                                 - horizontal / 2',
+ '                                 - vertical / 2',
+ '                                 - Vec3(0, 0, focal_length);',
+ '',
+ '    // PPM 文件头：类型 / 宽 高 / 最大值',
+ '    std::cout << "P3\\n" << image_width << \' \'',
+ '              << image_height << "\\n255\\n";',
+ '',
+ '    // 逐行、逐像素地射出光线',
+ '    for (int j = image_height - 1; j >= 0; --j) {',
+ '        for (int i = 0; i < image_width; ++i) {',
+ '            double u = double(i) / (image_width  - 1);',
+ '            double v = double(j) / (image_height - 1);',
+ '',
+ '            Ray r(origin, lower_left_corner',
+ '                         + u * horizontal',
+ '                         + v * vertical);',
+ '',
+ '            Color pixel_color = ray_color(r);',
+ '            write_color(std::cout, pixel_color);',
+ '        }',
+ '    }',
+ '}'
+],
+'vec3.h':[
+ '#pragma once',
+ '#include <cmath>',
+ '',
+ '// 一个类，三种身份：位置 / 方向 / 颜色',
+ 'class Vec3 {',
+ 'public:',
+ '    double e[3];',
+ '',
+ '    Vec3() : e{0, 0, 0} {}',
+ '    Vec3(double x, double y, double z) : e{x, y, z} {}',
+ '',
+ '    double x() const { return e[0]; }',
+ '    double y() const { return e[1]; }',
+ '    double z() const { return e[2]; }',
+ '',
+ '    Vec3 operator-(const Vec3& v) const { /* 逐元素减 */ }',
+ '    Vec3 operator*(double t)     const { /* 标量乘   */ }',
+ '    Vec3 operator/(double t)     const { /* 标量除   */ }',
+ '',
+ '    double length_squared() const {',
+ '        return e[0]*e[0] + e[1]*e[1] + e[2]*e[2];',
+ '    }',
+ '    double length() const {',
+ '        return std::sqrt(length_squared());',
+ '    }',
+ '};',
+ '',
+ 'using Point3 = Vec3;   // 用来表示“位置”',
+ 'using Color  = Vec3;   // 用来表示“颜色”',
+ '',
+ '// ═════════════ Day 1 的两个主角 ═════════════',
+ '',
+ '// 点积：分量相乘再相加 → 得到一个数',
+ 'inline double dot(const Vec3& u, const Vec3& v) {',
+ '    return u.x()*v.x() + u.y()*v.y() + u.z()*v.z();',
+ '}',
+ '',
+ '// 归一化：长度变成 1，方向完全不变',
+ 'inline Vec3 unit_vector(const Vec3& v) {',
+ '    return v / v.length();',
+ '}',
+ '',
+ '// 让 2.0 * v 这样写也能通过（标量在左边）',
+ 'inline Vec3 operator*(double t, const Vec3& v) { return v * t; }'
+],
+'ray.h':[
+ '#pragma once',
+ '#include "vec3.h"',
+ '',
+ 'class Ray {',
+ 'public:',
+ '    Ray() {}',
+ '    Ray(const Point3& origin, const Vec3& direction)',
+ '        : orig(origin), dir(direction) {}',
+ '',
+ '    Point3 origin()    const { return orig; }',
+ '    Vec3   direction() const { return dir; }',
+ '',
+ '    // ★ 全项目最重要的一个函数：P(t) = O + t·D',
+ '    Point3 at(double t) const {',
+ '        return orig + t * dir;',
+ '    }',
+ '',
+ 'private:',
+ '    Point3 orig;   // 起点（相机位置）',
+ '    Vec3   dir;    // 方向（不保证是单位向量）',
+ '};'
+],
+'camera.h':[
+ '#pragma once',
+ '#include "ray.h"',
+ '#include "vec3.h"',
+ '',
+ 'class Camera {',
+ 'public:',
+ '    Camera() {',
+ '        double aspect_ratio    = 1.0;',
+ '        double viewport_height = 2.0;',
+ '        double viewport_width  = aspect_ratio * viewport_height;',
+ '        double focal_length    = 1.0;   // ← 焦距 f',
+ '',
+ '        origin     = Point3(0, 0, 0);',
+ '        horizontal = Vec3(viewport_width,  0, 0);',
+ '        vertical   = Vec3(0, viewport_height, 0);',
+ '',
+ '        // 从原点退到视口左下角：先往左半宽、再往下半高、再往前 f',
+ '        lower_left_corner = origin',
+ '                          - horizontal / 2',
+ '                          - vertical   / 2',
+ '                          - Vec3(0, 0, focal_length);',
+ '    }',
+ '',
+ '    // (u,v) ∈ [0,1]²  →  一条从相机出发的光线',
+ '    Ray get_ray(double u, double v) const {',
+ '        return Ray(origin,',
+ '                   lower_left_corner',
+ '                   + u * horizontal',
+ '                   + v * vertical);',
+ '    }',
+ '',
+ 'private:',
+ '    Point3 origin;',
+ '    Vec3   lower_left_corner;',
+ '    Vec3   horizontal;',
+ '    Vec3   vertical;',
+ '};'
+],
+'color.h':[
+ '#pragma once',
+ '#include <iostream>',
+ '#include "vec3.h"',
+ '',
+ '// 把 [0,1] 的浮点颜色，写成 [0,255] 的整数，直接打进 PPM',
+ 'void write_color(std::ostream& out, const Color& pixel_color) {',
+ '    int r = int(255.999 * pixel_color.x());',
+ '    int g = int(255.999 * pixel_color.y());',
+ '    int b = int(255.999 * pixel_color.z());',
+ '',
+ '    out << r << \' \' << g << \' \' << b << \'\\n\';',
+ '}'
+]
+};
+
+/* 语法高亮 */
+const CPP_RE=new RegExp(
+ '\\/\\/[^\\n]*'                                   // 1 注释
++'|"(?:[^"\\\\]|\\\\.)*"'                            // 2 字符串
++'|#\\w+'                                            // 3 预处理
++'|\\b(?:class|public|private|struct|return|const|double|int|void|inline|using|for|while|if|else|new|delete|namespace|static|auto|bool|true|false|unsigned|char)\\b'  // 4 关键字
++'|\\b(?:Vec3|Ray|Color|Point3|Camera|HitRecord|Material|Sphere|Hittable|HittableList|std)\\b'  // 5 类型
++'|\\b\\d+(?:\\.\\d+)?\\b'                          // 6 数字
++'|\\b[a-zA-Z_]\\w*(?=\\()'                          // 7 函数名
+, 'g');
+function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function hlCpp(line){
+  return esc(line).replace(CPP_RE, m=>{
+    let cls;
+    if(m.startsWith('//')) cls='c';
+    else if(m[0]==='"')   cls='s';
+    else if(m[0]==='#')   cls='p';
+    else if(/^\d/.test(m)) cls='n';
+    else if(/^(class|public|private|struct|return|const|double|int|void|inline|using|for|while|if|else|new|delete|namespace|static|auto|bool|true|false|unsigned|char)$/.test(m)) cls='k';
+    else if(/^(Vec3|Ray|Color|Point3|Camera|HitRecord|Material|Sphere|Hittable|HittableList|std)$/.test(m)) cls='t';
+    else cls='f';
+    return '<span class="'+cls+'">'+m+'</span>';
+  });
+}
+
+/* =========================================================================
+   4. 状态
+   ========================================================================= */
+const ST={
+  step:0, playing:false, phase:0, last:0,
+  f:1.0, u:0.5, v:0.5, t:2.0,
+  px:2.0, py:1.5, pz:1.0,    // 步骤 2：Vec3 演示
+  vx:3, vy:4, vz:0,          // 步骤 4：unit_vector 演示
+  ax:1, ay:2, az:3,          // dot 演示 a
+  dirY:0.35,                 // ray_color 演示
+  cr:0.5, cg:0.7, cb:1.0,    // write_color 演示
+  scan:0,                    // 像素扫描进度
+  reveal:0,                  // 成品图揭幕进度
+  dotPhase:0
+};
+let autoSwitch=true;         // 播放时是否自动跳步
+
+/* =========================================================================
+   5. 步骤定义
+   ========================================================================= */
+const STEPS=[
+{
+ no:1, chap:'① 总览', title:'反向光线追踪：光线从相机射出',
+ file:'main.cpp', hl:[[35,47]],
+ legend:[['#0f766e','视口 viewport'],['#2563eb','光线 ray'],['#1e293b','相机']],
+ text:'光栅化是「物体 → 屏幕」；光线追踪整个反过来：<b>相机是起点，像素是路径点</b>。'+
+      '每个像素都射出一条光线，穿过视口上对应的那一点，一直延伸进场景。'+
+      '左边 loop 里那句 <code>Ray r(origin, ...)</code> 就是这件事。',
+ formula:'正向：  光源 → 物体 → 眼睛\n反向：  眼睛 → 像素 → 物体 → 光源\n\n方向 = 终点 − 起点 = 视口点 − 相机位置',
+ ctl:[],
+ draw:drawStep1
+},
+{
+ no:2, chap:'② 向量', title:'Vec3：一个类，三种身份',
+ file:'vec3.h', hl:[[4,27],[29,30]],
+ legend:[['#2563eb','Vec3 的分量 e[0..2]']],
+ text:'位置、方向、颜色在数学上都是「三个数」，所以它们共用同一个 <code>Vec3</code>。'+
+      '<code>using Point3 = Vec3</code> 只是给同一个类型起个别名 —— 让读代码的人知道这个变量是位置还是颜色，'+
+      '编译器眼里毫无区别。',
+ formula:'class Vec3 {\n    double e[3];   // 三个分量\n};\n\nusing Point3 = Vec3;   // 位置 = 三个数\nusing Color  = Vec3;   // 颜色 = 三个数',
+ ctl:[
+  {k:'px',label:'x',min:-3,max:3,step:0.1},
+  {k:'py',label:'y',min:-3,max:3,step:0.1},
+  {k:'pz',label:'z',min:-3,max:3,step:0.1}
+ ],
+ draw:drawStep2
+},
+{
+ no:3, chap:'② 向量', title:'dot()：分量相乘，再相加',
+ file:'vec3.h', hl:[[32,37]],
+ legend:[['#2563eb','向量 a'],['#7c3aed','向量 b']],
+ text:'点积的算法极其朴素：<b>三个分量各自相乘，再把三个乘积加起来</b>，结果是一个数（double），不是向量。'+
+      '看右边三根柱子：4 → 14 → 32，就是 <code>1×4 + 2×5 + 3×6</code> 的累加过程。',
+ formula:'dot(u,v) = u.x·v.x + u.y·v.y + u.z·v.z\n\n= 1×4 + 2×5 + 3×6\n= 4   + 10  + 18\n= 32        ← 一个标量',
+ ctl:[{k:'dotPhase',label:'累加进度',min:0,max:1,step:0.01}],
+ draw:drawStep3
+},
+{
+ no:4, chap:'② 向量', title:'unit_vector()：只留方向',
+ file:'vec3.h', hl:[[39,42]],
+ legend:[['#94a3b8','原向量 v'],['#059669','单位向量']],
+ text:'<code>unit_vector</code> 做的事只有一件：<b>把长度压成 1，方向一点不动</b>。'+
+      '实现就一行 <code>v / v.length()</code>。为什么需要它？因为 Day 1 后面要用'+
+      '「方向的 y 分量」来上色，必须是单位向量，y 才会老老实实落在 [−1, 1]。',
+ formula:'v = (3, 4, 0)\n|v| = √(3²+4²+0²) = 5\nunit_vector(v) = (3,4,0)/5 = (0.6, 0.8, 0)\n\n|unit_vector(v)| = 1    方向不变 ✔',
+ ctl:[
+  {k:'vx',label:'v.x',min:-3,max:3,step:0.1},
+  {k:'vy',label:'v.y',min:-3,max:3,step:0.1},
+  {k:'vz',label:'v.z',min:-3,max:3,step:0.1}
+ ],
+ draw:drawStep4
+},
+{
+ no:5, chap:'③ 光线', title:'Ray::at()：P(t) = O + t·D',
+ file:'ray.h', hl:[[13,16]],
+ legend:[['#dc2626','t=0 起点 O'],['#2563eb','t 增大方向']],
+ text:'一条光线 = 一个起点 + 一个方向。<code>at(t)</code> 就是「<b>从起点沿着方向走 t 倍</b>」。'+
+      '拖动下面的 t：t=0 回到相机，t 越大走得越远；t<0 就跑到相机背后去了，所以实际求交时永远只取 t>0。'+
+      '整个项目里算交点、算法线，全都靠这一个函数。',
+ formula:'P(t) = O + t·D\n\nt = 0    → 起点（相机位置）\nt > 0    → 沿方向往前走\nt < 0    → 跑到相机背后（忽略）',
+ ctl:[{k:'t',label:'参数 t',min:0,max:4,step:0.02}],
+ draw:drawStep5
+},
+{
+ no:6, chap:'④ 相机', title:'视口：四个量钉住画面',
+ file:'camera.h', hl:[[7,21]],
+ legend:[['#7c3aed','horizontal 横边'],['#d97706','vertical 竖边'],['#dc2626','lower_left_corner'],['#059669','焦距 f']],
+ text:'相机不会凭空知道该看哪。它需要：一个原点、视口横边 <code>horizontal</code>、竖边 <code>vertical</code>，'+
+      '以及左下角 <code>lower_left_corner</code>。'+
+      '<b>为什么要减 half？</b>因为 origin 是视口中心，而我们要的是左下角 —— 往左挪半宽、往下挪半高、再往前 f。'+
+      '拖动 f：视口离相机越远，张角越小，画面越"拉近"。',
+ formula:'lower_left_corner = origin\n                   − horizontal/2   ← 挪到左边\n                   − vertical  /2   ← 挪到下边\n                   − Vec3(0,0,f)    ← 推到前面 f\n\nFOV = 2·atan(1/f)    f 越大 → FOV 越小 → 画面越窄',
+ ctl:[{k:'f',label:'焦距 f',min:0.6,max:1.9,step:0.01}],
+ draw:drawStep6
+},
+{
+ no:7, chap:'④ 相机', title:'get_ray(u,v)：像素 → 视口点 → 光线',
+ file:'camera.h', hl:[[23,28]],
+ legend:[['#dc2626','当前 (u,v) 点'],['#2563eb','光线 origin→P']],
+ text:'<code>u</code> 从左到右、<code>v</code> 从下到上，取值范围都是 [0,1]。'+
+      '<b>u=0, v=0 → 视口左下角；u=1, v=1 → 右上角。</b>'+
+      '把视口点算出来以后，方向就是「视口点 − origin」，光线就诞生了。拖 u、v 试试。',
+ formula:'P(u,v) = lower_left_corner\n        + u · horizontal\n        + v · vertical\n\n光线：O = origin，D = P − origin\n\nu=0,v=0 → 左下角    u=1,v=1 → 右上角',
+ ctl:[
+  {k:'u',label:'u (横向)',min:0,max:1,step:0.005},
+  {k:'v',label:'v (纵向)',min:0,max:1,step:0.005}
+ ],
+ draw:drawStep7
+},
+{
+ no:8, chap:'⑤ 像素', title:'双重循环：把画面铺满',
+ file:'main.cpp', hl:[[35,42]],
+ legend:[['#2563eb','正在扫描的行'],['#f0b429','当前像素']],
+ text:'外层 <code>j</code> 是行、内层 <code>i</code> 是列。<b>注意 j 从 image_height−1 递减到 0</b> —— '+
+      '因为 v = j/(H−1)，j 最大时 v=1，对应视口最上方；PPM 又是从上往下存行的，所以顺序刚好吻合。'+
+      '右边小图上的黄点就是当前扫到的像素，它同步打到左边视口的对应位置。',
+ formula:'u = i / (image_width  − 1)      i：0 → 255  左 → 右\nv = j / (image_height − 1)      j：255 → 0  上 → 下\n\nj 递减 = 从最上面一行开始扫',
+ ctl:[],
+ draw:drawStep8
+},
+{
+ no:9, chap:'⑤ 像素', title:'ray_color()：用方向的 y 分量上色',
+ file:'main.cpp', hl:[[6,12]],
+ legend:[['#ffffff','t=0 白'],['#809fff→#66a3ff','t=1 蓝']],
+ text:'场景里什么都没有，所以光线撞不到任何东西 —— 那就给它"天空的颜色"。'+
+      '<b>诀窍是看方向的 y 分量</b>：朝正上方 y=1，朝正下方 y=−1。'+
+      '先把 [−1,1] 映射到 [0,1] 得到 t，再用 t 在白、蓝之间插值。'+
+      '拖动滑块看光线颜色怎么变。',
+ formula:'unit_dir.y() ∈ [−1, 1]\nt = 0.5 · (unit_dir.y() + 1)  ∈ [0, 1]\n\ncolor = (1 − t)·白 + t·蓝\n\ny = −1 → t = 0 → 白    (画面底部)\ny =  0 → t = 0.5 → 浅蓝\ny =  1 → t = 1 → 蓝    (画面顶部)',
+ ctl:[{k:'dirY',label:'方向 y 分量',min:-1,max:1,step:0.01}],
+ draw:drawStep9
+},
+{
+ no:10, chap:'⑤ 像素', title:'write_color()：[0,1] 浮点 → [0,255] 整数',
+ file:'color.h', hl:[[6,11]],
+ legend:[['#2563eb','×255.999 后取整']],
+ text:'渲染过程中颜色一直是 [0,1] 的浮点数，但 PPM 文件里存的是 0~255 的整数。'+
+      '<b>乘 255.999 而不是 255</b>，是为了让接近 1 的颜色取整后正好落在 255，不会卡在 254。'+
+      '最后一行就是往文件里打三个数。<code>int()</code> 是截断，不是四舍五入。',
+ formula:'int r = int(255.999 × pixel_color.x());\nout << r << \' \' << g << \' \' << b << \'\\n\';\n\n0.0 → int(0.000) = 0\n1.0 → int(255.999) = 255   ✔ 用 255 会得到 254',
+ ctl:[
+  {k:'cr',label:'R',min:0,max:1,step:0.01},
+  {k:'cg',label:'G',min:0,max:1,step:0.01},
+  {k:'cb',label:'B',min:0,max:1,step:0.01}
+ ],
+ draw:drawStep10
+},
+{
+ no:11, chap:'⑥ 成品', title:'跑起来：256×256 的天空',
+ file:'main.cpp', hl:[[14,47]],
+ legend:[['#1e293b','P3 256 256 255']],
+ text:'把上面所有零件拼起来，程序会吐出一个 <code>image.ppm</code>：'+
+      '<b>底部白、顶部蓝，中间平滑过渡</b>。这张图里其实"什么都没有"——'+
+      '它只是光线没撞到任何东西时的默认颜色，但它是后面所有渲染的底色。'+
+      'Day 2 会在这些光线上放一个球，然后就"看得见东西"了。',
+ formula:'P3\n256 256\n255\n255 255 255  255 255 254  ...\n→ 从下往上：白 → 浅蓝 → 天蓝\n\nRay Tracing in One Weekend · 第 4 章同款画面',
+ ctl:[],
+ draw:drawStep11
+}
+];
+
+/* =========================================================================
+   6. 各步骤动画
+   ========================================================================= */
+function drawStep1(ctx,W,H,st,ph){
+  const f=1.0,VW=2,VH=2;
+  const proj=makeProj(CAM_SCENE,CANON_RAY,{x:0,y:0,w:W,h:H},0.82);
+  seg(ctx,proj,[0,0,0.55],[0,0,-3.6],{color:'#cbd5e1',width:1.2,dash:[6,6]});
+  tag(ctx,proj,[0,0,-3.45],'−Z 前方',{dy:-15,size:11,color:'#94a3b8'});
+  // 视锥：相机 → 视口四角
+  vpQuad(f,VW,VH).forEach(c=>seg(ctx,proj,[0,0,0],c,{color:'rgba(5,150,105,.26)',width:1.2,dash:[5,5]}));
+  vpImage(ctx,proj,f,VW,VH,10,10,0.97);
+  const cells=[[0.13,0.87],[0.5,0.87],[0.87,0.87],[0.13,0.5],[0.87,0.5],[0.13,0.13],[0.5,0.13],[0.87,0.13]];
+  cells.forEach((c,i)=>{
+    const P=vpPt(c[0],c[1],f,VW,VH), D=vnorm(P);
+    const k=(ph*0.5+i*0.125)%1;
+    const L=f+0.35+k*1.95;
+    const col=skyColor(vmul(D,L));
+    seg(ctx,proj,[0,0,0],vmul(D,L),{color:'#2563eb',width:1.4,alpha:.75});
+    node(ctx,proj,vmul(D,L),{r:3.2,fill:css(col),stroke:'#1e293b',width:1.2});
+  });
+  camIcon(ctx,proj,[0,0,0]);
+  tag(ctx,proj,[0,0,0],'相机 origin',{dx:-4,dy:32,size:11.5,color:'#1d4ed8',bg:'rgba(219,234,254,.95)'});
+  tag(ctx,proj,[0,0,-f],'视口 viewport（z = −f）',{dy:-16,size:11.5,color:'#0f766e',bg:'rgba(204,251,241,.96)'});
+  st.readout='每个像素 → 一条光线；场景里没有物体 → 光线飞向无穷远';
+}
+function drawStep2(ctx,W,H,st,ph){
+  const v=[st.px,st.py,st.pz];
+  const K=0.45;
+  const canon=[[-1.62,-1.62,-1.62],[1.62,1.62,1.62],[0,0,0],[1.45,0,0],[0,1.45,0],[0,0,1.45]];
+  const proj=makeProj(CAM_VEC,canon,{x:0,y:0,w:W,h:H},0.82);
+  // 网格立方
+  for(let i=-1;i<=1;i+=0.5){
+    seg(ctx,proj,[i,-1,-1],[i,1,-1],{color:'#e5ebf2',width:1});
+    seg(ctx,proj,[-1,i,-1],[1,i,-1],{color:'#e5ebf2',width:1});
+    seg(ctx,proj,[-1,-1,i],[1,-1,i],{color:'#e5ebf2',width:1});
+  }
+  // 坐标轴
+  arrow(ctx,proj,[0,0,0],[1.45,0,0],{color:'#ef4444',width:1.8,head:8});
+  arrow(ctx,proj,[0,0,0],[0,1.45,0],{color:'#22c55e',width:1.8,head:8});
+  arrow(ctx,proj,[0,0,0],[0,0,1.45],{color:'#3b82f6',width:1.8,head:8});
+  tag(ctx,proj,[1.45,0,0],'x',{dx:14,size:11,color:'#dc2626'});
+  tag(ctx,proj,[0,1.45,0],'y',{dx:0,dy:-14,size:11,color:'#16a34a'});
+  tag(ctx,proj,[0,0,1.45],'z',{dx:14,dy:8,size:11,color:'#2563eb'});
+  const vs=vmul(v,K);
+  // 分量盒子（虚线）
+  seg(ctx,proj,[0,0,0],[vs[0],0,0],{color:'#f59e0b',width:1.5,dash:[5,4]});
+  seg(ctx,proj,[vs[0],0,0],[vs[0],vs[1],0],{color:'#f59e0b',width:1.5,dash:[5,4]});
+  seg(ctx,proj,[vs[0],vs[1],0],vs,{color:'#f59e0b',width:1.5,dash:[5,4]});
+  arrow(ctx,proj,[0,0,0],vs,{color:'#2563eb',width:3,head:11});
+  node(ctx,proj,vs,{r:5,fill:'#2563eb',stroke:'#fff',width:2});
+  tag(ctx,proj,vs,`v = (${st.px.toFixed(1)}, ${st.py.toFixed(1)}, ${st.pz.toFixed(1)})`,
+      {dx:-40,dy:-24,size:12,color:'#1d4ed8',bg:'rgba(219,234,254,.96)'});
+  const L=Math.hypot(st.px,st.py,st.pz);
+  tag(ctx,proj,[0,0,0],`|v| = ${L.toFixed(2)}`,{dx:-46,dy:28,size:11.5,color:'#475569'});
+  st.readout=`e[0]=${st.px.toFixed(2)}  e[1]=${st.py.toFixed(2)}  e[2]=${st.pz.toFixed(2)}   →  <b>|v| = ${L.toFixed(2)}</b>`;
+}
+function drawStep3(ctx,W,H,st,ph){
+  const K=0.19;
+  const a=[st.ax,st.ay,st.az].map(x=>x*K), b=[4,5,6].map(x=>x*K);
+  const canon=[[-0.22,-0.22,-0.22],[1.62,1.62,1.62],[0,0,0],[1.55,0,0],[0,1.55,0],[0,0,1.55]];
+  const proj=makeProj(CAM_VEC,canon,{x:0,y:0,w:W*0.60,h:H},0.86);
+  // 半透明参考立方
+  for(let i=0;i<=3;i++){
+    const q=i*0.45;
+    seg(ctx,proj,[q,0,0],[q,1.35,0],{color:'#eef2f7',width:1});
+    seg(ctx,proj,[0,q,0],[1.35,q,0],{color:'#eef2f7',width:1});
+    seg(ctx,proj,[q,0,0],[q,0,1.35],{color:'#eef2f7',width:1});
+    seg(ctx,proj,[0,q,0],[0,q,1.35],{color:'#eef2f7',width:1});
+    seg(ctx,proj,[0,0,q],[1.35,0,q],{color:'#eef2f7',width:1});
+    seg(ctx,proj,[0,0,q],[0,1.35,q],{color:'#eef2f7',width:1});
+  }
+  arrow(ctx,proj,[0,0,0],a,{color:'#2563eb',width:3.2,head:11});
+  node(ctx,proj,a,{r:5,fill:'#2563eb',stroke:'#fff',width:2});
+  tag(ctx,proj,a,'a(1,2,3)',{dx:-14,dy:-20,size:11.5,color:'#1d4ed8',bg:'rgba(219,234,254,.96)'});
+  arrow(ctx,proj,[0,0,0],b,{color:'#7c3aed',width:3.2,head:11});
+  node(ctx,proj,b,{r:5,fill:'#7c3aed',stroke:'#fff',width:2});
+  tag(ctx,proj,b,'b(4,5,6)',{dx:16,dy:-18,size:11.5,color:'#6d28d9',bg:'rgba(237,233,254,.96)'});
+  // 夹角弧（屏幕近似）
+  const A=proj.pt(a),B=proj.pt(b),O=proj.pt([0,0,0]);
+  ctx.save(); ctx.strokeStyle='#f59e0b'; ctx.lineWidth=1.6;
+  const a1=Math.atan2(A.y-O.y,A.x-O.x), a2=Math.atan2(B.y-O.y,B.x-O.x);
+  ctx.beginPath(); ctx.arc(O.x,O.y,30,Math.min(a1,a2),Math.max(a1,a2)); ctx.stroke(); ctx.restore();
+
+  /* ---- 右侧：累加条 ---- */
+  const bx=W*0.60+8, bw=W-bx-26;
+  const terms=[[st.ax*4,'1×4',4,'#2563eb'],[st.ay*5,'2×5',10,'#7c3aed'],[st.az*6,'3×6',18,'#0891b2']];
+  ctx.save();
+  ctx.font='700 12px ui-monospace,Menlo,monospace'; ctx.fillStyle='#4a586a';
+  ctx.fillText('累加过程',bx,34);
+  ctx.font='600 11.5px ui-monospace,Menlo,monospace';
+  const total=32, maxV=32;
+  let run=0;
+  terms.forEach((t,i)=>{
+    const y=62+i*74;
+    const p=clamp(st.dotPhase*3-i,0,1);
+    const shown=run+t[2];
+    // 标签
+    ctx.fillStyle='#65717e'; ctx.fillText(t[1],bx,y-6);
+    // 轨道
+    ctx.fillStyle='#eef2f7'; rr(ctx,bx,y,bw,20,6); ctx.fill();
+    // 已累加部分
+    ctx.fillStyle='rgba(203,213,225,.75)';
+    const wRun=bw*(run/maxV);
+    rr(ctx,bx,y+5,Math.max(0,wRun),10,4); ctx.fill();
+    // 本项
+    ctx.fillStyle=t[3];
+    const wNow=bw*(t[2]/maxV)*p;
+    rr(ctx,bx+Math.max(0,wRun),y+5,Math.max(0,wNow),10,4); ctx.fill();
+    // 数值
+    ctx.font='800 13px ui-monospace,Menlo,monospace';
+    ctx.fillStyle='#16202b';
+    ctx.textAlign='right';
+    ctx.fillText(String(shown),bx+bw+14,y+16);
+    ctx.textAlign='left';
+    ctx.font='600 11.5px ui-monospace,Menlo,monospace';
+    run=shown;
+  });
+  const y=62+3*74;
+  ctx.fillStyle='#fef3c7'; rr(ctx,bx,y-4,bw+18,34,8); ctx.fill();
+  ctx.strokeStyle='#fde68a'; ctx.lineWidth=1.4; ctx.stroke();
+  ctx.fillStyle='#92400e'; ctx.font='800 14px ui-monospace,Menlo,monospace';
+  ctx.fillText('dot(a,b) = 32',bx+10,y+18);
+  ctx.restore();
+
+  /* ---- 屏幕下方的公式同步 ---- */
+  const acc = st.dotPhase<0.34 ? '4' : st.dotPhase<0.67 ? '14' : '32';
+  st.readout=`dot(a,b) = 1×4 + 2×5 + 3×6  →  4 + 10 + 18  →  <b>${acc}</b>`;
+}
+function drawStep4(ctx,W,H,st,ph){
+  const v=[st.vx,st.vy,st.vz];
+  const L=vlen(v)||1;
+  const u=vnorm(v);
+  const S=1.15;
+  const canon=[[-1.85,-1.85,-0.6],[1.85,1.85,0.6],[0,0,0],[1.85,0,0],[0,1.85,0],[0,0,0.8]];
+  const proj=makeProj(CAM_UNIT,canon,{x:0,y:0,w:W*0.58,h:H},0.82);
+  // 单位球（画一个圆代替）
+  const O=proj.pt([0,0,0]);
+  const P1=proj.pt([1,0,0]);
+  const R=Math.hypot(P1.x-O.x,P1.y-O.y);
+  ctx.save(); ctx.strokeStyle='#cbd5e1'; ctx.setLineDash([5,5]); ctx.lineWidth=1.4;
+  ctx.beginPath(); ctx.arc(O.x,O.y,R,0,7); ctx.stroke(); ctx.restore();
+  tag(ctx,proj,[0,0,0],'单位球面 |v|=1',{dx:0,dy:-R-4,size:11,color:'#94a3b8'});
+  seg(ctx,proj,[0,0,0],[1.75,0,0],{color:'#e5ebf2',width:1.4});
+  seg(ctx,proj,[0,0,0],[0,1.75,0],{color:'#e5ebf2',width:1.4});
+  tag(ctx,proj,[1.75,0,0],'x',{dx:12,size:11,color:'#ef4444'});
+  tag(ctx,proj,[0,1.75,0],'y',{dy:-12,size:11,color:'#22c55e'});
+  // 原向量：按真实长度等比绘制（封顶 1.65）
+  const drawLen=Math.min(L*0.32, 1.65);
+  const vs=vmul(u, drawLen);
+  arrow(ctx,proj,[0,0,0],vs,{color:'#94a3b8',width:2.6,head:10});
+  node(ctx,proj,vs,{r:4.5,fill:'#94a3b8',stroke:'#fff',width:2});
+  tag(ctx,proj,vs,`v (${st.vx.toFixed(1)}, ${st.vy.toFixed(1)}, ${st.vz.toFixed(1)})  |v|=${L.toFixed(2)}`,
+      {dx:-30,dy:-22,size:11,color:'#475569'});
+  // 单位向量：长度恒为 1
+  const us=vmul(u,S);
+  arrow(ctx,proj,[0,0,0],us,{color:'#059669',width:3.4,head:11});
+  node(ctx,proj,us,{r:5.5,fill:'#059669',stroke:'#fff',width:2});
+  tag(ctx,proj,us,`unit_vector(v)  长度 = 1`,{dx:40,dy:18,size:11.5,color:'#047857',bg:'rgba(209,250,229,.96)'});
+
+  /* ---- 右侧计算面板 ---- */
+  const bx=W*0.58+8, bw=W-bx-20;
+  const lines=[
+    ['v','=',`(${st.vx.toFixed(1)}, ${st.vy.toFixed(1)}, ${st.vz.toFixed(1)})`,'#475569'],
+    ['L','=',L.toFixed(3),'#b45309'],
+    ['v/L','=',`(${u[0].toFixed(2)}, ${u[1].toFixed(2)}, ${u[2].toFixed(2)})`,'#047857'],
+    ['|v/L|','=',vlen(u).toFixed(3),'#2563eb']
+  ];
+  ctx.save();
+  ctx.font='700 12px ui-monospace,Menlo,monospace'; ctx.fillStyle='#4a586a';
+  ctx.fillText('length() 与 unit_vector()',bx,34);
+  lines.forEach((ln,i)=>{
+    const y=62+i*40;
+    ctx.fillStyle='#f6f8fb'; rr(ctx,bx,y-4,bw,32,7); ctx.fill();
+    ctx.font='600 12px ui-monospace,Menlo,monospace';
+    ctx.fillStyle='#94a3b8'; ctx.fillText(ln[0],bx+9,y+16);
+    ctx.fillStyle='#cbd5e1'; ctx.fillText(ln[1],bx+56,y+16);
+    ctx.font='800 12.5px ui-monospace,Menlo,monospace';
+    ctx.fillStyle=ln[3]; ctx.fillText(ln[2],bx+72,y+16);
+  });
+  const y=62+4*40;
+  ctx.fillStyle='#ecfdf5'; rr(ctx,bx,y-2,bw,42,8); ctx.fill();
+  ctx.strokeStyle='#a7f3d0'; ctx.lineWidth=1.4; ctx.stroke();
+  ctx.fillStyle='#047857'; ctx.font='600 11.5px ui-monospace,Menlo,monospace';
+  ctx.fillText('长度被压成 1，',bx+10,y+16);
+  ctx.fillText('方向完全没变 ✔',bx+10,y+32);
+  ctx.restore();
+  st.readout=`|v| = ${L.toFixed(3)} → unit_vector(v) 长度 = <b>${vlen(u).toFixed(3)}</b>`;
+}
+function drawStep5(ctx,W,H,st,ph){
+  const f=1.0,VW=2,VH=2;
+  const t=st.t;
+  const D=[0.46,0.24,-0.856];
+  const LREF=3.2;
+  const canon=[[0,0,0],[0,0,0.35],vmul(vnorm(D),LREF),
+               [1,1,-1],[-1,-1,-1],[1,-1,-1],[-1,1,-1],[0,0,-1.55]];
+  const proj=makeProj(CAM_SCENE,canon,{x:0,y:0,w:W,h:H},0.84);
+  // 视口（只描边，作参照）
+  poly(ctx,proj,vpQuad(f,VW,VH),{fill:'rgba(15,118,110,.055)',stroke:'#7fd6c8',width:1.5});
+  tag(ctx,proj,[0,0,-f],'z = −f 视口平面',{dy:-16,size:10.5,color:'#0f766e',bg:'rgba(204,251,241,.95)'});
+  seg(ctx,proj,[0,0,0],[0,0,-3.4],{color:'#e5ebf2',width:1,dash:[4,5]});
+  // 参考线 + 刻度
+  seg(ctx,proj,[0,0,0],vmul(vnorm(D),LREF),{color:'#cbd5e1',width:1.4,dash:[6,5]});
+  [1,2,3].forEach(k=>{
+    const q=vmul(vnorm(D),k);
+    node(ctx,proj,q,{r:3,fill:'#fff',stroke:'#94a3b8',width:1.6});
+    tag(ctx,proj,q,'t='+k,{dx:20,dy:13,size:10,color:'#94a3b8',bg:'rgba(255,255,255,.85)'});
+  });
+  // 已走过的部分
+  const P=vmul(D,t);
+  arrow(ctx,proj,[0,0,0],P,{color:'#2563eb',width:3,head:10});
+  node(ctx,proj,[0,0,0],{r:6.5,fill:'#dc2626',stroke:'#fff',width:2.4});
+  tag(ctx,proj,[0,0,0],'O = origin  (t=0)',{dx:-10,dy:32,size:11.5,color:'#b91c1c',bg:'rgba(254,226,226,.97)'});
+  node(ctx,proj,P,{r:6,fill:'#2563eb',stroke:'#fff',width:2.4});
+  tag(ctx,proj,P,`P(${t.toFixed(2)})`,{dx:8,dy:-20,size:12.5,color:'#1d4ed8',bg:'rgba(219,234,254,.97)'});
+  // D 向量
+  const Ds=vmul(vnorm(D),0.75);
+  arrow(ctx,proj,[0,0,0],Ds,{color:'#7c3aed',width:2.4,head:9});
+  tag(ctx,proj,Ds,'D',{dx:-18,dy:-14,size:12,color:'#6d28d9',bg:'rgba(237,233,254,.97)'});
+  camIcon(ctx,proj,[0,0,0],0.8);
+  st.readout=`O = (0,0,0)   D = (${D[0]}, ${D[1]}, ${D[2]})   t = ${t.toFixed(2)}   →   <b>P = (${(D[0]*t).toFixed(2)}, ${(D[1]*t).toFixed(2)}, ${(D[2]*t).toFixed(2)})</b>`;
+}
+function drawStep6(ctx,W,H,st,ph){
+  const f=st.f,VW=2,VH=2;
+  const proj=makeProj(CAM_SCENE,CANON_VIEW,{x:0,y:0,w:W,h:H},0.84);
+  // FOV 锥
+  vpQuad(f,VW,VH).forEach(c=>seg(ctx,proj,[0,0,0],c,{color:'rgba(5,150,105,.30)',width:1.2,dash:[5,5]}));
+  vpImage(ctx,proj,f,VW,VH,8,8,0.92);
+  camIcon(ctx,proj,[0,0,0]);
+  const ll=[-VW/2,-VH/2,-f];
+  // origin → ll 的路径
+  seg(ctx,proj,[0,0,0],[-VW/2,0,0],{color:'#fca5a5',width:1.3,dash:[4,4]});
+  seg(ctx,proj,[-VW/2,0,0],ll,{color:'#fca5a5',width:1.3,dash:[4,4]});
+  // 三根箭头
+  arrow(ctx,proj,ll,[VW/2,-VH/2,-f],{color:'#7c3aed',width:2.4,head:10});
+  tag(ctx,proj,[0,-VH/2,-f],'horizontal',{dy:20,size:11.5,color:'#6d28d9',bg:'rgba(237,233,254,.97)'});
+  arrow(ctx,proj,ll,[-VW/2,VH/2,-f],{color:'#d97706',width:2.4,head:10});
+  tag(ctx,proj,[-VW/2,0,-f],'vertical',{dx:-34,dy:0,size:11.5,color:'#b45309',bg:'rgba(254,243,199,.97)'});
+  node(ctx,proj,ll,{r:5.5,fill:'#dc2626',stroke:'#fff',width:2.2});
+  tag(ctx,proj,ll,'lower_left_corner',{dx:-6,dy:26,size:11.5,color:'#b91c1c',bg:'rgba(254,226,226,.97)'});
+  // 焦距
+  arrow(ctx,proj,[0,0,0],[0,0,-f],{color:'#059669',width:2.6,head:10});
+  tag(ctx,proj,[0,0,-f/2],'f = '+f.toFixed(2),{dx:46,dy:0,size:12,color:'#047857',bg:'rgba(209,250,229,.97)'});
+  tag(ctx,proj,[0,0,0],'origin',{dx:0,dy:34,size:11,color:'#334155'});
+  const fov=2*Math.atan(VH/2/f)*180/Math.PI;
+  st.readout=`视口 ${VW.toFixed(1)}×${VH.toFixed(1)}   f = <b>${f.toFixed(2)}</b>   FOV = 2·atan(1/f) = <b>${fov.toFixed(1)}°</b>   ${f<0.9?'（焦距小 → 广角）':f>1.4?'（焦距大 → 长焦，画面被拉近）':''}`;
+}
+function drawStep7(ctx,W,H,st,ph){
+  const f=1.0,VW=2,VH=2;
+  const u=st.u,v=st.v;
+  const W3=W*0.66;
+  const proj=makeProj(CAM_SCENE,CANON_VIEW,{x:0,y:0,w:W3,h:H},0.86);
+  vpImage(ctx,proj,f,VW,VH,8,8,0.95);
+  const P=vpPt(u,v,f,VW,VH);
+  const D=vsub(P,[0,0,0]);
+  const L=vlen(D);
+  seg(ctx,proj,[0,0,0],vmul(vnorm(D),L*0.98),{color:'#2563eb',width:2.6});
+  node(ctx,proj,P,{r:6,fill:'#dc2626',stroke:'#fff',width:2.4});
+  tag(ctx,proj,P,`(u,v)=(${u.toFixed(2)}, ${v.toFixed(2)})`,
+      {dx:-4,dy:v>0.75?24:-22,size:11.5,color:'#b91c1c',bg:'rgba(254,226,226,.97)'});
+  camIcon(ctx,proj,[0,0,0]);
+  // u/v 参考线
+  seg(ctx,proj,[-VW/2,-VH/2,-f],[VW/2,-VH/2,-f],{color:'#0f766e',width:1.2});
+  // u 箭头
+  arrow(ctx,proj,[-VW/2,-VH/2-0.28,-f],[P[0],-VH/2-0.28,-f],{color:'#2563eb',width:1.8,head:8});
+  tag(ctx,proj,[(-VW/2+P[0])/2,-VH/2-0.28,-f],'u',{dy:15,size:11,color:'#1d4ed8'});
+  arrow(ctx,proj,[-VW/2-0.28,-VH/2,-f],[-VW/2-0.28,P[1],-f],{color:'#d97706',width:1.8,head:8});
+  tag(ctx,proj,[-VW/2-0.28,(-VH/2+P[1])/2,-f],'v',{dx:-16,size:11,color:'#b45309'});
+
+  /* ---- 右侧小图：像素网格 ---- */
+  const N=10, gx=W3+14, gw=Math.min(W-gx-18, H-40), gy=(H-gw)/2;
+  ctx.save();
+  ctx.fillStyle='#fff'; ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1;
+  rr(ctx,gx-6,gy-24,gw+12,gw+34,8); ctx.fill(); ctx.stroke();
+  ctx.font='700 11px ui-monospace,Menlo,monospace'; ctx.fillStyle='#4a586a';
+  ctx.textAlign='left'; ctx.fillText('图像像素网格（黄 = 当前）',gx,gy-9);
+  const cell=gw/N;
+  for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+    const uu=(i+0.5)/N, vv=1-(j+0.5)/N;   // j 从上往下
+    const c=skyColor(vpPt(uu,vv,f,VW,VH));
+    ctx.fillStyle=css(c);
+    ctx.fillRect(gx+i*cell, gy+j*cell, cell+0.5, cell+0.5);
+  }
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1;
+  for(let k=0;k<=N;k++){
+    ctx.beginPath(); ctx.moveTo(gx+k*cell,gy); ctx.lineTo(gx+k*cell,gy+gw); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx,gy+k*cell); ctx.lineTo(gx+gw,gy+k*cell); ctx.stroke();
+  }
+  const ci=Math.min(N-1,Math.floor(u*N)), cj=Math.min(N-1,Math.floor((1-v)*N));
+  ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2.4;
+  ctx.strokeRect(gx+ci*cell+1, gy+cj*cell+1, cell-2, cell-2);
+  ctx.strokeStyle='#0f766e'; ctx.lineWidth=1.6;
+  ctx.strokeRect(gx-0.5,gy-0.5,gw+1,gw+1);
+  ctx.fillStyle='#94a3b8'; ctx.font='600 10px ui-monospace,Menlo,monospace';
+  ctx.textAlign='center';
+  ctx.fillText('左下 (0,0)',gx+22,gy+gw+16);
+  ctx.textAlign='right';
+  ctx.fillText('右上 (1,1)',gx+gw-2,gy+gw+16);
+  ctx.restore();
+  st.readout=`u=<b>${u.toFixed(3)}</b>  v=<b>${v.toFixed(3)}</b>   →  P = (${P[0].toFixed(2)}, ${P[1].toFixed(2)}, ${P[2].toFixed(2)})   方向 D = P − O`;
+}
+function drawStep8(ctx,W,H,st,ph){
+  const f=1.0,VW=2,VH=2,NX=12,NY=12;
+  const W3=W*0.56;
+  const proj=makeProj(CAM_SCENE,CANON_SCAN,{x:0,y:0,w:W3,h:H},0.86);
+  // 视口：只画出已扫描的像素（下往上逐渐亮起来）
+  const scanned=Math.floor(st.scan);
+  const total=NX*NY;
+  const ex=1.02;
+  for(let j=0;j<NY;j++) for(let i=0;i<NX;i++){
+    const idx=j*NX+i;                    // j:0 顶行 → NY-1 底行
+    const uc=(i+0.5)/NX, vc=1-(j+0.5)/NY; // v 从 1 往下
+    const x0=-VW/2+(i/NX)*VW, x1=((i+1)/NX)*VW-VW/2;
+    const yy0=-VH/2+(NY-1-j)/NY*VH, yy1=-VH/2+(NY-j)/NY*VH;
+    const on= idx<scanned;
+    const cur= idx===scanned-1;
+    const c=skyColor(vpPt(uc,vc,f,VW,VH));
+    poly(ctx,proj,[[x0,yy0,-f],[x1,yy0,-f],[x1,yy1,-f],[x0,yy1,-f]],
+      {fill: on? css(c) : 'rgba(226,232,240,.45)', stroke: cur?'#f59e0b':'rgba(148,163,184,.25)', width: cur?2:0.6});
+  }
+  poly(ctx,proj,vpQuad(f,VW,VH),{stroke:'#0f766e',width:1.7});
+  camIcon(ctx,proj,[0,0,0],0.9);
+  // 当前光线
+  if(scanned>0 && scanned<=total){
+    const idx=scanned-1, j=Math.floor(idx/NX), i=idx%NX;
+    const uc=(i+0.5)/NX, vc=1-(j+0.5)/NY;
+    const P=vpPt(uc,vc,f,VW,VH);
+    const D=vnorm(P);
+    seg(ctx,proj,[0,0,0],vmul(D,2.2),{color:'rgba(245,158,11,.9)',width:2.2});
+    node(ctx,proj,P,{r:4.5,fill:'#f59e0b',stroke:'#fff',width:2});
+    node(ctx,proj,vmul(D,2.2),{r:3,fill:'#f59e0b'});
+  }
+  tag(ctx,proj,[0,0,-f],'viewport',{dy:-14,size:11,color:'#0f766e',bg:'rgba(204,251,241,.96)'});
+
+  /* ---- 右侧：图像 + 代码状态 ---- */
+  const gx=W3+16, gw=Math.min(W-gx-22, H-96), gy=44;
+  const cell=gw/NX;
+  ctx.save();
+  ctx.font='700 11.5px ui-monospace,Menlo,monospace'; ctx.fillStyle='#4a586a';
+  ctx.fillText('输出图像（j 从最上行往下扫）',gx,W3>0?30:30);
+  ctx.fillStyle='#fff'; ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1;
+  rr(ctx,gx-3,gy-3,gw+6,gw+6,6); ctx.fill(); ctx.stroke();
+  for(let j=0;j<NY;j++) for(let i=0;i<NX;i++){
+    const idx=j*NX+i;
+    if(idx>=scanned) continue;
+    const uc=(i+0.5)/NX, vc=1-(j+0.5)/NY;
+    ctx.fillStyle=css(skyColor(vpPt(uc,vc,f,VW,VH)));
+    ctx.fillRect(gx+i*cell, gy+j*cell, cell+0.5, cell+0.5);
+  }
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=0.6;
+  for(let k=0;k<=NX;k++){
+    ctx.beginPath(); ctx.moveTo(gx+k*cell,gy); ctx.lineTo(gx+k*cell,gy+gw); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(gx,gy+k*cell); ctx.lineTo(gx+gw,gy+k*cell); ctx.stroke();
+  }
+  if(scanned>0&&scanned<=total){
+    const idx=scanned-1, j=Math.floor(idx/NX), i=idx%NX;
+    ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2.6;
+    ctx.strokeRect(gx+i*cell+1, gy+j*cell+1, cell-2, cell-2);
+    ctx.fillStyle='#94a3b8'; ctx.font='600 10.5px ui-monospace,Menlo,monospace';
+    ctx.textAlign='left';
+    ctx.fillText(`i = ${i}   j = ${NY-1-j}`,gx,gy+gw+20);
+    ctx.textAlign='right';
+    ctx.fillText(`u = ${(i/(NX-1)).toFixed(2)}   v = ${((NY-1-j)/(NY-1)).toFixed(2)}`,gx+gw,gy+gw+20);
+  }
+  ctx.restore();
+  st.readout=`for (j = 255; j >= 0; --j)  →  for (i = 0; i < 256; ++i)     已扫描 <b>${Math.min(scanned,total)}/${total}</b> 格`;
+}
+function drawStep9(ctx,W,H,st,ph){
+  const f=1.0,VW=2,VH=2;
+  const y=st.dirY;
+  const RL=2.6;
+  const W3=W*0.64;
+  const canon=[[0,0,0],[0,0,-2.95],[0,1.95,-1.95],[0,-1.95,-1.95],[0,1.6,-0.6],[0,-1.6,-0.6],
+               [1,1,-1],[-1,-1,-1],[1,-1,-1],[-1,1,-1]];
+  const proj=makeProj(CAM_SCENE,canon,{x:0,y:0,w:W3,h:H},0.84);
+  // 视口竖直切片
+  vpImage(ctx,proj,f,VW,VH,4,10,0.9);
+  const ys=[-1,-0.6,-0.2,0.2,0.6,1];
+  ys.forEach(yy=>{
+    const D=vnorm([0,yy,-f]);
+    skyRay(ctx,proj,[0,0,0],vmul(D,RL),skyColor(D),1.7);
+  });
+  // 高亮当前方向
+  const D=vnorm([0,y,-f]);
+  const c=skyColor(D);
+  arrow(ctx,proj,[0,0,0],vmul(D,RL),{color:'rgba(15,23,42,.35)',width:4.6,head:13});
+  arrow(ctx,proj,[0,0,0],vmul(D,RL),{color:css(c),width:3.2,head:11});
+  const E=vmul(D,RL);
+  node(ctx,proj,E,{r:5,fill:css(c),stroke:'#334155',width:1.4});
+  tag(ctx,proj,E,`y=${y.toFixed(2)}`,{dx:0,dy:y>0?-20:26,size:11.5,color:'#334155'});
+  camIcon(ctx,proj,[0,0,0],0.9);
+  tag(ctx,proj,[0,0,-f],'viewport',{dy:-16,size:11,color:'#0f766e',bg:'rgba(204,251,241,.96)'});
+
+  /* ---- 右侧：y → t → color 链条 ---- */
+  const bx=W3+16, bw=W-bx-24;
+  ctx.save();
+  ctx.font='700 11.5px ui-monospace,Menlo,monospace'; ctx.fillStyle='#4a586a';
+  ctx.fillText('y  →  t  →  颜色',bx,30);
+  // 竖直色带
+  const by=48, bh=H-by-92, bwd=44;
+  const grd=ctx.createLinearGradient(0,by+bh,0,by);
+  grd.addColorStop(0,css(SKY_WHITE));
+  grd.addColorStop(1,css(SKY_BLUE));
+  ctx.fillStyle=grd; rr(ctx,bx,by,bwd,bh,6); ctx.fill();
+  ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1; ctx.stroke();
+  // 刻度
+  ctx.font='600 10.5px ui-monospace,Menlo,monospace'; ctx.fillStyle='#94a3b8'; ctx.textAlign='left';
+  [['y=1  t=1',1],['y=0  t=.5',0.5],['y=−1  t=0',0]].forEach(k=>{
+    const yy=by+bh*(1-k[1]);
+    ctx.beginPath(); ctx.moveTo(bx+bwd,yy); ctx.lineTo(bx+bwd+6,yy); ctx.strokeStyle='#cbd5e1'; ctx.stroke();
+    ctx.fillText(k[0],bx+bwd+10,yy+4);
+  });
+  // 当前标记
+  const yy=by+bh*(1-(y+1)/2);
+  ctx.beginPath(); ctx.moveTo(bx-6,yy); ctx.lineTo(bx,yy); ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2.5; ctx.stroke();
+  ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2; ctx.strokeRect(bx-0.5,by-0.5,bwd+1,bh+1);
+  // 当前颜色块 + 数值
+  const t=0.5*(y+1);
+  ctx.fillStyle=css(c); rr(ctx,bx,by+bh+12,bwd,26,6); ctx.fill();
+  ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#334155'; ctx.font='700 11.5px ui-monospace,Menlo,monospace';
+  ctx.fillText(`t = ${t.toFixed(3)}`,bx,by+bh+56);
+  const q=rgb255(c);
+  ctx.fillStyle='#65717e'; ctx.font='600 11px ui-monospace,Menlo,monospace';
+  ctx.fillText(`(${q[0]}, ${q[1]}, ${q[2]})`,bx,by+bh+74);
+  ctx.restore();
+  st.readout=`unit_dir.y() = <b>${y.toFixed(3)}</b>   t = 0.5·(y+1) = <b>${t.toFixed(3)}</b>   color = (1−t)·白 + t·蓝   ${css(c)}`;
+}
+function drawStep10(ctx,W,H,st,ph){
+  const c=[st.cr,st.cg,st.cb];
+  const q=rgb255(c);
+  const names=['R','G','B'], cols=['#ef4444','#22c55e','#2563eb'];
+  const pad=24, barX=66, barW=150;
+  ctx.save();
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.font='700 12px ui-monospace,Menlo,monospace'; ctx.fillStyle='#4a586a';
+  ctx.fillText('write_color()  逐通道转换',pad,24);
+
+  [0,1,2].forEach(k=>{
+    const y=46+k*64;
+    // 通道名
+    ctx.fillStyle=cols[k]; ctx.font='800 15px ui-monospace,Menlo,monospace';
+    ctx.textAlign='left'; ctx.fillText(names[k],pad,y+14);
+    // 0→255 渐变条
+    const grad=ctx.createLinearGradient(barX,0,barX+barW,0);
+    grad.addColorStop(0,'rgb(0,0,0)');
+    grad.addColorStop(1,`rgb(${k===0?255:0},${k===1?255:0},${k===2?255:0})`);
+    ctx.fillStyle=grad; rr(ctx,barX,y,barW,17,5); ctx.fill();
+    ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1; ctx.stroke();
+    // 当前值标记
+    const mx=barX+barW*clamp(c[k],0,1);
+    ctx.beginPath(); ctx.moveTo(mx,y-6); ctx.lineTo(mx,y+23);
+    ctx.strokeStyle='#0f172a'; ctx.lineWidth=2.4; ctx.stroke();
+    ctx.fillStyle='#fef3c7'; rr(ctx,mx-22,y+24,44,15,4); ctx.fill();
+    ctx.fillStyle='#92400e'; ctx.font='700 10.5px ui-monospace,Menlo,monospace';
+    ctx.textAlign='center'; ctx.fillText(c[k].toFixed(3),mx,y+35);
+    // 公式
+    ctx.textAlign='left';
+    ctx.fillStyle='#65717e'; ctx.font='600 11.5px ui-monospace,Menlo,monospace';
+    ctx.fillText('× 255.999',barX+barW+16,y+13);
+    ctx.fillStyle='#94a3b8'; ctx.font='600 11px ui-monospace,Menlo,monospace';
+    ctx.fillText('= '+(c[k]*255.999).toFixed(1),barX+barW+88,y+13);
+    ctx.fillStyle='#cbd5e1'; ctx.fillText('int →',barX+barW+150,y+13);
+    ctx.fillStyle=cols[k]; ctx.font='800 15px ui-monospace,Menlo,monospace';
+    ctx.fillText(String(q[k]),barX+barW+192,y+14);
+  });
+
+  // 结果色块 + PPM 行
+  const ry=46+3*64+14;
+  ctx.textAlign='left';
+  ctx.fillStyle='#4a586a'; ctx.font='700 11.5px ui-monospace,Menlo,monospace';
+  ctx.fillText('最终像素',pad,ry+12);
+  ctx.fillStyle=css(c); rr(ctx,pad,ry+20,86,58,9); ctx.fill();
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1.4; ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='600 10.5px ui-monospace,Menlo,monospace';
+  ctx.fillText('屏幕上的颜色',pad,ry+92);
+
+  const ox=pad+104, ow=W-ox-pad-190;
+  if(ow>140){
+    ctx.fillStyle='#0f172a'; rr(ctx,ox,ry+20,ow,58,9); ctx.fill();
+    ctx.fillStyle='#7c8ea3'; ctx.font='600 10.5px ui-monospace,Menlo,monospace';
+    ctx.fillText('image.ppm 的这一行 ↓',ox+12,ry+37);
+    ctx.fillStyle='#c7f9ff'; ctx.font='800 15px ui-monospace,Menlo,monospace';
+    ctx.fillText(`${q[0]} ${q[1]} ${q[2]}`,ox+12,ry+62);
+  }
+
+  // 右侧说明
+  const nx=W-pad-176;
+  ctx.fillStyle='#f6f8fb'; rr(ctx,nx,50,176,142,9); ctx.fill();
+  ctx.strokeStyle='#e9eef4'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#4a586a'; ctx.font='700 11.5px ui-monospace,Menlo,monospace';
+  ctx.fillText('为什么是 255.999 ?',nx+12,70);
+  ctx.font='600 10.8px ui-monospace,Menlo,monospace'; ctx.fillStyle='#65717e';
+  ['0.0  → int(0.000)  = 0',
+   '1.0  → int(255.999)=255 ✔',
+   '',
+   '若乘 255.0：',
+   '0.998 → int(254.49) = 254',
+   '最亮的白会差 1 级',
+   '',
+   '多出的 .999 就是给',
+   '浮点误差留的余量'].forEach((s,i)=>{
+    ctx.fillText(s,nx+12,90+i*13);
+  });
+  ctx.restore();
+  st.readout=`(${c[0].toFixed(2)}, ${c[1].toFixed(2)}, ${c[2].toFixed(2)})  →  int(255.999 × 各通道)  →  <b>(${q[0]}, ${q[1]}, ${q[2]})</b>`;
+}
+let _imgCache=null;
+function buildSkyImage(){
+  const S=256, cv=document.createElement('canvas');
+  cv.width=S; cv.height=S;
+  const c2=cv.getContext('2d'), im=c2.createImageData(S,S);
+  const f=1.0,VW=2,VH=2;
+  for(let j=0;j<S;j++) for(let i=0;i<S;i++){
+    const u=i/(S-1), v=j/(S-1);
+    const col=skyColor(vpPt(u,v,f,VW,VH));
+    const p=(j*S+i)*4, q=rgb255(col);
+    im.data[p]=q[0]; im.data[p+1]=q[1]; im.data[p+2]=q[2]; im.data[p+3]=255;
+  }
+  c2.putImageData(im,0,0);
+  return cv;
+}
+function drawStep11(ctx,W,H,st,ph){
+  if(!_imgCache) _imgCache=buildSkyImage();
+  const side=Math.min(H-150, 252);
+  const gx=Math.round(W*0.28), gy=Math.round((H-side)/2)-4;
+  const rows=Math.floor(st.reveal*256);
+  ctx.save();
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+
+  /* ---- 左：PPM 文件片段 ---- */
+  const tx=20;
+  ctx.fillStyle='#4a586a'; ctx.font='700 12px ui-monospace,Menlo,monospace';
+  ctx.fillText('image.ppm',tx,30);
+  ctx.fillStyle='#eef2f7'; rr(ctx,tx-6,38,132,132,8); ctx.fill();
+  ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1; ctx.stroke();
+  ['P3','256 256','255','255 255 255','255 255 254','254 254 255','253 253 255','...'].forEach((s,i)=>{
+    const isHead=i<3;
+    ctx.fillStyle=isHead? '#2563eb' : '#475569';
+    ctx.font=(isHead?'800 ':'600 ')+'11px ui-monospace,Menlo,monospace';
+    ctx.fillText(s,tx+4,56+i*16);
+  });
+  ctx.fillStyle='#94a3b8'; ctx.font='600 10.5px ui-monospace,Menlo,monospace';
+  ctx.fillText('从左到右 = 一个像素',tx-6,186);
+  ctx.fillText('从上往下 = 一行一行存',tx-6,200);
+
+  /* ---- 中：图像 ---- */
+  ctx.shadowColor='rgba(16,24,40,.20)'; ctx.shadowBlur=20; ctx.shadowOffsetY=6;
+  ctx.fillStyle='#fff'; rr(ctx,gx-10,gy-10,side+20,side+20,9); ctx.fill();
+  ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetY=0;
+  ctx.strokeStyle='#e3e9f0'; ctx.lineWidth=1; ctx.stroke();
+  if(rows>0) ctx.drawImage(_imgCache, 0,0,256,rows, gx,gy,side,side*rows/256);
+  if(rows<256){
+    ctx.fillStyle='#f1f5f9';
+    ctx.fillRect(gx, gy+side*rows/256, side, side*(1-rows/256));
+    if(rows>0){
+      ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(gx,gy+side*rows/256); ctx.lineTo(gx+side,gy+side*rows/256); ctx.stroke();
+    }
+  }
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.2; ctx.strokeRect(gx-0.5,gy-0.5,side+1,side+1);
+  ctx.fillStyle='#94a3b8'; ctx.font='600 10.5px ui-monospace,Menlo,monospace';
+  ctx.fillText('256 × 256 · 底部白 → 顶部蓝',gx,gy+side+20);
+
+  /* ---- 右：说明 ---- */
+  const rx=gx+side+22, rw=W-rx-18;
+  if(rw>120){
+    ctx.fillStyle='#f6f8fb'; rr(ctx,rx,46,rw,152,9); ctx.fill();
+    ctx.strokeStyle='#e9eef4'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#4a586a'; ctx.font='700 11.5px ui-monospace,Menlo,monospace';
+    ctx.fillText('这张图里什么都没有',rx+12,68);
+    ctx.font='600 10.8px ui-monospace,Menlo,monospace'; ctx.fillStyle='#65717e';
+    ['光线一条也没撞到东西，',
+     '所以全部漆成"天空默认色"。',
+     '',
+     '它只是底色 ——',
+     'Day 2 在这些光线上放一个球，',
+     '画面里就真的"有东西"了。',
+     '',
+     '渲染已完成 ' + Math.round(st.reveal*100) + '%'
+    ].forEach((s,i)=>{
+      ctx.fillStyle = i===7 ? '#2563eb' : '#65717e';
+      ctx.fillText(s,rx+12,88+i*14);
+    });
+  }
+  ctx.restore();
+  st.readout=`逐行渲染 <b>${rows}/256</b> 行　${rows>=256?'✔ 完成 —— 这就是 Day 1 的全部成果':''}`;
+}
+
+/* =========================================================================
+   7. UI
+   ========================================================================= */
+const canvas=document.getElementById('stage');
+const ctx=canvas.getContext('2d');
+const elTabs=document.getElementById('tabs');
+const elCode=document.getElementById('codebox');
+const elControls=document.getElementById('controls');
+const elLegend=document.getElementById('legend');
+const elReadout=document.getElementById('readout');
+const elChapter=document.getElementById('chapter');
+const elCurNo=document.getElementById('curNo');
+const elBar=document.getElementById('barFill');
+const elDots=document.getElementById('stepDots');
+const elPlay=document.getElementById('btnPlay');
+
+let CW=0,CH=0;
+function resize(){
+  const r=canvas.getBoundingClientRect();
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  CW=r.width; CH=r.height;
+  canvas.width=Math.round(r.width*dpr);
+  canvas.height=Math.round(r.height*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener('resize',resize);
+
+/* ---- tabs ---- */
+const FILE_ORDER=['main.cpp','vec3.h','ray.h','camera.h','color.h'];
+FILE_ORDER.forEach(name=>{
+  const b=document.createElement('button');
+  b.textContent=name; b.dataset.file=name;
+  b.onclick=()=>{ autoSwitch=false; renderCode(name); };
+  elTabs.appendChild(b);
+});
+
+/* ---- 步骤圆点 ---- */
+STEPS.forEach((s,i)=>{
+  const b=document.createElement('button');
+  b.textContent=s.no; b.title=s.title;
+  b.onclick=()=>goStep(i,true);
+  elDots.appendChild(b);
+});
+
+function inRanges(n,ranges){
+  if(!ranges) return false;
+  return ranges.some(r=> n>=r[0] && n<=r[1]);
+}
+function renderCode(file){
+  const lines=FILES[file]; if(!lines) return;
+  const step=STEPS[ST.step];
+  elTabs.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.file===file));
+  document.getElementById('codeHint').textContent=file;
+  elCode.innerHTML=lines.map((ln,i)=>{
+    const n=i+1;
+    const on=inRanges(n,step.hl);
+    return '<div class="cl'+(on?' hl':'')+'"><span class="ln">'+n+'</span><span class="ct">'+
+           (hlCpp(ln)||'&nbsp;')+'</span></div>';
+  }).join('');
+  const first=elCode.querySelector('.cl.hl');
+  if(first){
+    const top=first.offsetTop - elCode.clientHeight/2 + 30;
+    elCode.scrollTop=Math.max(0,top);
+  } else {
+    elCode.scrollTop=0;
+  }
+}
+function ctlKey(step,k){ return step.no+'_'+k; }
+
+function buildControls(step){
+  elControls.innerHTML='';
+  (step.ctl||[]).forEach(c=>{
+    const wrap=document.createElement('div'); wrap.className='ctl';
+    const lab=document.createElement('label'); lab.textContent=c.label;
+    const inp=document.createElement('input');
+    inp.type='range'; inp.min=c.min; inp.max=c.max; inp.step=c.step;
+    inp.value=ST[c.k];
+    const val=document.createElement('span'); val.className='val';
+    const fmt=x=>{
+      if(c.k==='dotPhase') return Math.round(x*100)+'%';
+      if(c.k==='f') return x.toFixed(2);
+      if(['cr','cg','cb','u','v','dirY'].includes(c.k)) return x.toFixed(2);
+      return x.toFixed(1);
+    };
+    val.textContent=fmt(+ST[c.k]);
+    inp.oninput=()=>{
+      ST[c.k]=parseFloat(inp.value);
+      val.textContent=fmt(ST[c.k]);
+      if(c.k==='f') ST.f=clamp(ST.f,0.6,1.9);
+      frame(0);
+    };
+    wrap.appendChild(lab); wrap.appendChild(inp); wrap.appendChild(val);
+    elControls.appendChild(wrap);
+  });
+}
+function buildLegend(step){
+  elLegend.innerHTML=(step.legend||[]).map(l=>
+    '<div><i style="background:'+l[0]+';border:1px solid rgba(0,0,0,.12)"></i>'+l[1]+'</div>').join('');
+}
+function goStep(i,stopAuto){
+  if(stopAuto){ ST.playing=false; elPlay.textContent='▶ 播放'; elPlay.classList.add('primary'); }
+  ST.step=clamp(i,0,STEPS.length-1);
+  const s=STEPS[ST.step];
+  ST.phase=0; ST.scan=0; ST.reveal=0;
+  if(s.no===3) ST.dotPhase=0;
+  if(s.no===8) ST.scan=0;
+  if(s.no===11) ST.reveal=0;
+  try{ history.replaceState(null,'','#'+(ST.step+1)); }catch(e){}
+  // UI
+  elChapter.textContent=s.chap;
+  elCurNo.textContent=s.no;
+  elBar.style.width=(ST.step/(STEPS.length-1)*100)+'%';
+  elDots.querySelectorAll('button').forEach((b,k)=>{
+    b.classList.toggle('on',k===ST.step);
+    b.classList.toggle('done',k<ST.step);
+  });
+  document.getElementById('nNo').textContent=String(s.no).padStart(2,'0');
+  document.getElementById('nTitle').textContent=s.title;
+  document.getElementById('nText').innerHTML=s.text;
+  document.getElementById('nFormula').innerHTML=s.formula
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  renderCode(s.file);
+  buildControls(s);
+  buildLegend(s);
+  autoSwitch=true;
+  frame(0);
+}
+
+/* ---- 动画循环 ---- */
+let scanHeld=false;
+function frame(dt){
+  ST.phase += dt>0 ? dt*0.001 : 0;
+  const s=STEPS[ST.step];
+  // 每步自有的推进
+  if(s.no===3 && ST.playing) ST.dotPhase=Math.min(1,ST.dotPhase+dt*0.0006);
+  if(s.no===8){
+    if(!scanHeld || ST.playing){
+      ST.scan += dt*0.032;
+      if(ST.scan>144) ST.scan=144;
+    }
+  }
+  if(s.no===11){
+    ST.reveal = Math.min(1, ST.reveal + dt*0.00085);
+  }
+  ctx.clearRect(0,0,CW,CH);
+  s.draw(ctx,CW,CH,ST,ST.phase);
+  const rd=ST.readout||'';
+  if(rd!==lastReadout){ elReadout.innerHTML=rd; lastReadout=rd; }
+}
+let lastReadout='';
+let lastTs=0, rafId=0;
+function loop(ts){
+  const dt=Math.min(ts-lastTs,64); lastTs=ts;
+  frame(dt);
+  // 自动播放
+  if(ST.playing){
+    if(ST.step===STEPS.length-1 && ST.reveal>=1){
+      ST.playing=false; elPlay.textContent='▶ 播放'; elPlay.classList.add('primary');
+    } else if(autoAdvanceCheck()){
+      goStep(ST.step+1,false);
+    }
+  }
+  rafId=requestAnimationFrame(loop);
+}
+/* 自动播放时：等到当前步动画"演完"再跳下一步 */
+function autoAdvanceCheck(){
+  const s=STEPS[ST.step];
+  if(s.no===3) return ST.dotPhase>=1;
+  if(s.no===8) return ST.scan>=144;
+  if(s.no===11) return false;
+  return ST.phase>3.6;
+}
+
+/* 播放按钮 */
+elPlay.onclick=()=>{
+  ST.playing=!ST.playing;
+  elPlay.textContent = ST.playing? '❚❚ 暂停' : '▶ 播放';
+  elPlay.classList.toggle('primary',!ST.playing);
+  if(ST.playing){
+    ST.phase=0;
+    const s=STEPS[ST.step];
+    if(s.no===3) ST.dotPhase=0;
+    if(s.no===8) ST.scan=0;
+    if(s.no===11) ST.reveal=0;
+  }
+};
+document.getElementById('btnNext').onclick=()=>{ goStep(ST.step+1,true); };
+document.getElementById('btnPrev').onclick=()=>{ goStep(ST.step-1,true); };
+document.getElementById('btnReplay').onclick=()=>{ const i=ST.step; goStep(i,true); };
+
+/* 扫描步骤用空格暂停 */
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.code==='Space'){ e.preventDefault(); elPlay.click(); }
+  if(e.code==='ArrowRight'){ goStep(ST.step+1,true); }
+  if(e.code==='ArrowLeft'){ goStep(ST.step-1,true); }
+});
+
+/* =========================================================================
+   8. 扩展卡片内容
+   ========================================================================= */
+const QA=[
+ ['Q1','<code>lower_left_corner</code> 为什么要减去 <code>horizontal/2</code> 和 <code>vertical/2</code>？',
+  '<code>origin</code> 是相机的正前方，而我们要的是视口的<b>左下角</b>。'+
+  '所以要从中心出发：先沿 <code>−horizontal</code> 往左挪半个宽度，再沿 <code>−vertical</code> 往下挪半个高度，'+
+  '最后沿 <code>−Z</code> 往前推焦距 <code>f</code>。三步合起来就是那句连减。'],
+ ['Q2','<code>u=0, v=0</code> 对应视口哪个角？<code>u=1, v=1</code> 呢？',
+  '<b>u=0, v=0 → 左下角</b>；<b>u=1, v=1 → 右上角</b>。<br>'+
+  '因为公式是 <code>lower_left_corner + u·horizontal + v·vertical</code>：'+
+  'u=0 时横向偏移为 0，落在最左；v=0 时纵向偏移为 0，落在最下。'+
+  'u、v 都取 1 就同时到达最右、最上。<br>'+
+  '这也解释了为什么 <code>v = j/(H−1)</code> 里的 j 要从大到小扫 —— j 大 → v 大 → 画面顶部。'],
+ ['Q3','想让相机"往后退"，改哪个变量？图像会怎么变？',
+  '初版里 <code>origin</code> 被写死在构造函数里，改它没有效果（因为 <code>get_ray</code> 里方向是 <code>P − origin</code>，'+
+  '原点一动、视口跟着一起动，画面不变）。所以真正能动的是<b>焦距 f</b>：<br>'+
+  '<code>f 变大</code> → 视口离相机更远 → 同样大的视口张角变小 → <b>FOV 变小，画面被"拉近"，物体变大</b>；<br>'+
+  '<code>f 变小</code> → 视口更近 → FOV 变大 → <b>广角，画面更"广"</b>。<br>'+
+  '记住这句话：<span class="kbd">决定视野的不是画布多大、也不是焦距多长，而是二者的比值</span>。'],
+ ['Q4','<code>unit_vector(r.direction()).y()</code> 的取值范围？为什么能做渐变？',
+  '单位向量长度恒为 1，所以每个分量都落在 <b>[−1, 1]</b>：朝正上方 y=1，朝正下方 y=−1，水平则 y=0。<br>'+
+  '要拿它当插值系数，先把它从 [−1,1] 映射到 [0,1]：<br>'+
+  '<code>t = 0.5 * (unit_dir.y() + 1.0)</code><br>'+
+  '于是 y=−1 → t=0（白），y=0 → t=0.5（浅蓝），y=1 → t=1（蓝）。'+
+  '再用 <code>color = (1−t)·白 + t·蓝</code> 插值 —— <b>y 控制 t，t 决定颜色</b>。'+
+  '结果就是画面下方白、上方蓝的天然天空。']
+];
+const CPP=[
+ ['#pragma once','告诉编译器"这个头文件在一次编译里只读一遍"，防止同一个头文件被重复包含而报重复定义。写了它就替代传统的 include guard。'],
+ ['Ray() {}','不带参数的<b>默认构造函数</b>。<code>Ray r;</code> 时被调用，函数体为空，什么都不做。'],
+ ['const Point3&amp; origin','<code>const</code> = "我不会修改这个参数"；<code>&amp;</code> = <b>引用</b>，不拷贝对象，直接用原来那个。两个一起用是 C++ 传参的标配。'],
+ [': orig(origin), dir(direction) {}','<b>初始化列表</b>。"用参数 origin 初始化成员 orig，用 direction 初始化成员 dir"。'+
+   '它比在函数体里写 <code>orig = origin;</code> 更早执行、也更快（少一次默认构造 + 赋值）。'],
+ ['inline','给编译器的<b>建议</b>："这个函数很短，直接展开到调用处，别真的做一次函数调用。"'+
+   '像 <code>dot</code>、<code>unit_vector</code> 这种一两行的函数，加上它没有额外开销。'],
+ ['运算符重载','<code>u + v</code> 之所以能写，是因为类里定义了 <code>Vec3 operator+(const Vec3&amp; v) const</code>。'+
+   '<code>operator+</code> 就是个普通函数名，只是可以让编译器用 <code>+</code> 来调用它。'],
+ ['类内成员 vs 自由函数','<code>operator+</code> 写成了成员函数（左操作数就是 this）；而 <code>dot</code>、<code>unit_vector</code> 写成了自由函数。'+
+   '要让 <code>2.0 * v</code> 也能用，必须写一个自由函数 <code>operator*(double, const Vec3&amp;)</code> —— 因为 2.0 不是 Vec3，没法去调用它的成员。']
+];
+document.getElementById('qaBox').innerHTML=QA.map(q=>
+  '<details><summary><span class="q">'+q[0]+'</span><span>'+q[1]+'</span><span class="arw">▶</span></summary>'+
+  '<div class="ans">'+q[2]+'</div></details>').join('');
+document.getElementById('cppBox').innerHTML=CPP.map(c=>
+  '<dt>'+c[0]+'</dt><dd>'+c[1]+'</dd>').join('');
+
+document.getElementById('totNo').textContent=STEPS.length;
+
+/* ---- 启动 ---- */
+resize();
+let startIdx=0;
+const hs=(location.hash||'').replace('#','');
+if(/^\d+$/.test(hs)) startIdx=clamp(parseInt(hs,10)-1,0,STEPS.length-1);
+goStep(startIdx,true);
+elPlay.textContent='▶ 播放';
+requestAnimationFrame(loop);
+window.addEventListener('resize',()=>{ resize(); });
+</script>
+</body>
+</html>
