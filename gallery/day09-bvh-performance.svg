@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="920" height="520" fill="#0d1117"/>
+
+  <text x="460" y="42" fill="#e6edf3" font-size="21" font-weight="700" text-anchor="middle">
+    Day 9 · BVH 加速结构：实测数据
+  </text>
+  <text x="460" y="68" fill="#8b949e" font-size="13" text-anchor="middle">
+    random_scene（481 个物体）· 400×225 · 32 spp · 单线程 · g++ -O3
+  </text>
+
+  <!-- ============ 左：耗时对比 ============ -->
+  <g transform="translate(50, 100)">
+    <rect x="0" y="0" width="400" height="230" rx="10" fill="#161b22" stroke="#30363d"/>
+    <text x="200" y="30" fill="#8b949e" font-size="14" text-anchor="middle">渲染耗时（秒）</text>
+
+    <!-- 朴素 -->
+    <rect x="60" y="60" width="251" height="46" fill="#f85149" fill-opacity="0.75" rx="4"/>
+    <text x="70" y="90" fill="#ffffff" font-size="15" font-weight="700">13.16 s</text>
+    <text x="60" y="126" fill="#8b949e" font-size="12">朴素遍历（线性）</text>
+
+    <!-- BVH -->
+    <rect x="60" y="150" width="112" height="46" fill="#3fb950" fill-opacity="0.75" rx="4"/>
+    <text x="70" y="180" fill="#ffffff" font-size="15" font-weight="700">5.89 s</text>
+    <text x="60" y="216" fill="#8b949e" font-size="12">BVH</text>
+
+    <text x="330" y="180" fill="#3fb950" font-size="17" font-weight="700">2.23×</text>
+  </g>
+
+  <!-- ============ 右：测试次数对比 ============ -->
+  <g transform="translate(470, 100)">
+    <rect x="0" y="0" width="400" height="230" rx="10" fill="#161b22" stroke="#30363d"/>
+    <text x="200" y="30" fill="#8b949e" font-size="14" text-anchor="middle">每根光线平均测试次数</text>
+
+    <rect x="60" y="60" width="320" height="46" fill="#f85149" fill-opacity="0.75" rx="4"/>
+    <text x="70" y="90" fill="#ffffff" font-size="15" font-weight="700">481 次球体求交</text>
+
+    <rect x="60" y="150" width="30" height="46" fill="#3fb950" fill-opacity="0.75" rx="4"/>
+    <text x="100" y="180" fill="#3fb950" font-size="15" font-weight="700">45.4 次（BVH）</text>
+    <text x="60" y="216" fill="#8b949e" font-size="12">40.7 个节点 + 4.7 次球体求交</text>
+
+    <text x="330" y="90" fill="#d29922" font-size="15" font-weight="700">少 10.6×</text>
+  </g>
+
+  <!-- ============ 下方：关键发现 ============ -->
+  <g transform="translate(50, 350)">
+    <rect x="0" y="0" width="820" height="140" rx="10" fill="#161b22" stroke="#30363d"/>
+    <text x="20" y="30" fill="#d29922" font-size="14" font-weight="700">
+      ⚠️ 测试次数少了 10.6 倍，为什么只快 2.23 倍？
+    </text>
+
+    <text x="20" y="62" fill="#c9d1d9" font-size="13">因为【每次测试的成本】涨了 5.5 倍：</text>
+
+    <text x="40" y="92" fill="#8b949e" font-size="13">
+      朴素遍历：3.4 ns / 次
+    </text>
+    <text x="250" y="92" fill="#8b949e" font-size="12">←  480 个球内存连续、全体在缓存里、虚函数目标单一</text>
+
+    <text x="40" y="118" fill="#8b949e" font-size="13">
+      BVH：18.7 ns / 次
+    </text>
+    <text x="250" y="118" fill="#8b949e" font-size="12">←  指针跳转 + 虚函数 + 分支预测失败（≈ 75 个 CPU 周期）</text>
+  </g>
+</svg>

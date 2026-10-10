@@ -68,6 +68,9 @@ public:
         return true;
     }
 
-private:
+    // ⚠️ 这里故意是 public 的。
+    //   原因：BVHNode 要拿到这个数组去【排序 + 对半分】。
+    //   RTIOW 也是这么做的。代价是破坏了封装（外面可以乱改这个数组），
+    //   好处是省事。真要严谨的话可以改成只给 friend 开放。
     std::vector<std::shared_ptr<Hittable>> objects;
 };

@@ -1162,6 +1162,164 @@ output = AABB::surrounding(output, ???);    // 旧数据已经没了
 
 ---
 
+## 8.4 `bvh.h` —— BVH 加速结构 ★ Day 9 新增
+
+> **一句话**：把"一堆物体"递归地分成两堆、两堆再分两堆，形成二叉树。
+> 求交时先试大盒子，没中就跳过整个子树。
+>
+> **关键设计**：`BVHNode` 也**继承 `Hittable`** ——
+> 所以从外面看，"一棵 BVH 树"和"一个球"没区别，
+> `main.cpp` 里把 `HittableList` 换成 `BVHNode` 就行，**其他一行都不用改**。
+
+### `BVHNode(HittableList list)`
+
+```cpp
+BVHNode(HittableList list)
+    : BVHNode(list.objects, 0, list.objects.size()) {}
+```
+
+**参数按值传**（故意拷贝一份）—— 建树过程要排序数组，不想弄乱调用方的列表。
+拷贝成本很低：里面存的是 `shared_ptr`，只是引用计数 +1。
+
+用法：
+
+```cpp
+HittableList world_list = random_scene();
+BVHNode      world(world_list);        // ← 用 BVH 替掉线性列表
+```
+
+### `BVHNode(objects, start, end)` —— 核心构造函数
+
+给 `objects` 数组的 `[start, end)` 区间建一棵子树。**递归**。
+
+#### 第 1 步：算这一堆物体的总包围盒
+
+```cpp
+AABB total_box;
+bool first = true;
+for (size_t i = start; i < end; ++i) {
+    AABB temp;
+    objects[i]->bounding_box(temp);
+    total_box = first ? temp : AABB::surrounding(total_box, temp);
+    first = false;
+}
+this->box = total_box;
+```
+
+**必须是并集**：盒子要包住**所有**物体，才能保证"没打中盒子 ⟹ 没打中任何一个"。
+漏装一个 → 不保守 → BVH 会错误跳过真实交点 → 画面出现空洞。
+
+#### 第 2 步：选最长的那条轴
+
+```cpp
+int axis = total_box.longest_axis();   // 0=x, 1=y, 2=z
+```
+
+物体在最长的那一维上分布最散 → 沿它切，两个子盒子缩得最快。
+
+#### 第 3 步：沿这条轴排序
+
+```cpp
+auto comparator = [axis](const std::shared_ptr<Hittable>& a,
+                         const std::shared_ptr<Hittable>& b) {
+    AABB box_a, box_b;
+    a->bounding_box(box_a);
+    b->bounding_box(box_b);
+    return box_a.minimum[axis] < box_b.minimum[axis];
+};
+std::sort(objects.begin() + start, objects.begin() + end, comparator);
+```
+
+`[axis]` 是 **lambda 捕获**：把外面的 `axis` 复制进来给比较函数用。
+（`std::sort` 只吃"收两个参数"的比较器。）
+
+#### 第 4 步：对半分，递归
+
+```cpp
+size_t span = end - start;
+if (span == 1) {
+    left = right = objects[start];        // 叶子
+} else if (span == 2) {
+    left  = objects[start];               // 叶子
+    right = objects[start + 1];
+} else {
+    std::sort(...);
+    size_t mid = start + span / 2;
+    left  = std::make_shared<BVHNode>(objects, start, mid);   // ← 递归
+    right = std::make_shared<BVHNode>(objects, mid,   end);
+}
+```
+
+**为什么"按数量对半分"而不是"按空间位置切"**：
+按数量分保证深度严格是 `⌈log2(N)⌉`（481 个物体 → 实测深度 9，完美平衡）。
+按空间位置切，如果所有物体位置重合，每次切都会把全部物体放到同一侧 →
+树退化成链表 → 深度 = N → **栈溢出**。
+
+### ⭐ `BVHNode::hit(r, t_min, t_max, rec)` → `bool`
+
+```cpp
+bool hit(const Ray& r, double t_min, double t_max,
+         HitRecord& rec) const override {
+    if (!box.hit(r, t_min, t_max)) return false;      // ① 先试大盒子
+
+    bool hit_left = left->hit(r, t_min, t_max, rec);  // ② 问左边
+
+    // ③ 问右边，但 t_max 收紧
+    bool hit_right = right->hit(r, t_min, hit_left ? rec.t : t_max, rec);
+
+    return hit_left || hit_right;
+}
+```
+
+**第 ③ 步的技巧**：左子树命中在 `t = 3.2`，则任何 `t > 3.2` 的交点都被它挡住
+（更远 = 看不见）。所以右子树只用在 `(t_min, 3.2)` 里找。
+
+**为什么不会漏掉正确答案**：收紧 `t_max` 只是"提前排除不可能赢的候选"，
+不改变最终胜者。这就是为什么 **BVH 的渲染结果必须与朴素遍历逐像素一致**。
+
+### `BVHNode::bounding_box(output)` → `bool`
+
+```cpp
+bool bounding_box(AABB& output) const override {
+    output = box;      // 直接返回建树时算好的
+    return true;
+}
+```
+
+**缓存（记忆化）的代价**：省了 O(子树) 的重算，但引入**数据冗余** ——
+如果树的成员被改动而 `box` 没同步更新，盒子就和内容不符 → 不保守 → 出错。
+
+> 📌 **BVH 树建好后应该是"不可变的"（immutable）。**
+> 要加物体就重建一棵新树，不要就地修改。
+
+### ⚠️ 实测性能（Day 9，重要）
+
+| 指标 | 朴素遍历 | **BVH** | 比值 |
+|---|---|---|---|
+| 每光线球体求交次数 | 481 | **4.71** | 少 102× |
+| 每光线盒子测试次数 | 0 | 40.74 | —— |
+| 每光线总测试次数 | 481 | 45.4 | 少 10.6× |
+| **每次测试平均耗时** | **3.4 ns** | **18.7 ns** | **贵 5.5×** |
+| **渲染耗时** | **13.16 s** | **5.89 s** | **快 2.23×** |
+
+**测试次数少了 10.6 倍，但只快 2.23 倍** —— 因为每次测试贵了 5.5 倍：
+
+- 朴素遍历：480 个 `Sphere` 内存**连续**、全体在缓存里、虚函数目标单一 → 3.4 ns
+- BVH：**指针跳转 + 虚函数 + 分支预测失败**（≈ 75 个 CPU 周期）→ 18.7 ns
+
+**树本身是健康的**：节点 511、最大深度 9、巨型盒子节点只占 2.5%。
+
+> 📌 **核心教训：测试次数少 ≠ 快。**
+> 要把数据换算成「每次操作多少纳秒」，再和 CPU 的基本常数对照。
+>
+> 另外：BVH 的优势随 N 增大而放大 ——
+> 481 个物体时只有 2.2×，5,000 个物体时会有 20× 以上。
+
+**Day 10 的优化方向**：扁平化（树存进连续数组、用整数下标代替 `shared_ptr`、
+去掉虚函数），把节点从 88 字节压到 ≤ 64 字节（正好一条缓存线）。
+
+---
+
 ## 8.5 材质系统（Material / Lambertian / Metal / Dielectric）
 
 ### `Material`（抽象基类，在 `material.h`）
