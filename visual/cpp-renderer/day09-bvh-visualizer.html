@@ -1,0 +1,2187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 9 · BVH 加速结构可视化</title>
+<style>
+  :root{
+    --bg:#f3f5f9; --panel:#ffffff; --line:#e4e9f0; --line2:#eef2f7;
+    --text:#16202b; --muted:#66727f; --faint:#93a0ad;
+    --blue:#2563eb; --purple:#7c3aed; --green:#059669;
+    --amber:#d97706; --red:#dc2626; --cyan:#0891b2;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.06);
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1360px; margin:0 auto; padding:28px 24px 64px}
+
+  /* ---------- header ---------- */
+  header{margin-bottom:22px}
+  .eyebrow{display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600;
+    color:var(--purple); background:#f3eeff; border:1px solid #e3d8ff;
+    padding:3px 10px; border-radius:999px; letter-spacing:.02em}
+  h1{font-size:27px; margin:12px 0 6px; letter-spacing:-.02em; font-weight:700}
+  h1 small{font-weight:500; color:var(--faint); font-size:15px; letter-spacing:0}
+  header p{margin:0; color:var(--muted); max-width:900px}
+  header code{font-family:var(--mono); font-size:12.5px; background:#eceff4; border:1px solid var(--line);
+    padding:1px 5px; border-radius:4px; color:#334155}
+
+  /* ---------- tabs ---------- */
+  nav.tabs{display:flex; gap:6px; margin:20px 0 16px; border-bottom:1px solid var(--line); flex-wrap:wrap}
+  nav.tabs button{
+    appearance:none; border:0; background:transparent; cursor:pointer;
+    font:inherit; font-weight:600; color:var(--muted);
+    padding:9px 15px; border-radius:8px 8px 0 0; position:relative; top:1px;
+    border-bottom:2.5px solid transparent; transition:color .15s, background .15s
+  }
+  nav.tabs button:hover{color:var(--text); background:#eef1f6}
+  nav.tabs button.active{color:var(--blue); border-bottom-color:var(--blue)}
+  nav.tabs button .n{font-family:var(--mono); opacity:.55; margin-right:2px; font-weight:500}
+
+  .tab{display:none}
+  .tab.active{display:block; animation:fade .25s ease}
+  @keyframes fade{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+
+  /* ---------- cards / layout ---------- */
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); overflow:hidden}
+  .card + .card{margin-top:16px}
+  .card-hd{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:11px 16px; border-bottom:1px solid var(--line2);
+    font-size:12.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#48566a
+  }
+  .card-hd .hint{font-weight:500; text-transform:none; letter-spacing:0; color:var(--faint); font-size:12px}
+  .card-bd{padding:16px}
+  .split{display:grid; grid-template-columns:minmax(0,1fr) 350px; gap:16px; align-items:start}
+  @media(max-width:1080px){.split{grid-template-columns:minmax(0,1fr)}}
+
+  canvas{display:block; width:100%; border-radius:0}
+  #cvBuild{height:600px; background:#fbfcfe; cursor:crosshair}
+  #cvTree{height:268px; background:#fbfcfe}
+  #cvTrace{height:500px; background:#fbfcfe; cursor:crosshair}
+  #cvCurve{height:260px; background:#fbfcfe}
+
+  /* ---------- rows / small UI ---------- */
+  .field{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:9px 0}
+  .field label{color:var(--muted); font-size:12.5px; white-space:nowrap}
+  select,input[type=range]{font:inherit}
+  select{
+    appearance:none; background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0h10L5 6z' fill='%2366727f'/></svg>") no-repeat right 9px center;
+    border:1px solid var(--line); border-radius:7px; padding:5px 26px 5px 10px; font-size:12.5px; color:var(--text); cursor:pointer
+  }
+  input[type=range]{-webkit-appearance:none; appearance:none; height:4px; border-radius:999px; background:#dde3ec; outline:none; flex:1; min-width:90px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+    background:#fff; border:2.5px solid var(--blue); cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  input[type=range]::-moz-range-thumb{width:15px; height:15px; border-radius:50%; background:#fff; border:2.5px solid var(--blue); cursor:pointer}
+
+  button.btn{
+    appearance:none; font:inherit; font-weight:600; font-size:12.5px; cursor:pointer;
+    border:1px solid var(--line); background:#fff; color:#334155;
+    padding:6px 12px; border-radius:7px; transition:.15s
+  }
+  button.btn:hover{background:#f5f7fa; border-color:#cfd8e3}
+  button.btn:active{transform:translateY(1px)}
+  button.btn.primary{background:var(--blue); border-color:var(--blue); color:#fff}
+  button.btn.primary:hover{background:#1d4fd8}
+  button.btn.ghost{background:transparent; border-color:transparent; color:var(--muted); padding:6px 8px}
+  button.btn.ghost:hover{background:#eef1f6; color:var(--text)}
+  .btnrow{display:flex; gap:7px; flex-wrap:wrap; margin-top:12px}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff}
+  .seg button{appearance:none; border:0; background:transparent; font:inherit; font-size:12.5px; font-weight:600;
+    color:var(--muted); padding:5px 11px; cursor:pointer; transition:.15s}
+  .seg button + button{border-left:1px solid var(--line)}
+  .seg button.on{background:#eaf0ff; color:var(--blue)}
+
+  /* ---------- stats ---------- */
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:1px; background:var(--line2); border-radius:9px; overflow:hidden; border:1px solid var(--line2)}
+  .stat{background:#fff; padding:9px 11px}
+  .stat .k{font-size:11px; color:var(--faint); display:block; letter-spacing:.02em}
+  .stat .v{font-family:var(--mono); font-size:17px; font-weight:600; letter-spacing:-.02em}
+  .stat .v.sm{font-size:14px}
+  .stat .v.blue{color:var(--blue)} .stat .v.green{color:var(--green)}
+  .stat .v.amber{color:var(--amber)} .stat .v.red{color:var(--red)} .stat .v.purple{color:var(--purple)}
+
+  /* ---------- steps ---------- */
+  ol.steps{list-style:none; margin:0; padding:0; counter-reset:s}
+  ol.steps li{
+    position:relative; padding:5px 10px 5px 30px; border-radius:7px; font-size:12.8px; color:var(--muted);
+    transition:.2s; margin-bottom:2px
+  }
+  ol.steps li::before{
+    counter-increment:s; content:counter(s); position:absolute; left:7px; top:7px;
+    width:16px; height:16px; border-radius:50%; background:#e8ecf2; color:#8b98a6;
+    font-size:10.5px; font-weight:700; font-family:var(--mono);
+    display:flex; align-items:center; justify-content:center; transition:.2s
+  }
+  ol.steps li.on{background:#e3ecff; color:var(--text); font-weight:600;
+    box-shadow:inset 2.5px 0 0 var(--blue)}
+  ol.steps li.on::before{background:var(--blue); color:#fff}
+  ol.steps li code{font-family:var(--mono); font-size:11.5px; color:#475569}
+  ol.steps li.on code{color:var(--blue)}
+
+  .legend{display:flex; gap:12px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); padding:9px 16px; border-bottom:1px solid var(--line2); background:#fafbfd}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle}
+
+  /* ---------- trace numbers ---------- */
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .cmp .box{border:1px solid var(--line); border-radius:10px; padding:12px 13px; background:#fff}
+  .cmp .box.win{border-color:#b9e6d0; background:#f4fdf9}
+  .cmp .box.lose{border-color:#f0d5d5; background:#fef7f7}
+  .cmp .ttl{font-size:12px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:#48566a; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center}
+  .cmp .r{display:flex; justify-content:space-between; font-size:12.5px; padding:3px 0; border-bottom:1px dashed var(--line2)}
+  .cmp .r:last-child{border-bottom:0}
+  .cmp .r b{font-family:var(--mono); font-size:14px; font-weight:600}
+  .pill{font-size:10.5px; font-weight:700; padding:1.5px 7px; border-radius:999px; letter-spacing:.02em}
+  .pill.g{background:#dcfce7; color:#15803d}
+  .pill.r{background:#fee2e2; color:#b91c1c}
+  .pill.b{background:#e0e9fe; color:#1d4ed8}
+  .pill.a{background:#fef3c7; color:#b45309}
+
+  /* ---------- perf tab ---------- */
+  .bars{display:flex; flex-direction:column; gap:11px}
+  .bar{display:grid; grid-template-columns:132px 1fr 84px; align-items:center; gap:11px}
+  .bar .lb{font-size:12.5px; color:var(--muted)}
+  .bar .tr{height:24px; background:#eef1f6; border-radius:6px; overflow:hidden; position:relative}
+  .bar .fl{height:100%; border-radius:6px; transition:width .5s ease}
+  .bar .vl{font-family:var(--mono); font-size:13px; font-weight:600; text-align:right}
+  .bar2{grid-template-columns:132px 1fr 84px 62px}
+
+  table.tbl{width:100%; border-collapse:collapse; font-size:12.8px}
+  table.tbl th{text-align:left; font-weight:700; font-size:11.5px; letter-spacing:.04em; text-transform:uppercase;
+    color:#7a8796; padding:0 10px 8px 0; border-bottom:1px solid var(--line)}
+  table.tbl td{padding:7px 10px 7px 0; border-bottom:1px solid var(--line2); font-family:var(--mono); font-size:12.5px}
+  table.tbl td:first-child{font-family:inherit}
+  table.tbl tr.hl td{background:#f4fdf9}
+  table.tbl tr.hl td:first-child{font-weight:700}
+
+  .kv{font-family:var(--mono); font-size:12.5px; color:#475569}
+  .note{background:#f8fafc; border:1px solid var(--line); border-left:3px solid var(--amber);
+    border-radius:0 8px 8px 0; padding:10px 14px; font-size:12.8px; color:#3f4c5c; margin-top:14px}
+  .note b{color:var(--amber)}
+  .note.blue{border-left-color:var(--blue)} .note.blue b{color:var(--blue)}
+  .note.green{border-left-color:var(--green)} .note.green b{color:var(--green)}
+
+  .delta{font-family:var(--mono); font-weight:600}
+  .up{color:var(--red)} .down{color:var(--green)}
+  .nowrap{white-space:nowrap}
+
+  /* ---------- 源码查看器 ---------- */
+  .codebox{
+    font-family:var(--mono); font-size:11.8px; line-height:1.68;
+    background:#fcfdff; max-height:430px; overflow:auto; padding:9px 0;
+    tab-size:4; scroll-behavior:auto;
+    position:relative          /* 必须！否则 .ln 的 offsetTop 会相对 body 计算，滚动定位全错 */
+  }
+  .codebox.tall{max-height:640px}
+  .codebox .ln{display:flex; white-space:pre; padding-right:16px; transition:background .12s}
+  .codebox .ln:hover{background:#f3f6fa}
+  .codebox .no{
+    flex:0 0 46px; text-align:right; padding-right:15px; color:#c0cad6;
+    user-select:none; font-size:10.5px; line-height:inherit
+  }
+  .codebox .tx{flex:1 1 auto; min-width:0}
+  .codebox .ln.hl{background:#eef4ff; box-shadow:inset 2.5px 0 0 #93b4f3}
+  .codebox .ln.hl.strong{background:#e0eaff; box-shadow:inset 2.5px 0 0 var(--blue)}
+  .codebox .ln.hl2{background:#fff8ec; box-shadow:inset 2.5px 0 0 #f0b45e}
+  .codebox .ln.hl2.strong{background:#fdf0d9; box-shadow:inset 2.5px 0 0 var(--amber)}
+  .codebox.hidetodo .ln.todo{display:none}
+  .codebox .ln.foldmark{color:#c0cad6; font-size:10.5px; padding-left:46px; font-style:italic}
+
+  /* ---------- 四步快速定位 ---------- */
+  .stepjump{
+    display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+    padding:8px 16px 9px; border-bottom:1px solid var(--line2); background:#fafbfd;
+    font-size:11.5px; color:var(--muted)
+  }
+  .stepjump .lab{font-weight:600; color:#64748b; margin-right:2px}
+  .chip{
+    font:inherit; font-size:11.5px; line-height:1; padding:5px 9px; border-radius:999px;
+    border:1px solid var(--line2); background:#fff; color:#475569; cursor:pointer;
+    transition:background .14s, border-color .14s, color .14s, opacity .14s
+  }
+  .chip:hover{border-color:#a9c2ee; background:#f4f8ff; color:#1d4ed8}
+  .chip.on{background:#e0eaff; border-color:var(--blue); color:#12377a; font-weight:600}
+  /* 叶子节点只走 ①②，③④ 置灰 —— 与 code-note 的说明一一对应 */
+  .stepjump.leafmode .chip[data-line="70"],
+  .stepjump.leafmode .chip[data-line="91"]{
+    opacity:.4; text-decoration:line-through; cursor:default; border-style:dashed
+  }
+  .stepjump.leafmode .chip[data-line="70"]:hover,
+  .stepjump.leafmode .chip[data-line="91"]:hover{
+    background:#fff; border-color:var(--line2); color:#475569
+  }
+
+  /* GitHub Light 代码配色 */
+  .codebox .c{color:#7b8794; font-style:italic}
+  .codebox .k{color:#cf222e}
+  .codebox .t{color:#0550ae}
+  .codebox .s{color:#0a3069}
+  .codebox .n{color:#953800}
+  .codebox .p{color:#8250df}
+  .codebox .f{color:#8250df}
+
+  .code-note{font-size:12.3px; color:var(--muted); padding:10px 16px;
+    border-top:1px solid var(--line2); background:#fafbfd}
+  .code-note b{color:var(--text)}
+  .code-note code{font-family:var(--mono); font-size:11.5px; background:#eceff4;
+    border:1px solid var(--line); padding:0 4px; border-radius:3px}
+
+  .chk{display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+    font-size:12px; font-weight:500; text-transform:none; letter-spacing:0; color:var(--muted)}
+  .chk input{accent-color:var(--blue); width:14px; height:14px; cursor:pointer}
+
+  .srclist{display:flex; flex-direction:column; gap:9px}
+  .srcitem{border:1px solid var(--line); border-radius:10px; padding:11px 13px; background:#fff}
+  .srcitem .h{font-size:12.5px; font-weight:700; color:#48566a; display:flex;
+    justify-content:space-between; align-items:center; gap:8px; margin-bottom:5px}
+  .srcitem .h code{font-family:var(--mono); font-size:11px; background:#eef2f7;
+    border:1px solid var(--line); padding:1px 5px; border-radius:4px; font-weight:600; color:#475569}
+  .srcitem p{margin:0; font-size:12.3px; color:var(--muted); line-height:1.6}
+  .srcitem p + p{margin-top:6px}
+  .srcitem .go{margin-top:9px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow">cpp-renderer · Day 9</span>
+    <h1>BVH 加速结构 <small>把一堆物体递归地分成两堆</small></h1>
+    <p>
+      源码：<code>include/bvh.h</code> + <code>include/aabb.h</code>。核心思想：给每一堆物体套一个包围盒，
+      求交时<b>先试盒子</b>——没中就直接跳过<b>整棵子树</b>。复杂度 <code>O(N)</code> → <code>O(log N)</code>。
+      验收标准是<b>画面字节级不变，只是变快</b>。
+    </p>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="build" class="active"><span class="n">①</span>递归建树</button>
+    <button data-tab="trace"><span class="n">②</span>求交遍历</button>
+    <button data-tab="perf"><span class="n">③</span>性能真相</button>
+    <button data-tab="src"><span class="n">④</span>源码对照</button>
+  </nav>
+
+  <!-- ============================ TAB 1 ============================ -->
+  <section id="tab-build" class="tab active">
+    <div class="split">
+
+      <div class="card">
+        <div class="card-hd">
+          <span>空间视图 · x–z 俯视（y 轴被压扁）</span>
+          <span class="hint">悬停树节点可高亮对应包围盒</span>
+        </div>
+        <canvas id="cvBuild"></canvas>
+        <div class="legend">
+          <span><i style="background:#7dd3fc"></i>玻璃球 ×1</span>
+          <span><i style="background:#cbd5e1"></i>金属球</span>
+          <span><i style="background:#f2c9a0"></i>哑光小球 ×477</span>
+          <span style="margin-left:auto;font-family:var(--mono);font-size:11px" id="boxLegend">包围盒按深度着色</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-hd"><span>建树四步</span><span class="hint" id="curNodeLabel">—</span></div>
+          <div class="card-bd" style="padding:10px 12px">
+            <ol class="steps" id="steps">
+              <li id="s1">算这一堆的总包围盒<br><code>total_box = 并集(all boxes)</code></li>
+              <li id="s2">选最长的那条轴<br><code>axis = total_box.longest_axis()</code></li>
+              <li id="s3">沿这条轴排序<br><code>std::sort(begin, end, byMin[axis])</code></li>
+              <li id="s4">对半分，递归<br><code>left = BVH(start, mid)</code></li>
+            </ol>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span>统计</span><span class="hint" id="matchTag"></span></div>
+          <div class="card-bd" style="padding:12px">
+            <div class="stats" id="stats"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span>控制</span></div>
+          <div class="card-bd" style="padding:12px 14px 15px">
+            <div class="field" style="margin-top:0">
+              <label>场景</label>
+              <select id="selScene">
+                <option value="grid">球阵（477 小球 + 3 主角）</option>
+                <option value="rand">纯随机散点</option>
+                <option value="line">一列球（z 排开、x 全相同）</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>切分轴策略</label>
+              <select id="selAxis">
+                <option value="longest">最长轴（教科书做法）</option>
+                <option value="0">固定 x 轴</option>
+                <option value="1">固定 z 轴</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>叶子阈值 span ≤</label>
+              <select id="selLeaf">
+                <option value="1">1</option>
+                <option value="2" selected>2（与源码一致）</option>
+                <option value="4">4</option>
+                <option value="8">8</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>速度</label>
+              <input type="range" id="rngSpeed" min="5" max="300" value="55">
+              <span class="kv" id="lblSpeed" style="width:52px;text-align:right">55/s</span>
+            </div>
+            <div class="field">
+              <label>进度</label>
+              <input type="range" id="rngProg" min="0" max="1000" value="0">
+              <span class="kv" id="lblProg" style="width:52px;text-align:right">0</span>
+            </div>
+            <div class="btnrow">
+              <button class="btn primary" id="btnPlay">▶ 播放建树</button>
+              <button class="btn" id="btnStep">单步</button>
+              <button class="btn" id="btnAll">跳到完成</button>
+              <button class="btn ghost" id="btnReset">重置</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <span>源码对照 · <code style="font-family:var(--mono);text-transform:none">include/bvh.h</code> — BVHNode 构造函数（逐行跟随动画）</span>
+        <label class="chk"><input type="checkbox" id="chkTodo1" checked> 显示 TODO 教学注释</label>
+      </div>
+      <div class="stepjump" id="stepJump">
+        <span class="lab">跳到第几步：</span>
+        <button class="chip" data-line="51" title="bvh.h L51–64 并集求总包围盒">① 算总包围盒</button>
+        <button class="chip" data-line="66" title="bvh.h L66–68 total_box.longest_axis()">② 选最长轴</button>
+        <button class="chip" data-line="70" title="bvh.h L70–79 std::sort 的 lambda 比较器">③ 沿轴排序</button>
+        <button class="chip" data-line="91" title="bvh.h L91–111 排序 + 对半 + 递归建子树">④ 对半递归</button>
+        <span class="lab" style="margin-left:auto;font-weight:400;color:#94a3b8" id="stepJumpHint">叶子节点跳过 ③ ④</span>
+      </div>
+      <div class="codebox" id="codeBuild"></div>
+      <div class="code-note" id="codeNote1">
+        面板会自动滚到<b>最关键的那几行</b>（因为一个节点的高亮有 79 行、比面板还高）：
+        <b>浅蓝</b> = 每个节点都要走的公共步骤（① 并集包围盒 ② 选最长轴 ③ 排序），
+        <b>深蓝</b> = 决定这棵树长什么样的那一段 —— 内部节点是
+        <code>std::sort</code> + 对半 + <code>make_shared</code> 递归，叶子节点是
+        <code>left = right = objects[start]</code>。
+        叶子（span ≤ 2）只走 ① ②，所以上面 ③ ④ 两个按钮会置灰；用「跳到第几步」可以自己翻到任意一步。
+      </div>    </div>
+
+    <div class="card">
+      <div class="card-hd">
+        <span>BVH 树结构 · 冰柱图（横轴 = 中序排列的叶子，纵轴 = BVH 节点层 0–8）</span>
+        <span class="hint">横条宽度 = 该节点包含的物体数 · 点击可跳到该节点 · 最底层再往下一层是球本身（源码口径的深度 9）</span>
+      </div>
+      <canvas id="cvTree"></canvas>
+    </div>
+  </section>
+
+  <!-- ============================ TAB 2 ============================ -->
+  <section id="tab-trace" class="tab">
+    <div class="split">
+
+      <div class="card">
+        <div class="card-hd">
+          <span>光线遍历 · 在画布上按住拖动可发射光线</span>
+          <span class="hint" id="rayInfo">—</span>
+        </div>
+        <canvas id="cvTrace"></canvas>
+        <div class="legend">
+          <span><i style="background:#d97706"></i>正在测试的盒子</span>
+          <span><i style="background:#dc2626"></i>盒子没中 → 整棵子树跳过</span>
+          <span><i style="background:#059669"></i>命中路径</span>
+          <span><i style="background:#94a3b8"></i>被剪枝的子树区域</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-hd"><span>每根光线的代价</span></div>
+          <div class="card-bd" style="padding:12px">
+            <div class="cmp" id="cmpBoxes"></div>
+            <div class="note blue" style="margin-top:12px; font-size:12.2px">
+              耗时估算用 Day 9 实测常数：<br>
+              朴素 <b>3.4 ns</b>/次球体求交，BVH <b>18.7 ns</b>/次节点访问（含盒子测试）。
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span>遍历回放</span></div>
+          <div class="card-bd" style="padding:12px 14px 15px">
+            <div class="btnrow" style="margin-top:0">
+              <button class="btn primary" id="btnReplay">▶ 回放遍历过程</button>
+              <button class="btn" id="btnRayNaive">朴素遍历</button>
+              <button class="btn" id="btnRayBvh">BVH 遍历</button>
+            </div>
+            <div class="field">
+              <label>回放速度</label>
+              <input type="range" id="rngTraceSpeed" min="20" max="600" value="130">
+              <span class="kv" id="lblTraceSpeed" style="width:56px;text-align:right">130/s</span>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label>预设光线</label>
+              <div class="seg">
+                <button data-ray="0" class="on">斜穿球阵</button>
+                <button data-ray="1">横切球阵</button>
+                <button data-ray="2">打空</button>
+              </div>
+            </div>
+            <div class="note" style="margin-top:12px; font-size:12.2px">
+              换一条光线，加速比会差很多 —— 默认这条甚至只有 <b>1.2×</b>。
+              这正是 Day 9 的教训：<b>测试次数少 ≠ 快</b>，每次访问的成本才是关键。
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span>批量实验</span></div>
+          <div class="card-bd" style="padding:12px 14px 15px">
+            <button class="btn primary" id="btnBatch" style="width:100%">跑 2000 条随机光线 → 取平均</button>
+            <div id="batchOut" style="margin-top:12px; display:none"></div>
+            <div class="note" style="font-size:12.2px">
+              Day 9 实测：每光线球体求交 <b>481 → 4.71</b>（少 102 倍），
+              但总耗时只快 <b>2.23 倍</b>。原因在 ③。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="split" style="margin-top:16px">
+      <div class="card" id="cardHit">
+        <div class="card-hd">
+          <span>源码 · <code style="font-family:var(--mono);text-transform:none">bvh.h</code> — BVHNode::hit（每个遍历事件高亮对应行）</span>
+          <span class="hint" id="evtTag1">—</span>
+        </div>
+        <div class="codebox" id="codeHit"></div>
+      </div>
+      <div class="card" id="cardSph">
+        <div class="card-hd">
+          <span>源码 · <code style="font-family:var(--mono);text-transform:none">sphere.h</code> — Sphere::hit</span>
+          <span class="hint" id="evtTag2">—</span>
+        </div>
+        <div class="codebox" id="codeSphere"></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-hd">
+        <span>源码 · <code style="font-family:var(--mono);text-transform:none">aabb.h</code> — slab method 光线与包围盒求交</span>
+        <span class="hint" id="evtTag3">—</span>
+      </div>
+      <div class="codebox" id="codeAabb"></div>
+    </div>
+  </section>
+
+  <!-- ============================ TAB 3 ============================ -->
+  <section id="tab-perf" class="tab">
+
+    <div class="split">
+      <div class="card">
+        <div class="card-hd"><span>① 耗时对比</span><span class="hint">random_scene · 481 物体 · 400×225 · 32 spp</span></div>
+        <div class="card-bd">
+          <div class="bars" id="barsTime"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-hd"><span>② 每光线测试次数</span></div>
+        <div class="card-bd">
+          <div class="bars" id="barsCount"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span>③ 为什么只快了 2.23 倍？—— 每次测试的成本涨了 5.5 倍</span></div>
+      <div class="card-bd">
+        <div class="bars">
+          <div class="bar"><span class="lb">朴素遍历</span><div class="tr"><div class="fl" style="width:18.2%;background:linear-gradient(90deg,#34d399,#059669)"></div></div><span class="vl" style="color:#059669">3.4 ns</span></div>
+          <div class="bar"><span class="lb">BVH</span><div class="tr"><div class="fl" style="width:100%;background:linear-gradient(90deg,#fbbf24,#dc2626)"></div></div><span class="vl" style="color:#dc2626">18.7 ns</span></div>
+        </div>
+
+        <div style="margin-top:22px; font-size:12.5px; color:var(--muted); font-weight:600; letter-spacing:.03em">
+          BVH 一次节点访问 ≈ 75 个 CPU 周期，拆开看：
+        </div>
+        <div style="display:flex; height:30px; border-radius:7px; overflow:hidden; margin-top:9px; font-size:11.5px; font-weight:700; color:#fff">
+          <div style="width:26.7%;background:#7c3aed; display:flex;align-items:center;justify-content:center" title="虚函数调用，目标在 BVHNode / Sphere 之间随机跳，分支预测器猜不中">虚函数 20c</div>
+          <div style="width:20%;background:#2563eb; display:flex;align-items:center;justify-content:center" title="盒子测试，内联后约 15 个周期">盒子测试 15c</div>
+          <div style="width:20%;background:#0891b2; display:flex;align-items:center;justify-content:center" title="两个子节点的虚函数调用，又是两次猜不中的间接跳转">子节点 15c</div>
+          <div style="width:33.3%;background:#d97706; display:flex;align-items:center;justify-content:center" title="511 个节点 + 481 个球分散在堆上，每跳一次都可能 L1/L2 未命中">指针追逐 25c</div>
+        </div>
+        <div class="note" style="margin-top:14px">
+          480 个 <code>Sphere</code> 在内存里是<b>连续</b>的（约 27 KB，整体塞得进 L1/L2 缓存），
+          每次 <code>obj-&gt;hit()</code> 的目标都是 <code>Sphere</code>，<b>分支预测器学得会</b>，也没有任何递归。
+          所以朴素遍历的 3.4 ns/次已经非常接近硬件极限 —— BVH 想赢，得把<b>每次访问的成本</b>也压下来。
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span>④ 结论：BVH 什么时候才真正值钱</span><span class="hint">拖动滑块改变场景规模 N</span></div>
+      <div class="card-bd">
+        <canvas id="cvCurve"></canvas>
+        <div style="margin-top:10px">
+          <div class="field">
+            <label>物体数 N</label>
+            <input type="range" id="rngN" min="0" max="1000" value="473">
+            <span class="kv" id="lblN" style="width:92px;text-align:right">481</span>
+          </div>
+        </div>
+        <div class="cmp" id="cmpN" style="margin-top:8px"></div>
+        <div class="note green" style="margin-top:14px">
+          <b>盈亏平衡点约在 N ≈ 200。</b>481 个球只是刚过线，所以 2.23 倍并不丢人 ——
+          复杂度优势是 <code>O(N) vs O(log N)</code>，但 BVH 的<b>常数项更大</b>。
+          N 越大常数项越不重要，这才是它的真正价值。
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-hd"><span>⑤ 验收：结果必须字节级不变</span></div>
+      <div class="card-bd">
+        <table class="tbl">
+          <thead><tr><th>项目</th><th>Day 8（朴素遍历）</th><th>Day 9（BVH）</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>单元测试</td><td>23 / 23</td><td>23 / 23</td><td><span class="pill g">✓</span></td></tr>
+            <tr><td>输出 image.png 大小</td><td>172,127 B</td><td>172,127 B</td><td><span class="pill g">字节级一致</span></td></tr>
+            <tr><td>球体求交 / 光线</td><td>481</td><td>4.71</td><td><span class="pill g">少 102×</span></td></tr>
+            <tr><td>盒子测试 / 光线</td><td>0</td><td>40.74</td><td><span class="pill b">新增</span></td></tr>
+            <tr><td>每次测试平均耗时</td><td>3.4 ns</td><td>18.7 ns</td><td><span class="pill r">贵 5.5×</span></td></tr>
+            <tr class="hl"><td>渲染总耗时</td><td>13.16 s</td><td>5.89 s</td><td><span class="pill g">2.23×</span></td></tr>
+            <tr><td>BVH 节点总数</td><td>—</td><td>511</td><td></td></tr>
+            <tr><td>最大深度</td><td>—</td><td>9</td><td><span class="pill g">= log₂481，完全平衡</span></td></tr>
+          </tbody>
+        </table>
+        <div class="note">
+          <b>今天最大的收获不是代码，是方法论。</b>
+          「除法是瓶颈」这个推理算得有模有样（9.67 亿次除法 × 26 周期 ÷ 4 GHz ≈ 6.3 s，看着像铁证），
+          照做之后<b>只快了 2.6%</b>。真凶是把耗时换算成「每次操作多少纳秒」（3.4 ns vs 18.7 ns）之后才找到的。
+          算得再漂亮的推理，也要拿卡尺量一遍。
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ TAB 4 ============================ -->
+  <section id="tab-src" class="tab">
+    <div class="split">
+
+      <div class="card">
+        <div class="card-hd" style="gap:14px">
+          <div class="seg" id="srcTabs">
+            <button data-src="bvh.h" class="on">bvh.h</button>
+            <button data-src="aabb.h">aabb.h</button>
+            <button data-src="hittable_list.h">hittable_list.h</button>
+            <button data-src="sphere.h">sphere.h</button>
+            <button data-src="ray.h">ray.h</button>
+            <button data-src="hittable.h">hittable.h</button>
+          </div>
+          <label class="chk"><input type="checkbox" id="chkTodo4" checked> 显示 TODO 注释</label>
+        </div>
+        <div class="codebox tall" id="codeFull"></div>
+        <div class="code-note" id="srcMeta">—</div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-hd"><span>这份代码在讲什么</span></div>
+          <div class="card-bd" style="padding:13px">
+            <div class="srclist" id="srcNotes"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-hd"><span>Day 9 全部改动</span></div>
+          <div class="card-bd" style="padding:13px">
+            <table class="tbl" style="font-size:12.2px">
+              <thead><tr><th>文件</th><th>改了什么</th></tr></thead>
+              <tbody>
+                <tr><td><b>bvh.h</b></td><td style="font-family:inherit">新建。BVHNode 递归建树 + hit() 带 t_max 收紧</td></tr>
+                <tr><td><b>aabb.h</b></td><td style="font-family:inherit">加 <code>longest_axis()</code>；hit() 改用光线预算好的倒数</td></tr>
+                <tr><td><b>hittable_list.h</b></td><td style="font-family:inherit"><code>objects</code> 改 public，给 BVH 排序用</td></tr>
+                <tr><td><b>ray.h</b></td><td style="font-family:inherit">构造时预算 <code>dir_inv</code>（后来证明只快 2.6%）</td></tr>
+                <tr><td><b>main.cpp</b></td><td style="font-family:inherit"><b>只改了 1 行</b>：<code>HittableList world</code> → <code>BVHNode world</code></td></tr>
+              </tbody>
+            </table>
+            <div class="note green" style="font-size:12.2px">
+              这正是 Day 2 那个<b>组合模式</b>设计埋下的伏笔 —— 当时只是为了让代码整洁，
+              六天后换成 BVH 时，<code>main.cpp</code> 一行都没改。
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script id="SRC" type="application/json">{"bvh.h":"#pragma once\n\n#include \"hittable.h\"\n#include \"hittable_list.h\"\n#include \"aabb.h\"\n\n#include \u003calgorithm\u003e   // std::sort\n\n// ============================================================\n// BVH = Bounding Volume Hierarchy（包围盒层次结构）\n//\n// 一句话：把\"一堆物体\"递归地分成两堆、两堆再分两堆……\n//         每一堆都用一个包围盒框住，形成一棵二叉树。\n//\n//                       根节点（全世界的大盒）\n//                    ┌──────────┴──────────┐\n//             左半堆的盒                 右半堆的盒\n//           ┌────┴────┐              ┌────┴────┐\n//        左左        左右          右左        右右\n//         │                                  │\n//       叶子（几个球）                     叶子（几个球）\n//\n// 求交时从根往下：\n//   先试大盒子 —— 没中就直接跳过【整个子树】（可能省掉几百个物体）\n//   中了才往下走，直到叶子\n//\n// 复杂度：O(N) → O(log N)\n//\n// ⚠️ 它继承 Hittable！所以从外面看，\"一棵 BVH 树\"和\"一个球\"没有区别 ——\n//    main.cpp 里只要把 HittableList 换成 BVHNode，其他一行都不用改。\n//    （这就是 Day 2 那个\"组合模式\"设计埋下的伏笔）\n// ============================================================\nclass BVHNode : public Hittable {\npublic:\n    // --------------------------------------------------------\n    // 从\"物体列表\"建树。\n    //\n    // ⚠️ 参数是【按值】传的（会拷贝一份）—— 因为建树过程要排序数组，\n    //    不想把调用方的列表弄乱。\n    //    拷贝成本很低：里面存的是 shared_ptr，只是引用计数 +1。\n    // --------------------------------------------------------\n    BVHNode(HittableList list)\n        : BVHNode(list.objects, 0, list.objects.size()) {}\n\n    // --------------------------------------------------------\n    // 核心构造函数：给 objects 数组的 [start, end) 区间建一棵子树\n    // --------------------------------------------------------\n    BVHNode(std::vector\u003cstd::shared_ptr\u003cHittable\u003e\u003e\u0026 objects,\n            size_t start, size_t end) {\n\n        // ========== 第 1 步：算出这一堆物体的总包围盒 ==========\n        AABB total_box;\n        bool first = true;\n        for (size_t i = start; i \u003c end; ++i) {\n            AABB temp;\n            objects[i]-\u003ebounding_box(temp);\n\n            // TODO(你填 V1)：把 temp 并进 total_box\n            //   和昨天 HittableList::bounding_box 里【一模一样】的模式：\n            //     第一个直接赋值，之后的求并集\n            total_box = first ? temp : AABB::surrounding(total_box, temp);\n            first = false;\n        }\n        this-\u003ebox = total_box;   // 存下来，求交时要用\n\n        // ========== 第 2 步：选最长的那条轴 ==========\n        // TODO(你填 V2)：调用 AABB 的哪个函数能拿到\"最长轴\"的编号？\n        int axis = total_box.longest_axis();   // 0 = x, 1 = y, 2 = z\n\n        // ========== 第 3 步：沿这条轴排序 ==========\n        // 这个 lambda 把 axis 【捕获】进来：\n        //   方括号里写 axis，表示\"把外面那个轴编号复制进来一份给我用\"\n        auto comparator = [axis](const std::shared_ptr\u003cHittable\u003e\u0026 a,\n                                 const std::shared_ptr\u003cHittable\u003e\u0026 b) {\n            AABB box_a, box_b;\n            a-\u003ebounding_box(box_a);\n            b-\u003ebounding_box(box_b);\n            return box_a.minimum[axis] \u003c box_b.minimum[axis];   // 按该轴的最小坐标比大小\n        };\n\n        size_t span = end - start;   // 这一堆里有几个物体\n\n        // ========== 第 4 步：递归 ==========\n        if (span == 1) {\n            // 只剩 1 个物体 → 左右都指向它（叶子）\n            left  = right = objects[start];\n        } else if (span == 2) {\n            // 剩 2 个物体 → 一人一个（叶子）\n            left  = objects[start];\n            right = objects[start + 1];\n        } else {\n            // 3 个以上 → 排序、对半分、递归\n\n            // TODO(你填 V3)：沿 axis 轴排序 [start, end) 这一段\n            //   std::sort(起点, 终点, 比较函数)\n            //   起点 = objects.begin() + start\n            //   终点 = objects.begin() + end\n            std::sort(objects.begin() + start, objects.begin() + end, comparator);\n\n            // TODO(你填 V4)：对半分的位置\n            //   要把 [start, end) 分成 [start, mid) 和 [mid, end)\n            //   提示：物体数的一半，再加上起点 start\n            size_t mid = start + (end - start) / 2;\n\n            // TODO(你填 V5)：递归建左右子树\n            //   子节点类型是 shared_ptr\u003cHittable\u003e，所以用\n            //     std::make_shared\u003cBVHNode\u003e(objects, ______, ______)\n            //   左子树的区间是 [start, mid)，右子树是 [mid, end)\n            left  = std::make_shared\u003cBVHNode\u003e(objects, start, mid);\n            right = std::make_shared\u003cBVHNode\u003e(objects, mid, end);\n        }\n    }\n\n    // --------------------------------------------------------\n    // 求交：BVH 全部的速度都来自这里\n    //\n    // 流程：\n    //   ① 先试【自己这个大盒子】—— 没中就把整棵子树跳过\n    //   ② 问左子树\n    //   ③ 问右子树（但把 t_max 收紧到左边的命中距离）\n    // --------------------------------------------------------\n    bool hit(const Ray\u0026 r, double t_min, double t_max,\n             HitRecord\u0026 rec) const override {\n        // TODO(你填 V6)：先试自己这个大盒子\n        //   没打中 → 整棵子树都不可能有交点，直接返回 false\n        //   提示：AABB::hit(r, t_min, t_max) 返回 bool\n        if (!box.hit(r, t_min, t_max)) return false;\n\n        // ② 问左子树\n        bool hit_left = left-\u003ehit(r, t_min, t_max, rec);\n\n        // TODO(你填 V7)：问右子树，但 t_max 要\"收紧\"\n        //\n        //   为什么：如果左子树已经命中（距离 = rec.t），\n        //   那右子树只需要找【比 rec.t 更近】的交点 ——\n        //   更远的都会被左边挡住，没必要考虑。\n        //\n        //   所以 t_max 要传：\n        //      左边命中了  →  rec.t     （只找更近的）\n        //      左边没命中  →  t_max     （保持原样）\n        //\n        //   又是那个三目运算符：  条件 ? 甲 : 乙\n        bool hit_right = right-\u003ehit(r, t_min, hit_left ? rec.t : t_max, rec);\n\n        return hit_left || hit_right;\n    }\n\n    // --------------------------------------------------------\n    // 自己这棵子树的包围盒，就是建树时算好的那个 box\n    // （直接返回，不用重算 —— 这是建树时\"顺手记下来\"的回报）\n    // --------------------------------------------------------\n    bool bounding_box(AABB\u0026 output) const override {\n        output = box;\n        return true;\n    }\n\nprivate:\n    std::shared_ptr\u003cHittable\u003e left;\n    std::shared_ptr\u003cHittable\u003e right;\n    AABB box;\n};","aabb.h":"#pragma once\n\n#include \"rtweekend.h\"\n#include \"vec3.h\"\n#include \"ray.h\"\n\n#include \u003cutility\u003e    // std::swap\n\n// ============================================================\n// AABB = Axis-Aligned Bounding Box（轴对齐包围盒）\n//\n// 一个\"六个面都垂直于 x / y / z 轴\"的长方体。\n// 所以它只需要两个点就能确定：\n//\n//     minimum = 三个坐标都取最小的那个角\n//     maximum = 三个坐标都取最大的那个角\n//\n// 为什么叫\"轴对齐\"？\n//   因为面垂直于坐标轴，光线和它求交时【三个轴可以分开算】——\n//   每个轴退化成一维问题（光线和一个线段求交），最后取交集。\n//   如果盒子能任意旋转，就必须先把光线变换到盒子的坐标系，麻烦得多。\n//\n// 为什么需要它？\n//   这是 BVH 的地基：先用一个\"便宜的\"盒子测试排除掉一大批物体，\n//   只对可能命中的少数物体做昂贵的精确求交。\n// ============================================================\nclass AABB {\npublic:\n    AABB() {}\n\n    // --------------------------------------------------------\n    // 用【任意两个对角点】构造。\n    // 不要求 a 是\"最小\"那个、b 是\"最大\"那个 —— 逐轴取 min/max 会自动纠正。\n    // --------------------------------------------------------\n    AABB(const Point3\u0026 a, const Point3\u0026 b) {\n        minimum = Point3(std::fmin(a.x(), b.x()),\n                         std::fmin(a.y(), b.y()),\n                         std::fmin(a.z(), b.z()));\n        maximum = Point3(std::fmax(a.x(), b.x()),\n                         std::fmax(a.y(), b.y()),\n                         std::fmax(a.z(), b.z()));\n    }\n\n    // --------------------------------------------------------\n    // 把两个盒子合并成一个\"刚好能同时装下两者\"的盒子。\n    // 用途：HittableList 把所有子物体的包围盒并成一个大盒。\n    // --------------------------------------------------------\n    static AABB surrounding(const AABB\u0026 box0, const AABB\u0026 box1) {\n        Point3 small(std::fmin(box0.minimum.x(), box1.minimum.x()),\n                     std::fmin(box0.minimum.y(), box1.minimum.y()),\n                     std::fmin(box0.minimum.z(), box1.minimum.z()));\n\n        Point3 big(std::fmax(box0.maximum.x(), box1.maximum.x()),\n                   std::fmax(box0.maximum.y(), box1.maximum.y()),\n                   std::fmax(box0.maximum.z(), box1.maximum.z()));\n\n        return AABB(small, big);\n    }\n\n    // ========================================================\n    // ★ 今天的核心：光线和 AABB 求交（slab method / 板法）\n    //\n    // 光线 r 在参数区间 (t_min, t_max) 内，是否打到这个盒子？\n    //\n    // 思路：\n    //   盒子 = 三个\"板\"(slab) 的交集\n    //     x 板：x ∈ [minimum.x, maximum.x]\n    //     y 板：y ∈ [minimum.y, maximum.y]\n    //     z 板：z ∈ [minimum.z, maximum.z]\n    //\n    //   每个板会在 t 轴上给出一段区间 [t0, t1]\n    //   三个区间【取交集】，交集非空就是命中。\n    //\n    //   交集的下界 = max(所有 t0)   ← \"必须晚于最晚的进入时刻\"\n    //   交集的上界 = min(所有 t1)   ← \"必须早于最早的离开时刻\"\n    //\n    // ⚠️ 除零陷阱：方向分量 D 可能是 0。\n    //    不要特判！IEEE 754 里 1.0/0.0 = +infinity（不是崩溃），\n    //    而 (min-O)*inf 的符号恰好自动给出\"永远在板内\"或\"永远在板外\"\n    //    这两种正确结果。详见 docs/devlog.md Day 8。\n    // ========================================================\n    bool hit(const Ray\u0026 r, double t_min, double t_max) const {\n        for (int axis = 0; axis \u003c 3; ++axis) {\n\n            // TODO(你填 A1)：这条轴上的\"方向分量的倒数\"\n            //   为什么要先算倒数？因为下面两个式子都要除以 D，\n            //   算出 1/D 后做乘法，一次除法代替两次。\n            // ★ 现在改成直接读光线里提前算好的那个倒数：\n            //   Ray 的构造函数已经算过 (1/Dx, 1/Dy, 1/Dz) 了。\n            //   实测：这一改动把 3.22 亿次盒子测试从 3 次除法降到 0 次。\n            double inv_d = r.direction_inv()[axis];\n\n\n\n            // TODO(你填 A2)：光线\"进入板\"和\"离开板\"的参数 t\n            //   记住：min/max 减去的是光线【起点】的该轴坐标，\n            //   光线起点的某个轴坐标 = r.origin()[axis]\n            //   光线方向的某个轴坐标 = r.direction()[axis]\n            //   盒子的两个面 = min_axis(axis) / max_axis(axis)\n            double t0 = (min_axis(axis) - r.origin()[axis]) * inv_d;\n            double t1 = (max_axis(axis) - r.origin()[axis]) * inv_d;\n\n\n            // TODO(你填 A3)：如果方向分量为负，t0 和 t1 的顺序反了，交换回来。\n            //   交换后保证 t0 ≤ t1（这就是\"规范化区间\"）\n            if (inv_d \u003c 0.0) {\n                std::swap(t0, t1);\n            }\n\n\n            // TODO(你填 A4)：把 [t0, t1] 和 [t_min, t_max] 求交集\n            //   交集的下界 = 两者【较大】的那个\n            //   交集的上界 = 两者【较小】的那个\n            t_min = std::fmax(t0, t_min);\n            t_max = std::fmin(t1, t_max);\n\n\n            // TODO(你填 A5)：如果交集已经空了，立刻返回\"没打到\"\n            //   注意判断条件用 \"≤\" 还是 \"\u003c\" 会有边界差异，\n            //   我们用 \"≤\"：刚好擦过（退化成单个点）算作没命中。\n            if (t_min \u003e= t_max) return false;\n        }\n\n        return true;\n    }\n\n    // 第 axis 轴（0=x, 1=y, 2=z）的两个面\n    double min_axis(int axis) const { return minimum[axis]; }\n    double max_axis(int axis) const { return maximum[axis]; }\n\n    // --------------------------------------------------------\n    // 三个轴里哪一轴最长？返回 0 / 1 / 2\n    //\n    // 用在哪里：BVH 建树时沿【最长的那条轴】切分。\n    //   因为物体在那一轴上的分布最分散，切完两半分得最开，\n    //   两个子盒子缩得最快 → 树更矮 → 排除更有效。\n    // --------------------------------------------------------\n    int longest_axis() const {\n        double dx = maximum.x() - minimum.x();\n        double dy = maximum.y() - minimum.y();\n        double dz = maximum.z() - minimum.z();\n        if (dx \u003e dy \u0026\u0026 dx \u003e dz) return 0;\n        if (dy \u003e dz)           return 1;\n        return 2;\n    }\n\n    Point3 minimum;\n    Point3 maximum;\n};","hittable_list.h":"#pragma once\n\n#include \"hittable.h\"\n\n// ============================================================\n// 一堆物体的集合\n//\n// 关键设计：\"一组物体\"本身也是一个\"物体\"（组合模式）。\n// 所以 HittableList 继承 Hittable。\n// 以后做 BVH 加速时，只要替换这个类，main 一行都不用改。\n// ============================================================\nclass HittableList : public Hittable {\npublic:\n    HittableList() = default;\n\n    void add(std::shared_ptr\u003cHittable\u003e object) {\n        objects.push_back(std::move(object));\n    }\n\n    // 遍历所有物体，只保留\"最近\"的那个命中。\n    //\n    // 关键点：把已找到的最近距离 closest 当作 t_max 传给下一个物体，\n    // 更远的物体会被自动排除 —— 既保证遮挡正确，又省下大量求交计算。\n    // 必须遍历完整个列表：一旦提前 return，拿到的是\"最后一个\"而不是\"最近的\"。\n    bool hit(const Ray\u0026 r, double t_min, double t_max,\n             HitRecord\u0026 rec) const override {\n        double    closest      = t_max;   // 当前已知的最近命中上限\n        bool      hit_anything = false;\n        HitRecord temp_rec;               // 临时报告单：只有命中才提交给 rec\n\n        for (const auto\u0026 obj : objects) {\n            if (obj-\u003ehit(r, t_min, closest, temp_rec)) {\n                hit_anything = true;\n                closest      = temp_rec.t;   // 收紧上限\n                rec          = temp_rec;     // 提交结果\n            }\n        }\n        return hit_anything;\n    }\n\n    // --------------------------------------------------------\n    // 整堆物体的包围盒 = 所有子物体包围盒的【并集】\n    //\n    // 做法：从头扫一遍，每次把当前结果和新物体的盒子\"合并\"成一个更大的盒。\n    //       第一个盒子要特殊处理（还不能和任何东西并）。\n    //\n    // ⚠️ 只要有一个子物体算不出盒子（返回 false），\n    //    整堆就算不出——因为漏装一个物体的话，盒子就不\"保守\"了，\n    //    BVH 会错得很难看。\n    // --------------------------------------------------------\n    bool bounding_box(AABB\u0026 output) const override {\n        if (objects.empty()) return false;\n\n        AABB temp_box;\n        bool first_box = true;\n\n        for (const auto\u0026 obj : objects) {\n            if (!obj-\u003ebounding_box(temp_box)) return false;\n\n            // TODO(你填 B2)：合并盒子\n            //   第一个物体：直接拿来当结果\n            //   之后的物体：用 AABB::surrounding(现有的 output, 新来的 temp_box)\n            //             得到一个\"刚好装下两者\"的大盒\n            output = first_box ? temp_box : AABB::surrounding(output, temp_box);\n\n            first_box = false;\n        }\n        return true;\n    }\n\n    // ⚠️ 这里故意是 public 的。\n    //   原因：BVHNode 要拿到这个数组去【排序 + 对半分】。\n    //   RTIOW 也是这么做的。代价是破坏了封装（外面可以乱改这个数组），\n    //   好处是省事。真要严谨的话可以改成只给 friend 开放。\n    std::vector\u003cstd::shared_ptr\u003cHittable\u003e\u003e objects;\n};","sphere.h":"#pragma once\n\n#include \"hittable.h\"\n\n// ============================================================\n// 球体\n// ============================================================\nclass Sphere : public Hittable {\npublic:\n    // --------------------------------------------------------\n    // 用初始化列表直接构造成员，避免\"先默认构造再赋值\"的额外开销\n    // --------------------------------------------------------\n    Sphere(const Point3\u0026 c, double r, std::shared_ptr\u003cMaterial\u003e m)\n        : center(c), radius(r), mat(m) {}\n    \n\n    // --------------------------------------------------------\n    // 光线与球体求交：把 P(t) = O + tD 代入 |P - C|² = r²，\n    // 化为 a·t² + 2·half_b·t + c = 0（half_b = OC·D，即\"半个 b\"），\n    // 取区间 (t_min, t_max) 内最小的根；两个根都不在区间内即未命中。\n    bool hit(const Ray\u0026 r, double t_min, double t_max,\n             HitRecord\u0026 rec) const override {\n        const Vec3   oc     = r.origin() - center;\n        const double a      = dot(r.direction(), r.direction());\n        const double half_b = dot(oc, r.direction());\n        const double c      = dot(oc, oc) - radius * radius;\n\n        const double discriminant = half_b * half_b - a * c;\n        if (discriminant \u003c 0.0) return false;      // 光线掠过球外\n\n        const double sqrt_d = std::sqrt(discriminant);\n\n        // 先试较小的根；它若在相机背后或在区间外，再试较大的根\n        //（相机位于球内时较小的根为负，此时正确解是较大的根）\n        double root = (-half_b - sqrt_d) / a;\n        if (root \u003c= t_min || root \u003e= t_max) {\n            root = (-half_b + sqrt_d) / a;\n            if (root \u003c= t_min || root \u003e= t_max) return false;\n        }\n\n        rec.t      = root;\n        rec.p      = r.at(root);\n        rec.set_face_normal(r, (rec.p - center) / radius);    // |P - C| = radius，除完即单位向量\n        rec.mat    = mat;                          // 交代\"我是什么材质\"\n        return true;\n             \n    }\n\n    // --------------------------------------------------------\n    // 球的包围盒：最简单的一种 —— 球心 ± 半径\n    //\n    // 因为球在三个方向上一样宽，所以盒子是个【立方体】。\n    // 而且这个盒子是\"紧\"的：球正好内切于盒子，一点不浪费。\n    // --------------------------------------------------------\n    bool bounding_box(AABB\u0026 output) const override {\n        // TODO(你填 B1)：用【球心 − 半径】和【球心 + 半径】两个对角点构造\n        //   提示：三个坐标轴上的偏移量都是同一个 radius\n        //   构造 Vec3(r, r, r) 就行（Point3 和 Vec3 是同一个类）\n        output = AABB(center - Vec3(radius, radius, radius),\n                      center + Vec3(radius, radius, radius));\n        return true;\n    }\n\nprivate:\n    // ⚠️ 成员的【声明顺序】决定了实际初始化顺序，\n    //    必须和构造函数初始化列表的顺序一致，否则编译器报 [-Wreorder]\n    Point3 center;\n    double radius;\n    std::shared_ptr\u003cMaterial\u003e mat;   // 这个球用什么材质\n};","ray.h":"#pragma once\n\n#include \"vec3.h\"\n\n// 一条光线：起点 + 方向\nclass Ray {\npublic:\n    Ray() {}\n    Ray(const Point3\u0026 origin, const Vec3\u0026 direction)\n        : orig(origin), dir(direction), dir_inv(make_inv(direction)) {}\n\n    const Point3\u0026 origin() const { return orig; }\n    const Vec3\u0026   direction() const { return dir; }\n\n    // --------------------------------------------------------\n    // ★ 方向分量的倒数（1/Dx, 1/Dy, 1/Dz）\n    //\n    // 为什么要存这个？\n    //   AABB 求交里每个轴都要算 (min−O)/D。如果每次都在循环里除，\n    //   一次盒子求交就是【3 次除法】—— 而 double 除法要 ~26 个时钟周期，\n    //   是乘法（~4 周期）的 6 倍！\n    //\n    //   实测：322,239,827 次盒子测试 × 3 次除法 = 9.67 亿次除法\n    //         ≈ 6.2 秒（就是全部渲染时间）\n    //\n    //   提前算好一次（每条光线 3 次除法），盒子求交里就只剩乘法。\n    //\n    // ⚠️ 结果完全不变：现在算的还是同一个 1.0/D，只是提前了。\n    //    所以渲染结果仍然是逐像素一致的。\n    // --------------------------------------------------------\n    const Vec3\u0026 direction_inv() const { return dir_inv; }\n\n    // 光线上的点：P(t) = O + t * D\n    Point3 at(double t) const { return orig + t * dir; }\n\nprivate:\n    static Vec3 make_inv(const Vec3\u0026 d) {\n        return Vec3(1.0 / d.x(), 1.0 / d.y(), 1.0 / d.z());\n    }\n\n    Point3 orig;\n    Vec3   dir;\n    Vec3   dir_inv;\n};","hittable.h":"#pragma once\n\n#include \"rtweekend.h\"\n#include \"ray.h\"\n#include \"vec3.h\"\n#include \"aabb.h\"      // 为了 AABB（包围盒）\n#include \"material.h\"   // 为了 shared_ptr\u003cMaterial\u003e\n                        // （material.h 用前向声明反向避免循环包含）\n\n// ============================================================\n// \"事故报告单\"\n// 光线撞到物体之后，需要带回这些信息。\n// 注意：这是\"输出参数\"，由 hit() 负责填满。\n// ============================================================\nstruct HitRecord {\n    Point3 p;      // 交点位置\n    Vec3   normal; // 交点处的法线（必须是单位向量！）\n    double t;      // 交点对应的光线参数\n\n    bool front_face; // 光线是从物体外面打进来的吗？（还是从里面打出来的？）\n\n    // 这个交点属于什么材质？由 Sphere::hit 在命中时填上。\n    // 用 shared_ptr 而不是 Material*：\n    //   一个材质可能被多个物体共享，shared_ptr 用引用计数自动管理\n    //   生命周期，既不会内存泄漏，也不会变成悬空指针。\n    std::shared_ptr\u003cMaterial\u003e mat;\n\n    // 由 hit() 调用：决定 front_face，并把法线翻到\"朝向光线来的一侧\"\n    //\n    // outward_normal 是\"几何上的外法线\"（从球心指向交点）\n    // 这个函数会根据光线方向，决定 rec.normal 是取 outward_normal 还是它的反向\n    void set_face_normal(const Ray\u0026 r, const Vec3\u0026 outward_normal) {\n        front_face = dot(r.direction(), outward_normal) \u003c 0;\n        normal     = front_face ? outward_normal : -outward_normal;\n    }\n};\n\n// ============================================================\n// 抽象基类：任何\"能被光线撞到的东西\"都继承它\n//\n// 它本身不能被实例化（有纯虚函数 = 0），\n// 它存在的唯一目的，是让 main 里的循环不必知道\n// 自己面对的到底是球、平面还是三角形。\n// ============================================================\nclass Hittable {\npublic:\n    // 虚析构：否则通过基类指针 delete 派生类对象时，派生类的析构不会被调用\n    virtual ~Hittable() = default;\n\n    // 光线 r 在开区间 (t_min, t_max) 内是否撞到自己？\n    //   撞到   -\u003e 返回 true，并把 rec 的三个字段全部填满\n    //   没撞到 -\u003e 返回 false，不要动 rec\n    //\n    // 这个签名的两个设计点：\n    //   1. 返回 bool 而非 double：命中与否是\"是/否\"的问题，\n    //      命中\"细节\"通过引用参数 rec 带出来（C++ 的\"多返回值\"手法）\n    //   2. 带 t_min / t_max：由调用方告诉它\"我只关心这个区间内的交点\"\n    virtual bool hit(const Ray\u0026 r, double t_min, double t_max,\n                     HitRecord\u0026 rec) const = 0;\n\n    // --------------------------------------------------------\n    // 这个物体能不能被一个轴对齐包围盒框住？\n    //   能   -\u003e 把盒子写进 output，返回 true\n    //   不能 -\u003e 返回 false（比如理论上无限大的平面）\n    //\n    // 为什么要这个接口？\n    //   BVH 要先把一堆物体框成一个盒子，才知道\"这根光线有没必要\n    //   走进这一块区域\"。所以每个物体都得会报自己的盒子。\n    //\n    // 注意：它【不是】纯虚函数 —— 给了默认实现 false。\n    //   这样以后加新几何体时不用马上实现它，编译器也不会报错。\n    //   但代价是：如果忘了实现，整个世界的包围盒会静默地变成\"没有\"。\n    // --------------------------------------------------------\n    virtual bool bounding_box(AABB\u0026 output) const {\n        (void)output;      // 消除\"未使用参数\"警告\n        return false;\n    }\n};"}</script>
+
+<script>
+(() => {
+'use strict';
+
+/* ==================================================================
+   0 · 工具
+   ================================================================== */
+const $ = s => document.querySelector(s);
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const fmt = (v, d=2) => Number.isFinite(v) ? v.toFixed(d) : '—';
+const fmtInt = v => Math.round(v).toLocaleString('en-US');
+
+function fitCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const r = cv.getBoundingClientRect();
+  cv.width  = Math.max(1, Math.round(r.width  * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+
+/* 世界坐标 (x, z) → 屏幕。x/z 用不同的可视半径以填满画布（等比缩放，圆不变形） */
+const HALF_X = 17.5, HALF_Z = 13.0;
+function makeView(w, h){
+  const s = Math.min(w / (2 * HALF_X), h / (2 * HALF_Z));
+  const cx = w / 2, cy = h / 2;
+  return {
+    s,
+    X: x => x * s + cx,
+    Y: z => z * s + cy,
+    inv(px, py){ return [(px - cx) / s, (py - cy) / s]; }
+  };
+}
+/* 背景网格：只画视野内可见的部分 */
+function drawGrid(ctx, view, w, h){
+  const a = view.inv(0, 0), b = view.inv(w, h);
+  ctx.strokeStyle = '#eef2f7'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let g = Math.ceil(a[0] / 4) * 4; g <= b[0]; g += 4){ ctx.moveTo(view.X(g), 0); ctx.lineTo(view.X(g), h); }
+  for (let g = Math.ceil(a[1] / 4) * 4; g <= b[1]; g += 4){ ctx.moveTo(0, view.Y(g)); ctx.lineTo(w, view.Y(g)); }
+  ctx.stroke();
+}
+
+/* 深度 → 颜色（蓝 → 紫 → 红 → 橙 循环） */
+const DEPTH_HUE = [212, 196, 172, 152, 96, 48, 26, 350, 320, 278];
+const depthColor = (d, alpha=1) =>
+  `hsla(${DEPTH_HUE[d % DEPTH_HUE.length]}, 72%, 46%, ${alpha})`;
+const depthFill = (d, alpha=1) =>
+  `hsla(${DEPTH_HUE[d % DEPTH_HUE.length]}, 78%, 58%, ${alpha})`;
+
+/* ==================================================================
+   0.5 · 源码查看器
+   —— 嵌入仓库里 include/ 下 6 个头文件的【原始内容】（含真实行号）
+   ================================================================== */
+const SRC = JSON.parse(document.getElementById('SRC').textContent);
+
+function esc(s){
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* 轻量 C++ 语法着色。用占位符避免"替换出来的 HTML 被后续规则再次匹配" */
+const RE_TYPE = /\b(?:AABB|BVHNode|HittableList|Hittable|Sphere|Ray|HitRecord|Material|Lambertian|Metal|Dielectric|Point3|Vec3|Color|TODO)\b/g;
+const RE_KW   = /\b(?:pragma|once|include|class|struct|public|private|protected|virtual|override|const|constexpr|static|return|if|else|for|while|do|switch|case|break|continue|bool|void|int|long|double|float|auto|true|false|nullptr|namespace|template|typename|using|new|delete|this|operator|explicit|inline|default)\b/g;
+const RE_NUM  = /\b\d+(?:\.\d+)?[fF]?\b/g;
+
+function hlCppLine(raw){
+  const store = [];
+  /* 占位符必须【不含数字】—— 否则后面"数字着色"那条规则会把占位符里的数字再吃掉一遍，
+     导致所有已着色的 token 全被替换成数字。这里用 Unicode 私有区的单字符。 */
+  const MARK = 0xE000;
+  const hold = html => { store.push(html); return String.fromCharCode(MARK + store.length - 1); };
+
+  /* 1. 切出行注释（注意别把字符串里的 // 当注释） */
+  let code = raw, comment = '';
+  let inStr = false;
+  for (let i = 0; i < raw.length - 1; i++){
+    const ch = raw[i];
+    if (ch === '"' && raw[i - 1] !== '\\') inStr = !inStr;
+    if (!inStr && ch === '/' && raw[i + 1] === '/'){ code = raw.slice(0, i); comment = raw.slice(i); break; }
+  }
+
+  let out = esc(code);
+  /* 预处理指令要在关键字之前处理，否则 "#include" 会被拆成 "#" + 关键字 "include" */
+  out = out.replace(/#\s*(?:include|pragma|define|ifndef|ifdef|endif|else)\b(?:\s+(?:&lt;[^&]*&gt;|"[^"]*"|\w+))?/g,
+                    m => hold(`<span class="p">${m}</span>`));
+  out = out.replace(/"(?:[^"\\]|\\.)*"/g, m => hold(`<span class="s">${m}</span>`));
+  out = out.replace(RE_TYPE, m => hold(`<span class="t">${m}</span>`));
+  out = out.replace(RE_KW,   m => hold(`<span class="k">${m}</span>`));
+  out = out.replace(/\b(std|make_shared|swap|fmin|fmax|sqrt|sort|surrounding)\b/g,
+                    m => hold(`<span class="f">${m}</span>`));
+  out = out.replace(RE_NUM, m => hold(`<span class="n">${m}</span>`));
+
+  out = out.replace(new RegExp('[' + String.fromCharCode(MARK) + '-' + String.fromCharCode(0xF8FF) + ']', 'g'),
+                    ch => store[ch.charCodeAt(0) - MARK]);
+  if (comment) out += `<span class="c">${esc(comment)}</span>`;
+  return out || '&nbsp;';
+}
+
+/* 标记 TODO 教学注释块（从 "// TODO" 起到下一行代码之前） */
+function markTodoLines(lines){
+  const flags = new Array(lines.length).fill(false);
+  let inBlock = false;
+  for (let i = 0; i < lines.length; i++){
+    const t = lines[i].trim();
+    if (/^\/\/\s*TODO/.test(t)) inBlock = true;
+    if (inBlock){
+      if (t.startsWith('//') || t === '') flags[i] = true;
+      else inBlock = false;
+    }
+  }
+  return flags;
+}
+
+const codeViews = {};   // id -> view
+
+function createCodeView(id, fileKey, opts = {}){
+  const host = document.getElementById(id);
+  if (!host) return null;
+  const lines = SRC[fileKey].split('\n');
+  const todo = markTodoLines(lines);
+
+  host.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  const els = [];
+  lines.forEach((raw, i) => {
+    const div = document.createElement('div');
+    div.className = 'ln' + (todo[i] ? ' todo' : '');
+    div.innerHTML = `<span class="no">${i + 1}</span><span class="tx">${hlCppLine(raw)}</span>`;
+    frag.appendChild(div);
+    els.push(div);
+  });
+  host.appendChild(frag);
+
+  const view = {
+    id, fileKey, host, lines, els,
+    ranges: [],
+    /* ranges: [{from, to, cls, strong, anchor}] —— 行号 1-based、含两端 */
+    paint(ranges, autoScroll = true){
+      this.ranges = ranges || [];
+      for (const el of els) el.classList.remove('hl', 'strong', 'hl2');
+      for (const r of this.ranges){
+        for (let n = r.from; n <= r.to && n <= els.length; n++){
+          const el = els[n - 1];
+          if (!el) continue;
+          el.classList.add(r.cls === 'hl2' ? 'hl2' : 'hl');
+          if (r.strong) el.classList.add('strong');
+        }
+      }
+      if (autoScroll) this.ensureVisible();
+    },
+    /* 滚到"本次最关键"的那一段：anchor > strong > 第一段。
+       高亮区间可能有 79 行、远超面板高度，所以必须挑一个锚点，
+       否则永远停在第 ① 步、看不到决定这棵树长什么样的那几行。
+       同一位置只滚一次，避免播放时每帧抖动。 */
+    ensureVisible(){
+      if (!this.ranges.length) return;
+      const r = this.ranges.find(x => x.anchor) || this.ranges.find(x => x.strong) || this.ranges[0];
+      const el = els[r.from - 1];
+      if (!el) return;
+      const maxTop = Math.max(0, host.scrollHeight - host.clientHeight);
+      const want = Math.max(0, Math.min(el.offsetTop - 6, maxTop));
+      if (Math.abs(host.scrollTop - want) > 4) host.scrollTop = want;
+    },
+    /* 把某一行滚到面板的 30% 处（用于"定位到 Lxx"这类硬跳转） */
+    goto(line, ratio = 0.3){
+      const el = els[line - 1];
+      if (!el) return;
+      const maxTop = Math.max(0, host.scrollHeight - host.clientHeight);
+      host.scrollTop = Math.max(0, Math.min(el.offsetTop - host.clientHeight * ratio, maxTop));
+    }
+  };
+  codeViews[id] = view;
+  return view;
+}
+
+/* ==================================================================
+   1 · 场景
+   ================================================================== */
+/* 复刻 src/main.cpp 的 random_scene()：只取 x–z 俯视投影。
+   地面巨球（半径 1000）在俯视图里覆盖一切，这里略去，改在 ③ 里讲它的影响。 */
+function sceneGrid(){
+  const rr = mulberry32(20261010);
+  const objs = [];
+  let id = 0;
+  const push = (x, z, r, kind) => objs.push({ id: id++, x, z, r, kind });
+
+  // 三颗主角球：(-4,1,0) (0,1,0) (4,1,0) → 俯视 (x, z)
+  push(-4, 0, 1.0, 'glass');
+  push( 0, 0, 1.0, 'glass');
+  push( 4, 0, 1.0, 'metal');
+
+  // 22 × 22 随机小球阵
+  for (let a = -11; a < 11; ++a){
+    for (let b = -11; b < 11; ++b){
+      // 保持与 C++ 相同的随机数消耗顺序
+      const choose = rr();
+      const cx = a + 0.9 * rr();
+      const cz = b + 0.9 * rr();
+      if (choose < 0.80)      { for (let k=0;k<6;k++) rr(); }   // 两个 albedo 各 3 次
+      else if (choose < 0.95) { for (let k=0;k<4;k++) rr(); }   // 3 色 + fuzz
+
+      if (Math.hypot(cx + 4, cz) < 0.9) continue;
+      if (Math.hypot(cx,     cz) < 0.9) continue;
+      if (Math.hypot(cx - 4, cz) < 0.9) continue;
+
+      push(cx, cz, 0.2, choose < 0.80 ? 'lambert' : (choose < 0.95 ? 'metal' : 'glass'));
+    }
+  }
+  return objs;
+}
+
+function sceneRandom(){
+  const rr = mulberry32(777001);
+  const objs = []; let id = 0;
+  for (let i = 0; i < 480; i++){
+    objs.push({ id: id++, x: -11 + 22*rr(), z: -11 + 22*rr(), r: 0.25, kind: 'lambert' });
+  }
+  return objs;
+}
+
+/* 全部排在 z 轴上、x 完全相同，且生成顺序被打乱
+   → 固定 x 轴切分时排序完全失效，盒子永远不缩小 */
+function sceneLine(){
+  const rr = mulberry32(4242);
+  const objs = []; let id = 0;
+  const n = 256;                       // 保持 log2 可比
+  for (let i = 0; i < n; i++){
+    const z = -10 + 20 * (i / (n - 1));
+    objs.push({ id: id++, x: 0, z: z + (rr()-0.5)*0.05, r: 0.22, kind: 'lambert' });
+  }
+  for (let i = objs.length - 1; i > 0; i--){      // 打乱生成顺序
+    const j = Math.floor(rr() * (i + 1));
+    [objs[i], objs[j]] = [objs[j], objs[i]];
+  }
+  objs.forEach((o, i) => o.id = i);
+  return objs;
+}
+
+const SCENES = { grid: sceneGrid, rand: sceneRandom, line: sceneLine };
+
+/* ==================================================================
+   2 · AABB / BVH  —— 严格照搬 include/aabb.h + include/bvh.h
+   ================================================================== */
+function objBox(o){
+  return { min: [o.x - o.r, o.z - o.r], max: [o.x + o.r, o.z + o.r] };
+}
+function surround(a, b){
+  return {
+    min: [Math.min(a.min[0], b.min[0]), Math.min(a.min[1], b.min[1])],
+    max: [Math.max(a.max[0], b.max[0]), Math.max(a.max[1], b.max[1])]
+  };
+}
+function longestAxis(b){
+  const dx = b.max[0] - b.min[0], dz = b.max[1] - b.min[1];
+  return dx >= dz ? 0 : 1;
+}
+/* slab method，与 aabb.h 的 hit() 逐行对应（含 inv_d < 0 时交换 t0/t1） */
+function boxHit(b, ro, rd, tmin, tmax){
+  for (let i = 0; i < 2; i++){
+    const invD = 1.0 / rd[i];
+    let t0 = (b.min[i] - ro[i]) * invD;
+    let t1 = (b.max[i] - ro[i]) * invD;
+    if (invD < 0) { const t = t0; t0 = t1; t1 = t; }
+    tmin = Math.max(t0, tmin);
+    tmax = Math.min(t1, tmax);
+    if (tmin >= tmax) return false;
+  }
+  return true;
+}
+function boxDiag(b){
+  return Math.hypot(b.max[0] - b.min[0], b.max[1] - b.min[1]);
+}
+function boxArea(b){
+  return (b.max[0]-b.min[0]) * (b.max[1]-b.min[1]);
+}
+
+/* 建树：pre-order 记录所有节点，供动画逐帧揭示 */
+function buildBVH(objects, opts){
+  const arr = objects.slice();
+  const nodes = [];
+  let leafCount = 0;
+
+  function rec(start, end, depth){
+    /* 第 1 步：这一堆物体的总包围盒（并集，必须保守！） */
+    let box = null;
+    for (let i = start; i < end; i++){
+      const b = objBox(arr[i]);
+      box = box ? surround(box, b) : b;
+    }
+    /* 第 2 步：选最长的那条轴 */
+    const axis = opts.axis === 'longest' ? longestAxis(box) : opts.axis;
+
+    const id = nodes.length;
+    const node = {
+      id, depth, box, axis, start, end, span: end - start,
+      leaf: false, left: -1, right: -1,
+      leafIndex: -1, x0: 0, x1: 0, objects: null
+    };
+    nodes.push(node);
+
+    /* 叶子：span ≤ 阈值（源码里是 1 和 2 两种情况） */
+    if (node.span <= opts.maxLeaf){
+      node.leaf = true;
+      node.objects = arr.slice(start, end).map(o => o.id);
+      node.leafIndex = leafCount++;
+      return id;
+    }
+
+    /* 第 3 步：沿 axis 排序 [start, end) */
+    const sub = arr.slice(start, end);
+    sub.sort((a, b) => objBox(a).min[axis] - objBox(b).min[axis]);
+    for (let i = 0; i < sub.length; i++) arr[start + i] = sub[i];
+
+    /* 第 4 步：对半分，递归 */
+    const mid = start + ((end - start) >> 1);
+    node.left  = rec(start, mid, depth + 1);
+    node.right = rec(mid,   end, depth + 1);
+    return id;
+  }
+
+  const rootId = rec(0, arr.length, 0);
+
+  /* 中序编号：相邻叶子在空间上也相邻 → 冰柱图的横轴 */
+  let cursor = 0;
+  (function inorder(id){
+    const n = nodes[id];
+    if (n.leaf){ n.x0 = cursor; n.x1 = cursor; cursor++; return; }
+    inorder(n.left); inorder(n.right);
+    n.x0 = nodes[n.left].x0; n.x1 = nodes[n.right].x1;
+  })(rootId);
+
+  let maxDepth = 0, maxSpan = 0;
+  for (const n of nodes){ maxDepth = Math.max(maxDepth, n.depth); }
+
+  /* 巨型盒子占比（面积 > 100）—— devlog 里的「树质量」指标 */
+  const giant = nodes.filter(n => boxArea(n.box) > 100).length;
+
+  return { nodes, rootId, leafCount, maxDepth, count: nodes.length, giant,
+           totalObjects: arr.length, opts };
+}
+
+/* ==================================================================
+   3 · 遍历（事件流，用于回放）
+   ================================================================== */
+function hitCircle(o, ro, rd, tmin, tmax){
+  const ox = ro[0] - o.x, oz = ro[1] - o.z;
+  const a = rd[0]*rd[0] + rd[1]*rd[1];
+  const b = 2 * (ox*rd[0] + oz*rd[1]);
+  const c = ox*ox + oz*oz - o.r*o.r;
+  const disc = b*b - 4*a*c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  let t = (-b - sq) / (2*a);
+  if (t < tmin || t > tmax){ t = (-b + sq) / (2*a); if (t < tmin || t > tmax) return null; }
+  return t;
+}
+
+function traceNaive(objs, ro, rd, tmin, tmax){
+  const events = [];
+  let sphereTests = 0, best = null;
+  for (const o of objs){
+    sphereTests++;
+    const t = hitCircle(o, ro, rd, tmin, best ? Math.min(tmax, best.t) : tmax);
+    events.push({ t: 'sph', oid: o.id, hit: t !== null });
+    if (t !== null && (!best || t < best.t)) best = { t, oid: o.id };
+  }
+  return { events, sphereTests, boxTests: 0, hit: best };
+}
+
+function traceBVH(bvh, objs, ro, rd, tmin, tmax){
+  const events = [];
+  let sphereTests = 0, boxTests = 0;
+
+  function rec(id, tmin, tmax){
+    const n = bvh.nodes[id];
+    boxTests++;
+    const ok = boxHit(n.box, ro, rd, tmin, tmax);
+    events.push({ t: 'box', id, hit: ok });
+    if (!ok) return null;
+
+    if (n.leaf){
+      let best = null;
+      for (const oid of n.objects){
+        sphereTests++;
+        const t = hitCircle(objs[oid], ro, rd, tmin, tmax);
+        events.push({ t: 'sph', oid, hit: t !== null });
+        if (t !== null && (!best || t < best.t)) best = { t, oid };
+      }
+      if (best) events.push({ t: 'hit', oid: best.oid, tt: best.t });
+      return best;
+    }
+
+    const L = rec(n.left, tmin, tmax);
+    /* ★ t_max 收紧：左边命中了就只找更近的 */
+    const ntmax = L ? Math.min(tmax, L.t) : tmax;
+    events.push({ t: 'tighten', id, before: tmax, after: ntmax });
+    const R = rec(n.right, tmin, ntmax);
+
+    if (L && R) return L.t <= R.t ? L : R;
+    return L || R;
+  }
+
+  const hit = rec(bvh.rootId, tmin, tmax);
+  return { events, sphereTests, boxTests, hit };
+}
+
+/* 从事件流前缀还原绘制状态 */
+function traceState(events, upto){
+  const boxes = new Map();     // nodeId -> 'test' | 'miss' | 'pass'
+  const spheres = new Map();   // objId -> bool
+  const skippedRoots = new Set();
+  let hitPoint = null;
+  const last = Math.min(upto, events.length);
+
+  for (let i = 0; i < last; i++){
+    const e = events[i];
+    if (e.t === 'box'){
+      if (!e.hit){ boxes.set(e.id, 'miss'); skippedRoots.add(e.id); }
+      else boxes.set(e.id, 'pass');
+    } else if (e.t === 'sph'){
+      spheres.set(e.oid, e.hit);
+    } else if (e.t === 'hit'){
+      hitPoint = { oid: e.oid, tt: e.tt };
+    }
+  }
+  return { boxes, spheres, skippedRoots, hitPoint };
+}
+
+/* ==================================================================
+   4 · Tab 1 —— 递归建树
+   ================================================================== */
+const cvBuild = $('#cvBuild');
+const cvTree  = $('#cvTree');
+
+const B = {
+  objs: [], bvh: null, prog: 0, playing: false, speed: 55,
+  hover: -1, lastT: 0, scene: 'grid', axis: 'longest', maxLeaf: 2,
+  vw: null, vh: null, view: null
+};
+
+function rebuild(){
+  B.objs = SCENES[B.scene]();
+  B.bvh = buildBVH(B.objs, { axis: B.axis, maxLeaf: B.maxLeaf });
+  B.prog = 0; B.playing = false; B.hover = -1;
+  $('#btnPlay').textContent = '▶ 播放建树';
+  syncProgressUI();
+  updateStats();
+  updateNarration();
+  drawBuild();
+  drawTree();
+}
+
+function syncProgressUI(){
+  const total = B.bvh.count;
+  $('#rngProg').value = Math.round(B.prog / total * 1000);
+  $('#lblProg').textContent = `${Math.round(B.prog)}/${total}`;
+  $('#rngProg').max = 1000;
+}
+
+/* 用 400 根随机光线实测这棵树的剪枝效果 */
+function benchBVH(bv, objs, K = 400){
+  const rr = mulberry32(2024);
+  let sph = 0, box = 0;
+  for (let i = 0; i < K; i++){
+    const oz = -12 + 24 * rr(), ox = -12 + 24 * rr();
+    const ang = rr() * 6.2832;
+    const r = traceBVH(bv, objs, [ox, oz], [Math.cos(ang), Math.sin(ang)], 0.001, 40);
+    sph += r.sphereTests; box += r.boxTests;
+  }
+  return { sph: sph / K, box: box / K };
+}
+
+function updateStats(){
+  const bv = B.bvh;
+  let leafSum = 0, leafCnt = 0;
+  for (const n of bv.nodes) if (n.leaf){ leafSum += n.span; leafCnt++; }
+
+  /* 平均相对盒面积：越低说明子树盒子收得越紧、剪枝越狠 */
+  const rootA = Math.max(1e-9, boxArea(bv.nodes[bv.rootId].box));
+  let areaSum = 0;
+  for (const n of bv.nodes) areaSum += boxArea(n.box);
+  const relArea = areaSum / bv.count / rootA * 100;
+
+  /* 深度口径：源码 devlog 记的是"根 → 叶子里的球"，比 BVH 节点层多一层 */
+  const depthSrc = bv.maxDepth + 1;
+  const ideal = Math.ceil(Math.log2(bv.totalObjects));
+
+  const bn = benchBVH(bv, B.objs);
+  const tNaive = bv.totalObjects * TRACE_TIME_NAIVE;
+  const tBvh = (bn.sph + bn.box) * TRACE_TIME_BVH;
+  const speed = tNaive / tBvh;
+
+  $('#stats').innerHTML = `
+    <div class="stat"><span class="k">物体数 N</span><span class="v">${bv.totalObjects}</span></div>
+    <div class="stat"><span class="k">BVH 节点数</span><span class="v blue">${bv.count}</span></div>
+    <div class="stat"><span class="k">最大深度（源码口径）</span><span class="v ${depthSrc <= ideal + 1 ? 'green' : 'amber'}">${depthSrc}</span></div>
+    <div class="stat"><span class="k">完全平衡理想值 ⌈log₂N⌉</span><span class="v sm">${ideal}</span></div>
+    <div class="stat"><span class="k">叶子节点数</span><span class="v sm">${leafCnt}</span></div>
+    <div class="stat"><span class="k">平均叶容量</span><span class="v sm">${fmt(leafSum/leafCnt,2)}</span></div>
+    <div class="stat"><span class="k">平均盒面积 / 根盒</span><span class="v sm ${relArea < 8 ? 'green' : (relArea < 30 ? 'amber' : 'red')}">${fmt(relArea,2)}%</span></div>
+    <div class="stat"><span class="k">根节点盒子宽度</span><span class="v sm" style="font-size:13px">${fmt(boxDiag(bv.nodes[bv.rootId].box),1)}</span></div>
+    <div class="stat"><span class="k">球体求交 / 光线（BVH）</span><span class="v sm green">${fmt(bn.sph,2)}</span></div>
+    <div class="stat"><span class="k">估算加速比 vs 朴素</span><span class="v ${speed >= 1.3 ? 'green' : (speed >= 1 ? 'amber' : 'red')}">${fmt(speed,2)}×</span></div>
+  `;
+
+  const tag = $('#matchTag');
+  if (B.scene === 'grid' && B.axis === 'longest' && B.maxLeaf === 2)
+    tag.innerHTML = '<span class="pill g">与源码一致 · 511 节点</span>';
+  else if (speed < 1)
+    tag.innerHTML = '<span class="pill r">⚠ 比朴素遍历还慢</span>';
+  else if (B.axis !== 'longest')
+    tag.innerHTML = '<span class="pill a">非最长轴切分</span>';
+  else
+    tag.innerHTML = '';
+}
+
+function updateNarration(){
+  const idx = Math.floor(B.prog) - 1;
+  const on = (id, v) => $(id).classList.toggle('on', v);
+  const inBuildTab = document.getElementById('tab-build').classList.contains('active');
+
+  if (idx < 0){
+    on('#s1', true); on('#s2', false); on('#s3', false); on('#s4', false);
+    $('#curNodeLabel').textContent = '—';
+    if (inBuildTab) syncBuildCode(null);
+    return;
+  }
+  const n = B.bvh.nodes[idx];
+  on('#s1', true);
+  on('#s2', true);
+  on('#s3', !n.leaf);
+  on('#s4', !n.leaf);
+  const ax = n.axis === 0 ? 'x' : 'z';
+  $('#curNodeLabel').innerHTML =
+    `节点 #${n.id} · 深度 ${n.depth} · ${n.span} 个物体 · 沿 <b style="color:var(--blue)">${ax}</b> 轴 · ${n.leaf ? '叶子' : '内部'}`;
+  if (inBuildTab) syncBuildCode(n);
+}
+
+/* 把 bvh.h 里对应的行点亮 —— 行号是仓库文件的真实行号 */
+function codeRangesForNode(n){
+  if (!n) return [];
+  const r = [
+    { from: 51, to: 64, cls: 'hl' },     // 第 1 步：算总包围盒
+    { from: 66, to: 68, cls: 'hl' },     // 第 2 步：选最长轴
+    { from: 33, to: 33, cls: 'hl' }
+  ];
+  if (n.leaf){
+    r.push({ from: 84, to: 90, cls: 'hl', strong: true });   // 叶子：直接挂上去
+  } else {
+    r.push({ from: 70, to: 79, cls: 'hl' });                 // 第 3 步：comparator
+    r.push({ from: 91, to: 111, cls: 'hl' });                // 第 4 步：排序 + 对半 + 递归
+    r[r.length - 1].strong = true;
+  }
+  return r;
+}
+
+let lastBuildCodeNode = -2;
+function syncBuildCode(n){
+  const v = codeViews.codeBuild;
+  if (!v) return;
+  const key = n ? n.id : -1;
+  if (key === lastBuildCodeNode) return;
+  lastBuildCodeNode = key;
+  v.paint(codeRangesForNode(n));
+  v.ensureVisible();
+  syncStepJump(n);
+}
+
+/* “跳到第几步”按钮组：手动定位时记住点了哪一个；
+   节点一换就清掉手动标记、并给叶子节点置灰 ③ ④ */
+function syncStepJump(n, manual){
+  const row = document.getElementById('stepJump');
+  if (!row) return;
+  row.classList.toggle('leafmode', !!n && n.leaf);
+  const hint = document.getElementById('stepJumpHint');
+  if (hint) hint.textContent = !n ? '未选中节点'
+    : (n.leaf ? '叶子节点：只走 ① ②，到此为止' : '内部节点：①②③④ 全走');
+  if (!manual) row.querySelectorAll('.chip.on').forEach(c => c.classList.remove('on'));
+}
+
+function drawBuild(){
+  const { ctx, w, h } = fitCanvas(cvBuild);
+  B.vw = w; B.vh = h;
+  const view = B.view = makeView(w, h);
+
+  ctx.clearRect(0, 0, w, h);
+
+  /* 背景网格 */
+  drawGrid(ctx, view, w, h);
+
+  const upto = Math.floor(B.prog);
+  const visible = B.bvh.nodes.slice(0, upto);
+  const current = upto > 0 ? B.bvh.nodes[upto - 1] : null;
+
+  /* --- 物体 --- */
+  for (const o of B.objs){
+    const inCur = current && current.objects && current.objects.includes(o.id);
+    const sx = view.X(o.x), sy = view.Y(o.z), sr = o.r * view.s;
+    let fill = '#f2c9a0';
+    if (o.kind === 'glass') fill = '#7dd3fc';
+    else if (o.kind === 'metal') fill = '#cbd5e1';
+    ctx.beginPath(); ctx.arc(sx, sy, Math.max(sr, 1.2), 0, 6.2832);
+    ctx.fillStyle = inCur ? '#2563eb' : fill;
+    ctx.fill();
+    if (inCur){ ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(37,99,235,.35)'; ctx.stroke(); }
+  }
+
+  /* --- 包围盒：浅的在下面，深的在上面 --- */
+  visible.sort((a, b) => a.depth - b.depth || a.id - b.id);
+  const revealedIn = upto > 0 ? Math.min(1, (B.prog - Math.floor(B.prog)) + 0.55) : 0;
+
+  for (const n of visible){
+    const isLast = current && n.id === current.id;
+    const x0 = view.X(n.box.min[0]), y0 = view.Y(n.box.min[1]);
+    const x1 = view.X(n.box.max[0]), y1 = view.Y(n.box.max[1]);
+    const alpha = isLast ? Math.max(0.14, revealedIn * 0.3) : Math.min(0.085, 0.055 - n.depth * 0.003);
+    const lw = isLast ? 2.2 : (n.depth < 4 ? 1.5 : 1);
+
+    ctx.save();
+    ctx.globalAlpha = isLast ? 1 : Math.max(0.42, 1 - n.depth * 0.055);
+    ctx.fillStyle = depthFill(n.depth, alpha);
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.strokeStyle = depthColor(n.depth, isLast ? 1 : 0.82);
+    ctx.lineWidth = lw;
+    ctx.strokeRect(x0 + lw/2, y0 + lw/2, x1 - x0 - lw, y1 - y0 - lw);
+    ctx.restore();
+
+    /* 悬停高亮 */
+    if (n.id === B.hover){
+      ctx.save();
+      ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 3;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.restore();
+    }
+  }
+
+  /* --- 当前节点：最长轴指示 --- */
+  if (current){
+    const b = current.box;
+    ctx.save();
+    ctx.strokeStyle = depthColor(current.depth, 1);
+    ctx.lineWidth = 3;
+    if (current.axis === 0){
+      const y = view.Y(b.min[1]) - 11;
+      ctx.beginPath(); ctx.moveTo(view.X(b.min[0]), y); ctx.lineTo(view.X(b.max[0]), y); ctx.stroke();
+    } else {
+      const x = view.X(b.max[0]) + 11;
+      ctx.beginPath(); ctx.moveTo(x, view.Y(b.min[1])); ctx.lineTo(x, view.Y(b.max[1])); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* --- HUD --- */
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,.86)';
+  ctx.strokeStyle = '#e4e9f0';
+  ctx.beginPath(); ctx.roundRect(12, 12, 236, 62, 9); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#66727f'; ctx.font = '600 11px ui-monospace, monospace';
+  ctx.fillText('已揭示节点', 24, 32);
+  ctx.fillStyle = '#2563eb'; ctx.font = '700 21px ui-monospace, monospace';
+  ctx.fillText(`${Math.max(0,upto)} / ${B.bvh.count}`, 24, 55);
+  const barW = 200 * (B.bvh.count ? upto / B.bvh.count : 0);
+  ctx.fillStyle = '#eef2f7'; ctx.fillRect(24, 63, 200, 4);
+  ctx.fillStyle = '#2563eb'; ctx.fillRect(24, 63, barW, 4);
+  ctx.restore();
+}
+
+/* --- 冰柱图 --- */
+function drawTree(){
+  const { ctx, w, h } = fitCanvas(cvTree);
+  const bv = B.bvh;
+  ctx.clearRect(0, 0, w, h);
+
+  const padL = 52, padR = 16, padT = 20, padB = 18;
+  const leaves = bv.leafCount;
+  const rowH = (h - padT - padB) / (bv.maxDepth + 1);
+  const perLeaf = (w - padL - padR) / leaves;
+
+  const rectOf = n => {
+    const x = padL + n.x0 * perLeaf;
+    const ww = Math.max(1, (n.x1 - n.x0 + 1) * perLeaf - 1);
+    const y = padT + n.depth * rowH;
+    return { x, y, w: ww, h: Math.max(3, rowH - 3) };
+  };
+
+  /* 深度标尺 */
+  ctx.font = '10px ui-monospace, monospace';
+  for (let d = 0; d <= bv.maxDepth; d++){
+    const y = padT + d * rowH + rowH / 2;
+    ctx.fillStyle = '#93a0ad';
+    ctx.fillText(String(d), 26, y + 3);
+    ctx.strokeStyle = '#f1f4f8'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+  }
+  ctx.fillStyle = '#b6c0cc'; ctx.fillText('节点层', 8, padT - 6);
+
+  const upto = Math.floor(B.prog);
+  for (const n of bv.nodes){
+    const hidden = n.id >= upto;
+    const r = rectOf(n);
+    ctx.globalAlpha = hidden ? 0.16 : 1;
+    ctx.fillStyle = depthFill(n.depth, 0.86);
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    if (n.id === B.hover){
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#dc2626'; ctx.lineWidth = 1.8;
+      ctx.strokeRect(r.x - .5, r.y - .5, r.w + 1, r.h + 1);
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  cvTree._rects = bv.nodes.map(n => ({ id: n.id, ...rectOf(n) }));
+  cvTree._layout = { padL, padR, padT, padB, perLeaf, rowH };
+
+  ctx.fillStyle = '#93a0ad'; ctx.font = '10px ui-monospace, monospace';
+  ctx.fillText(`根（${bv.totalObjects} 个物体）`, padL, h - 6);
+}
+
+let hoverRaf = 0;
+cvTree.addEventListener('mousemove', e => {
+  const r = cvTree.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  let found = -1;
+  if (cvTree._rects){
+    const upto = Math.floor(B.prog);
+    /* 从深到浅找（深的画在上面） */
+    for (let i = cvTree._rects.length - 1; i >= 0; i--){
+      const q = cvTree._rects[i];
+      if (q.id >= upto) continue;
+      if (mx >= q.x && mx <= q.x + q.w && my >= q.y && my <= q.y + q.h){ found = q.id; break; }
+    }
+  }
+  if (found !== B.hover){
+    B.hover = found;
+    if (!hoverRaf) hoverRaf = requestAnimationFrame(() => { hoverRaf = 0; drawBuild(); drawTree(); });
+  }
+  cvTree.style.cursor = found >= 0 ? 'pointer' : 'default';
+});
+cvTree.addEventListener('mouseleave', () => { B.hover = -1; drawBuild(); drawTree(); });
+cvTree.addEventListener('click', () => {
+  if (B.hover >= 0){ B.prog = B.hover + 1; syncProgressUI(); updateNarration(); drawBuild(); drawTree(); }
+});
+
+/* --- 播放循环 --- */
+function loop(t){
+  if (B.playing){
+    const dt = Math.min(0.1, (t - B.lastT) / 1000);
+    const total = B.bvh.count;
+    B.prog += B.speed * dt * Math.max(1, total / 500);
+    if (B.prog >= total){
+      B.prog = total; B.playing = false;
+      $('#btnPlay').textContent = '▶ 重新播放';
+    }
+    syncProgressUI(); updateNarration(); drawBuild(); drawTree();
+  }
+  B.lastT = t;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* --- 控件 --- */
+$('#btnPlay').addEventListener('click', () => {
+  if (B.prog >= B.bvh.count) B.prog = 0;
+  B.playing = !B.playing;
+  $('#btnPlay').textContent = B.playing ? '❚❚ 暂停' : '▶ 继续播放';
+});
+$('#btnStep').addEventListener('click', () => {
+  B.playing = false; $('#btnPlay').textContent = '▶ 继续播放';
+  B.prog = Math.min(B.bvh.count, Math.floor(B.prog) + 1);
+  syncProgressUI(); updateNarration(); drawBuild(); drawTree();
+});
+$('#btnAll').addEventListener('click', () => {
+  B.playing = false; $('#btnPlay').textContent = '▶ 重新播放';
+  B.prog = B.bvh.count;
+  syncProgressUI(); updateNarration(); drawBuild(); drawTree();
+});
+$('#btnReset').addEventListener('click', () => {
+  B.playing = false; $('#btnPlay').textContent = '▶ 播放建树';
+  B.prog = 0; syncProgressUI(); updateNarration(); drawBuild(); drawTree();
+});
+$('#rngProg').addEventListener('input', e => {
+  B.playing = false; $('#btnPlay').textContent = '▶ 继续播放';
+  B.prog = +e.target.value / 1000 * B.bvh.count;
+  $('#lblProg').textContent = `${Math.round(B.prog)}/${B.bvh.count}`;
+  updateNarration(); drawBuild(); drawTree();
+});
+$('#rngSpeed').addEventListener('input', e => {
+  B.speed = +e.target.value; $('#lblSpeed').textContent = B.speed + '/s';
+});
+$('#selScene').addEventListener('change', e => { B.scene = e.target.value; rebuild(); });
+$('#selAxis').addEventListener('change', e => {
+  B.axis = e.target.value === 'longest' ? 'longest' : +e.target.value; rebuild();
+});
+$('#selLeaf').addEventListener('change', e => { B.maxLeaf = +e.target.value; rebuild(); });
+
+if (!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect = function(x,y,w,h,r){
+    this.moveTo(x+r,y); this.arcTo(x+w,y,x+w,y+h,r); this.arcTo(x+w,y+h,x,y+h,r);
+    this.arcTo(x,y+h,x,y,r); this.arcTo(x,y,x+w,y,r); this.closePath(); return this;
+  };
+}
+
+/* ==================================================================
+   5 · Tab 2 —— 求交遍历
+   ================================================================== */
+const cvTrace = $('#cvTrace');
+const T = {
+  objects: [], bvh: null,
+  ax: -13, az: 2.0, bx: 13, bz: 2.0,
+  dragging: false, dragStart: null,
+  mode: 'bvh',             // 'naive' | 'bvh'
+  events: [], prog: 0, playing: false, speed: 130, lastT: 0,
+  vw: 0, vh: 0, view: null
+};
+const TRACE_TIME_NAIVE = 3.4;   // ns / 次球体求交（Day 9 实测）
+const TRACE_TIME_BVH   = 18.7;  // ns / 次节点访问（Day 9 实测）
+
+const RAY_PRESETS = [
+  [-14, 11.5,  10, -11],    // 斜穿球阵：走一段长路才命中，遍历事件最多
+  [-17,  2.0,  13,   2.0],  // 横切球阵
+  [-14, 12.2,  14,  12.2]   // 打空：整条光线在根盒子外 → 1 次盒子测试就排除全场
+];
+
+function initTrace(){
+  T.objects = SCENES.grid();
+  T.bvh = buildBVH(T.objects, { axis: 'longest', maxLeaf: 2 });
+  setPreset(0);
+  recalcRay();
+  drawTrace();
+}
+
+function setPreset(i){
+  const p = RAY_PRESETS[i];
+  T.ax = p[0]; T.az = p[1]; T.bx = p[2]; T.bz = p[3];
+  document.querySelectorAll('[data-ray]').forEach(b => b.classList.toggle('on', +b.dataset.ray === i));
+}
+
+function rayParams(){
+  const dx = T.bx - T.ax, dz = T.bz - T.az;
+  const len = Math.hypot(dx, dz) || 1e-9;
+  return { ro: [T.ax, T.az], rd: [dx/len, dz/len], tmin: 0.001, tmax: len, len };
+}
+
+function recalcRay(){
+  const { ro, rd, tmin, tmax } = rayParams();
+  const bvhR  = traceBVH(T.bvh, T.objects, ro, rd, tmin, tmax);
+  const naiveR = traceNaive(T.objects, ro, rd, tmin, tmax);
+  T.cur = { bvhR, naiveR };
+  T.events = T.mode === 'bvh' ? bvhR.events : naiveR.events;
+  T.prog = T.events.length;
+  T.playing = false;
+  lastTraceEvt = -2;
+  updateRayInfo();
+}
+
+function costOf(res){
+  return T.mode === 'bvh'
+    ? (res.sphereTests + res.boxTests) * TRACE_TIME_BVH
+    : res.sphereTests * TRACE_TIME_NAIVE;
+}
+function costOfMode(res, mode){
+  return mode === 'bvh'
+    ? (res.sphereTests + res.boxTests) * TRACE_TIME_BVH
+    : res.sphereTests * TRACE_TIME_NAIVE;
+}
+
+function updateRayInfo(){
+  const { len } = rayParams();
+  const r = T.cur.bvhR.hit;
+  $('#rayInfo').innerHTML = r
+    ? `长度 ${fmt(len,1)} · 首个交点 t = <b style="color:var(--green)">${fmt(r.t,3)}</b> · 物体 #${r.oid}`
+    : `长度 ${fmt(len,1)} · <span style="color:var(--muted)">未命中任何物体</span>`;
+  updateCmpBoxes();
+}
+
+function updateCmpBoxes(){
+  const n = T.cur.naiveR, b = T.cur.bvhR;
+  const tn = n.sphereTests * TRACE_TIME_NAIVE;
+  const tb = (b.sphereTests + b.boxTests) * TRACE_TIME_BVH;
+  const winner = tb < tn ? 'bvh' : 'naive';
+  const ratio = winner === 'bvh' ? tn / tb : tb / tn;
+
+  const box = (cls, title, pill, res, time, mode) => `
+    <div class="box ${cls}">
+      <div class="ttl">${title}<span class="pill ${mode==='bvh'?'g':'r'}">${pill}</span></div>
+      <div class="r"><span>球体求交</span><b>${res.sphereTests}</b></div>
+      <div class="r"><span>盒子测试</span><b>${res.boxTests}</b></div>
+      <div class="r"><span>总测试</span><b>${res.sphereTests + res.boxTests}</b></div>
+      <div class="r"><span>估算耗时</span><b style="color:${mode==='bvh'?'var(--green)':'var(--red)'}">${fmt(time,0)} ns</b></div>
+    </div>`;
+
+  $('#cmpBoxes').innerHTML =
+    box(winner==='naive'?'win':'lose', '朴素遍历', 'O(N)', n, tn, 'naive') +
+    box(winner==='bvh'?'win':'lose', 'BVH',
+        winner==='bvh' ? `${fmt(ratio,2)}× 更快` : '开销大于收益', b, tb, 'bvh');
+}
+
+function drawTrace(){
+  const { ctx, w, h } = fitCanvas(cvTrace);
+  T.vw = w; T.vh = h;
+  const view = T.view = makeView(w, h);
+  ctx.clearRect(0, 0, w, h);
+
+  /* 背景网格 */
+  drawGrid(ctx, view, w, h);
+
+  const st = T.mode === 'bvh'
+    ? traceState(T.events, T.prog)
+    : { boxes: new Map(), spheres: new Map(), skippedRoots: new Set(), hitPoint: null };
+
+  if (T.mode === 'naive'){
+    for (let i = 0; i < Math.min(T.prog, T.events.length); i++){
+      const e = T.events[i];
+      if (e.t === 'sph') st.spheres.set(e.oid, e.hit);
+    }
+    if (T.prog >= T.events.length && T.cur.naiveR.hit){
+      st.hitPoint = { oid: T.cur.naiveR.hit.oid, tt: T.cur.naiveR.hit.t };
+    }
+  }
+
+  /* --- 被剪枝的子树：淡灰罩 + ✕ 标记 --- */
+  const pruned = [];
+  if (T.mode === 'bvh'){
+    ctx.save();
+    for (const id of st.skippedRoots){
+      const n = T.bvh.nodes[id];
+      if (id === T.bvh.rootId) continue;
+      const x0 = view.X(n.box.min[0]), y0 = view.Y(n.box.min[1]);
+      const x1 = view.X(n.box.max[0]), y1 = view.Y(n.box.max[1]);
+      ctx.fillStyle = 'rgba(100,116,139,.06)';
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+      if (x1 - x0 > 26 && y1 - y0 > 26) pruned.push([x0, y0, x1, y1]);
+    }
+    ctx.restore();
+  }
+
+  /* --- 盒子 --- */
+  if (T.mode === 'bvh'){
+    const entries = [...st.boxes.entries()].sort((a,b) => T.bvh.nodes[a[0]].depth - T.bvh.nodes[b[0]].depth);
+    for (const [id, kind] of entries){
+      const n = T.bvh.nodes[id];
+      const x0 = view.X(n.box.min[0]), y0 = view.Y(n.box.min[1]);
+      const x1 = view.X(n.box.max[0]), y1 = view.Y(n.box.max[1]);
+      ctx.lineWidth = kind === 'miss' ? 1.4 : 2;
+      ctx.strokeStyle = kind === 'miss' ? 'rgba(220,38,38,.62)' : 'rgba(5,150,105,.85)';
+      if (kind === 'miss') ctx.setLineDash([5, 4]);
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+      ctx.setLineDash([]);
+    }
+  }
+
+  /* --- 物体 --- */
+  for (const o of T.objects){
+    const sx = view.X(o.x), sy = view.Y(o.z), sr = o.r * view.s;
+    const tested = st.spheres.has(o.id);
+    const hit = st.spheres.get(o.id);
+    let fill = '#eef1f6', stroke = '#dbe2ea';
+    if (o.kind === 'glass'){ fill = '#cfeafd'; stroke = '#7cc6f0'; }
+    else if (o.kind === 'metal'){ fill = '#dde3ea'; stroke = '#aab6c4'; }
+    else { fill = '#f7e2cd'; stroke = '#e0bb95'; }
+
+    if (tested){
+      ctx.save();
+      ctx.beginPath(); ctx.arc(sx, sy, Math.max(sr,1.4), 0, 6.2832);
+      ctx.fillStyle = hit ? 'rgba(5,150,105,.30)' : 'rgba(220,38,38,.18)';
+      ctx.fill();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = hit ? '#059669' : '#dc2626';
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.beginPath(); ctx.arc(sx, sy, Math.max(sr,1.2), 0, 6.2832);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.lineWidth = 1; ctx.strokeStyle = stroke; ctx.stroke();
+    }
+  }
+
+  /* --- 剪枝标记 ✕（画在物体之上，表示"这一整片都没查"） --- */
+  if (pruned.length){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,116,139,.42)';
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    for (const [x0, y0, x1, y1] of pruned.slice(0, 60)){
+      const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+      const h = Math.min(9, (x1 - x0) * 0.16, (y1 - y0) * 0.16);
+      ctx.beginPath();
+      ctx.moveTo(mx - h, my - h); ctx.lineTo(mx + h, my + h);
+      ctx.moveTo(mx + h, my - h); ctx.lineTo(mx - h, my + h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* --- 光线 --- */
+  const { ro, rd, len } = rayParams();
+  const ex = T.ax + rd[0]*len, ez = T.az + rd[1]*len;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(217,119,6,.85)';
+  ctx.lineWidth = 2; ctx.setLineDash([8, 5]);
+  ctx.beginPath(); ctx.moveTo(view.X(T.ax), view.Y(T.az)); ctx.lineTo(view.X(ex), view.Y(ez)); ctx.stroke();
+  ctx.setLineDash([]);
+  /* 箭头 */
+  const ang = Math.atan2(rd[1], rd[0]);
+  const hx = view.X(ex), hy = view.Y(ez);
+  ctx.fillStyle = '#d97706';
+  ctx.beginPath();
+  ctx.moveTo(hx, hy);
+  ctx.lineTo(hx - 11*Math.cos(ang-0.36), hy - 11*Math.sin(ang-0.36));
+  ctx.lineTo(hx - 11*Math.cos(ang+0.36), hy - 11*Math.sin(ang+0.36));
+  ctx.closePath(); ctx.fill();
+  /* 起点 */
+  ctx.beginPath(); ctx.arc(view.X(T.ax), view.Y(T.az), 4.5, 0, 6.2832);
+  ctx.fillStyle = '#d97706'; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.restore();
+
+  /* --- 命中点 --- */
+  if (st.hitPoint){
+    const o = T.objects[st.hitPoint.oid];
+    const t = st.hitPoint.tt !== undefined ? st.hitPoint.tt : st.hitPoint.t;
+    const px = T.ax + rd[0]*t, pz = T.az + rd[1]*t;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(view.X(px), view.Y(pz), 7, 0, 6.2832);
+    ctx.fillStyle = '#059669'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.stroke();
+    ctx.restore();
+  }
+
+  /* --- HUD --- */
+  const nDone = Math.min(Math.floor(T.prog), T.events.length);
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.strokeStyle = '#e4e9f0';
+  ctx.beginPath(); ctx.roundRect(12, 12, 250, 46, 9); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#66727f'; ctx.font = '600 11px ui-monospace, monospace';
+  ctx.fillText(T.mode === 'bvh' ? 'BVH 遍历事件' : '朴素遍历事件', 24, 32);
+  ctx.fillStyle = T.mode === 'bvh' ? '#059669' : '#dc2626';
+  ctx.font = '700 19px ui-monospace, monospace';
+  ctx.fillText(`${nDone} / ${T.events.length}`, 24, 53);
+  ctx.restore();
+
+  /* 源码联动 */
+  if (document.getElementById('tab-trace').classList.contains('active')) syncTraceCode();
+}
+
+/* 遍历事件 → 源码行。所有行号都是仓库文件里的真实行号 */
+const EVT_META = {
+  box:     { label: '① 先试包围盒',            tip: '没中就 return false，整棵子树被跳过' },
+  sph:     { label: '② 叶子：球体精确求交',     tip: '只有盒子中了才会走到这一步' },
+  tighten: { label: '③ t_max 收紧',            tip: '左边命中了，右边只找更近的' },
+  hit:     { label: '④ 提交最近命中',           tip: 'rec.t 就是这次的命中距离' }
+};
+
+let lastTraceEvt = -2;
+function syncTraceCode(force){
+  const i = Math.min(Math.floor(T.prog), T.events.length);
+  if (!force && i === lastTraceEvt) return;
+  lastTraceEvt = i;
+
+  const vHit = codeViews.codeHit, vSph = codeViews.codeSphere, vAb = codeViews.codeAabb;
+  if (!vHit) return;
+  const ev = i > 0 ? T.events[i - 1] : null;
+
+  const setTags = (a, b, c) => {
+    $('#evtTag1').innerHTML = a || '—';
+    $('#evtTag2').innerHTML = b || '—';
+    $('#evtTag3').innerHTML = c || '—';
+  };
+
+  if (!ev){
+    vHit.paint([]); vSph.paint([]); vAb.paint([]);
+    setTags(null, null, null);
+    return;
+  }
+
+  if (ev.t === 'box'){
+    vHit.paint([{ from: 122, to: 123, cls: 'hl' }, { from: 127, to: 127, cls: 'hl', strong: true }]);
+    vAb.paint([{ from: 83, to: 83, cls: 'hl' },
+               { from: 91, to: 91, cls: 'hl' },
+               { from: 114, to: 115, cls: 'hl' },
+               { from: 121, to: 121, cls: 'hl', strong: true }]);
+    vSph.paint([]);
+    setTags(`<span style="color:var(--amber)">${ev.hit ? '盒子命中 → 继续往下' : '盒子没中 → 跳过整棵子树'}</span>`,
+            null,
+            `${ev.hit ? '命中' : '未命中'} · slab method 三轴取交集`);
+    return;
+  }
+
+  if (ev.t === 'sph' || ev.t === 'hit'){
+    vHit.paint([{ from: 129, to: 130, cls: 'hl' },
+                { from: ev.t === 'hit' ? 145 : 130, to: ev.t === 'hit' ? 145 : 130,
+                  cls: 'hl', strong: true }]);
+    vAb.paint([]);
+    vSph.paint([{ from: 21, to: 22, cls: 'hl' },
+                { from: 28, to: 29, cls: 'hl' },
+                { from: 35, to: 39, cls: 'hl', strong: true },
+                { from: 41, to: 45, cls: 'hl' }]);
+    setTags(ev.t === 'hit' ? '这条光线在叶子里找到了更近的交点' : (T.mode === 'naive' ? '朴素遍历：不测盒子，挨个问 480 个球' : null),
+            ev.t === 'hit' ? `${EVT_META.hit.tip}` : (ev.hit ? '判别式 ≥ 0，取到有效根' : '判别式 < 0，光线掠过球外'),
+            null);
+    return;
+  }
+
+  if (ev.t === 'tighten'){
+    vHit.paint([{ from: 132, to: 142, cls: 'hl' },
+                { from: 143, to: 143, cls: 'hl', strong: true }]);
+    vSph.paint([]); vAb.paint([]);
+    setTags(ev.after < ev.before
+      ? `<span style="color:var(--green)">t_max 收紧：${fmt(ev.before,2)} → ${fmt(ev.after,2)}</span>`
+      : '左边没命中，t_max 保持原样', null, null);
+  }
+}
+
+/* 回放 */
+function traceLoop(t){
+  if (T.playing){
+    const dt = Math.min(0.1, (t - T.lastT) / 1000);
+    T.prog += T.speed * dt;
+    if (T.prog >= T.events.length){ T.prog = T.events.length; T.playing = false;
+      $('#btnReplay').textContent = '▶ 重新回放'; }
+    drawTrace();
+  }
+  T.lastT = t;
+  requestAnimationFrame(traceLoop);
+}
+requestAnimationFrame(traceLoop);
+
+/* 交互 */
+function canvasPos(e){
+  const r = cvTrace.getBoundingClientRect();
+  return [e.clientX - r.left, e.clientY - r.top];
+}
+cvTrace.addEventListener('mousedown', e => {
+  const [px, py] = canvasPos(e);
+  const [wx, wz] = T.view.inv(px, py);
+  T.dragging = true; T.ax = wx; T.az = wz; T.bx = wx; T.bz = wz;
+  document.querySelectorAll('[data-ray]').forEach(b => b.classList.remove('on'));
+  recalcRay(); drawTrace();
+});
+cvTrace.addEventListener('mousemove', e => {
+  if (!T.dragging) return;
+  const [px, py] = canvasPos(e);
+  const [wx, wz] = T.view.inv(px, py);
+  T.bx = wx; T.bz = wz;
+  recalcRay(); drawTrace();
+});
+window.addEventListener('mouseup', () => {
+  if (!T.dragging) return;
+  T.dragging = false;
+  if (Math.hypot(T.bx - T.ax, T.bz - T.az) < 0.8){ setPreset(0); }
+  recalcRay(); drawTrace();
+});
+
+document.querySelectorAll('[data-ray]').forEach(b => {
+  b.addEventListener('click', () => { setPreset(+b.dataset.ray); recalcRay(); drawTrace(); });
+});
+
+$('#btnReplay').addEventListener('click', () => {
+  if (T.prog >= T.events.length) T.prog = 0;
+  T.playing = !T.playing;
+  $('#btnReplay').textContent = T.playing ? '❚❚ 暂停' : '▶ 继续回放';
+});
+function setMode(m){
+  T.mode = m;
+  $('#btnRayNaive').classList.toggle('primary', m === 'naive');
+  $('#btnRayBvh').classList.toggle('primary', m === 'bvh');
+  T.events = m === 'bvh' ? T.cur.bvhR.events : T.cur.naiveR.events;
+  T.prog = T.events.length; T.playing = false;
+  lastTraceEvt = -2;
+  $('#btnReplay').textContent = '▶ 回放遍历过程';
+  updateCmpBoxes(); syncTraceCode(true); drawTrace();
+}
+$('#btnRayNaive').addEventListener('click', () => setMode('naive'));
+$('#btnRayBvh').addEventListener('click', () => setMode('bvh'));
+$('#rngTraceSpeed').addEventListener('input', e => {
+  T.speed = +e.target.value; $('#lblTraceSpeed').textContent = T.speed + '/s';
+});
+
+/* 批量实验 */
+$('#btnBatch').addEventListener('click', () => {
+  const rr = mulberry32(31337);
+  let sN = 0, sB = 0, sBox = 0, missN = 0;
+  const K = 2000;
+  for (let i = 0; i < K; i++){
+    const az = -12.5 + 25 * rr(), bz = -12.5 + 25 * rr();
+    const ax = -13, bx = 13;
+    const dx = bx - ax, dz = bz - az;
+    const len = Math.hypot(dx, dz) || 1;
+    const ro = [ax, az], rd = [dx/len, dz/len];
+    const n = traceNaive(T.objects, ro, rd, 0.001, len);
+    const b = traceBVH(T.bvh, T.objects, ro, rd, 0.001, len);
+    sN += n.sphereTests; sB += b.sphereTests; sBox += b.boxTests;
+    if (!n.hit) missN++;
+  }
+  const aN = sN / K, aB = sB / K, aBox = sBox / K;
+  const tN = aN * TRACE_TIME_NAIVE, tB = (aB + aBox) * TRACE_TIME_BVH;
+  const out = $('#batchOut');
+  out.style.display = 'block';
+  out.innerHTML = `
+    <div class="stats">
+      <div class="stat"><span class="k">平均球体求交 · 朴素</span><span class="v red" style="font-size:15px">${fmt(aN,1)}</span></div>
+      <div class="stat"><span class="k">平均球体求交 · BVH</span><span class="v green" style="font-size:15px">${fmt(aB,2)}</span></div>
+      <div class="stat"><span class="k">平均盒子测试 · BVH</span><span class="v blue" style="font-size:15px">${fmt(aBox,1)}</span></div>
+      <div class="stat"><span class="k">未命中比例</span><span class="v sm">${fmt(missN/K*100,0)}%</span></div>
+      <div class="stat"><span class="k">估算耗时 · 朴素</span><span class="v sm">${fmt(tN,0)} ns</span></div>
+      <div class="stat"><span class="k">估算耗时 · BVH</span><span class="v sm ${tB<tN?'green':'amber'}">${fmt(tB,0)} ns</span></div>
+    </div>
+    <div class="note blue" style="font-size:12.2px">
+      ${K} 条随机光线平均：球体求交 ${fmt(aN,1)} → <b>${fmt(aB,2)}</b>（少 ${fmt(aN/Math.max(aB,0.01),1)} 倍）。
+      每帧耗时估算 <b>${fmt(tN,0)} ns → ${fmt(tB,0)} ns</b>，加速 <b>${fmt(tN/Math.max(tB,1),2)}×</b>。
+      <br><span style="color:var(--faint)">这里的加速比和 Day 9 实测的 2.23× 有出入，是因为随机光线的分布
+      （起点均匀 + 方向各向同性）和真实相机射线不同 —— 换一组光线，加速比就变了。</span>
+    </div>`;
+});
+
+/* ==================================================================
+   6 · Tab 3 —— 性能
+   ================================================================== */
+function renderPerfBars(){
+  const rowsTime = [
+    { lb:'朴素遍历', v:13.16, max:13.16, c:'linear-gradient(90deg,#f87171,#dc2626)', col:'#dc2626', txt:'13.16 s' },
+    { lb:'BVH', v:5.89, max:13.16, c:'linear-gradient(90deg,#4ade80,#059669)', col:'#059669', txt:'5.89 s' }
+  ];
+  $('#barsTime').innerHTML = rowsTime.map(r => `
+    <div class="bar">
+      <span class="lb">${r.lb}</span>
+      <div class="tr"><div class="fl" style="width:${r.v/r.max*100}%;background:${r.c}"></div></div>
+      <span class="vl" style="color:${r.col}">${r.txt}</span>
+    </div>`).join('') +
+    `<div style="font-size:12.5px;color:var(--muted);margin-top:2px">
+       实测加速 <b style="color:var(--green)">2.23×</b> —— 而立项时的预期是 <b style="color:var(--red)">50×</b>（13 s → 0.3 s）
+     </div>`;
+
+  const rowsCount = [
+    { lb:'朴素 · 球体求交', v:481, max:481, c:'linear-gradient(90deg,#f87171,#dc2626)', col:'#dc2626', txt:'481' },
+    { lb:'BVH · 球体求交', v:4.71, max:481, c:'linear-gradient(90deg,#4ade80,#059669)', col:'#059669', txt:'4.71' },
+    { lb:'BVH · 盒子测试', v:40.74, max:481, c:'linear-gradient(90deg,#60a5fa,#2563eb)', col:'#2563eb', txt:'40.74' },
+    { lb:'BVH · 总测试', v:45.4, max:481, c:'linear-gradient(90deg,#fbbf24,#d97706)', col:'#d97706', txt:'45.4' }
+  ];
+  $('#barsCount').innerHTML = rowsCount.map(r => `
+    <div class="bar">
+      <span class="lb">${r.lb}</span>
+      <div class="tr"><div class="fl" style="width:${Math.max(1.6, r.v/r.max*100)}%;background:${r.c}"></div></div>
+      <span class="vl" style="color:${r.col}">${r.txt}</span>
+    </div>`).join('') +
+    `<div style="font-size:12.5px;color:var(--muted);margin-top:2px">
+       球体求交少 <b style="color:var(--green)">102×</b>，总测试少 <b style="color:var(--green)">10.6×</b>
+     </div>`;
+}
+
+/* 复杂度曲线：以 devlog 实测锚点拟合的趋势模型 */
+const modelNaive = N => N * 0.0274;                        // 秒（13.16 s @ N=481）
+const modelBVH   = N => 2.29 + 0.404 * Math.log2(N);       // 秒（5.89 @ 481 / ~7 @ 5000 / ~9 @ 100000）
+
+const cvCurve = $('#cvCurve');
+function drawCurve(){
+  const { ctx, w, h } = fitCanvas(cvCurve);
+  ctx.clearRect(0, 0, w, h);
+
+  const padL = 52, padR = 26, padT = 24, padB = 30;
+  const LOG4 = Math.log10(4);
+  const TMIN = 0.05, TMAXC = 4000;
+  const Ns = [];
+  for (let e = LOG4; e <= 5.0001; e += 0.02) Ns.push(Math.pow(10, e));
+
+  const vx = N => padL + (Math.log10(N) - LOG4) / (5 - LOG4) * (w - padL - padR);
+  const vy = t => {
+    const v = (Math.log10(Math.max(t, TMIN)) - Math.log10(TMIN)) / (Math.log10(TMAXC) - Math.log10(TMIN));
+    return h - padB - Math.min(1, Math.max(0, v)) * (h - padT - padB);
+  };
+
+  /* 网格：纵向对数刻度，横向 N 对数刻度 */
+  ctx.font = '10px ui-monospace, monospace';
+  ctx.strokeStyle = '#eef2f7'; ctx.lineWidth = 1;
+  [0.1, 1, 10, 100, 1000].forEach(s => {
+    const y = vy(s);
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    ctx.fillStyle = '#b6c0cc'; ctx.textAlign = 'right';
+    ctx.fillText(s < 1 ? s + 's' : s + 's', padL - 7, y + 3.5);
+    ctx.textAlign = 'left';
+  });
+  [4, 10, 100, 1000, 10000, 100000].forEach(n => {
+    ctx.beginPath(); ctx.moveTo(vx(n), padT); ctx.lineTo(vx(n), h - padB); ctx.stroke();
+    ctx.fillStyle = '#b6c0cc';
+    const lb = n >= 1000 ? (n / 1000) + 'k' : String(n);
+    ctx.textAlign = 'center';
+    ctx.fillText(lb, vx(n), h - padB + 15);
+    ctx.textAlign = 'left';
+  });
+  ctx.fillStyle = '#93a0ad';
+  ctx.fillText('物体数 N（对数）', padL, h - 6);
+  ctx.save(); ctx.translate(12, (padT + h - padB) / 2); ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.fillText('渲染耗时（对数）', 0, 0);
+  ctx.restore(); ctx.textAlign = 'left';
+
+  /* 当前 N */
+  const N = Math.round(Math.pow(10, LOG4 + (+$('#rngN').value) / 1000 * (5 - LOG4)));
+
+  const drawLine = (fn, color, label, labelAbove) => {
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    Ns.forEach((n, i) => {
+      const x = vx(n), y = vy(fn(n));
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.stroke(); ctx.restore();
+
+    const lx = vx(1e5), ly = vy(fn(1e5));
+    ctx.beginPath(); ctx.arc(lx, ly, 4.5, 0, 6.2832);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '700 11.5px ui-monospace, monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(label, lx - 8, ly + (labelAbove ? -9 : 15));
+    ctx.textAlign = 'left';
+  };
+
+  drawLine(modelNaive, '#dc2626', '朴素 O(N)', false);
+  drawLine(modelBVH, '#059669', 'BVH O(log N)', true);
+
+  /* 当前 N 竖线 */
+  ctx.save();
+  ctx.strokeStyle = 'rgba(37,99,235,.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(vx(N), padT); ctx.lineTo(vx(N), h - padB); ctx.stroke();
+  ctx.restore();
+
+  /* 交叉点 */
+  let cross = 4;
+  for (let n = 4; n < 1e5; n *= 1.008){ if (modelBVH(n) < modelNaive(n)){ cross = n; break; } }
+  const cx = vx(cross), cy = vy(modelNaive(cross));
+  ctx.beginPath(); ctx.arc(cx, cy, 5.5, 0, 6.2832);
+  ctx.fillStyle = '#d97706'; ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#b45309'; ctx.font = '700 11px ui-monospace, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`盈亏平衡 N ≈ ${Math.round(cross)}`, cx - 10, cy - 11);
+  ctx.textAlign = 'left';
+
+  /* 更新下方对比 */
+  const tN = modelNaive(N), tB = modelBVH(N);
+  const winnerB = tB < tN;
+  const ratio = winnerB ? tN / tB : tB / tN;
+  $('#lblN').textContent = fmtInt(N);
+  $('#cmpN').innerHTML = `
+    <div class="box ${winnerB ? 'lose' : 'win'}">
+      <div class="ttl">朴素遍历 <span class="pill ${winnerB?'r':'g'}">${winnerB?'较慢':'更快'}</span></div>
+      <div class="r"><span>每次求交成本</span><b>3.4 ns</b></div>
+      <div class="r"><span>每光线测试</span><b>${fmtInt(N)} 次</b></div>
+      <div class="r"><span>估算总耗时</span><b style="color:#dc2626">${tN > 1000 ? fmt(tN/60,1)+' 分' : fmt(tN,2)+' s'}</b></div>
+    </div>
+    <div class="box ${winnerB ? 'win' : 'lose'}">
+      <div class="ttl">BVH <span class="pill ${winnerB?'g':'r'}">${winnerB? fmt(ratio,2)+'× 更快' : '开销大于收益'}</span></div>
+      <div class="r"><span>每次节点访问</span><b>18.7 ns</b></div>
+      <div class="r"><span>每光线测试</span><b>≈ ${fmtInt(2*Math.ceil(Math.log2(N)) + 5)} 次</b></div>
+      <div class="r"><span>估算总耗时</span><b style="color:${winnerB?'#059669':'#dc2626'}">${tB > 1000 ? fmt(tB/60,1)+' 分' : fmt(tB,2)+' s'}</b></div>
+    </div>`;
+}
+$('#rngN').addEventListener('input', drawCurve);
+
+/* ==================================================================
+   6.5 · Tab 4 —— 源码对照
+   ================================================================== */
+const SRC_NOTES = {
+  'bvh.h': [
+    { h:'递归建树四步', ref:'48–111', n:'① 并集求包围盒 ② 选最长轴 ③ 沿轴排序 ④ 对半分递归。叶子条件写在前面：span==1 和 span==2 直接挂上球，不再往下分。', jump:[51,111], go:{tab:'build', label:'▶ 看建树动画'} },
+    { h:'为什么必须用"并集"', ref:'51–64', n:'盒子要包住<b>所有</b>物体，才能保证"没打中盒子 ⟹ 没打中任何一个物体"。随手挑一个物体的盒子就会漏掉其他物体 → 不保守 → 画面出现空洞。', jump:[51,64] },
+    { h:'为什么切最长的那条轴', ref:'66–68', n:'物体在那一维上分布最散，切完两半分得最开 → 两个子盒子缩得最快 → 树更矮 → 排除更有效。切最短的轴等于白切。', jump:[66,68], go:{tab:'build', label:'▶ 换成"固定 x 轴"试试'}},
+    { h:'lambda 捕获 axis', ref:'70–79', n:'<code>std::sort</code> 只吃"收两个参数"的比较器，但还要知道按哪个轴排 —— 所以用 <code>[axis]</code> 把它复制进来。', jump:[70,79] },
+    { h:'hit() 的全部速度来源', ref:'122–146', n:'先试自己这个大盒子：没中就把<b>整棵子树</b>跳过（可能省掉几百个物体）。中了才往下走。', jump:[122,146], go:{tab:'trace', label:'▶ 看遍历剪枝'} },
+    { h:'★ t_max 收紧', ref:'143', n:'左子树在 t=3.2 命中，那么任何 t&gt;3.2 的交点都被左边挡住了。所以右子树只用在 <code>(t_min, 3.2)</code> 里找。<b>不改变最终胜者</b> —— 这正是"结果必须逐像素一致"的原因。', jump:[143,143], go:{tab:'trace', label:'▶ 看 t_max 收紧'} },
+    { h:'继承 Hittable = 零改动接入', ref:'33', n:'从外面看，"一棵 BVH 树"和"一个球"没有区别 —— 所以 main.cpp 里只把 <code>HittableList</code> 换成 <code>BVHNode</code>，其他一行都没改。', jump:[33,33] },
+    { h:'bounding_box() 直接返回缓存', ref:'152–155', n:'建树时算一次、求交时 O(1) 读。代价是数据冗余：只要树的成员被改动而 box 没同步，就会<b>不保守</b>。所以 BVH 树建好后必须是不可变的。', jump:[152,155] }
+  ],
+  'aabb.h': [
+    { h:'slab method 三步走', ref:'82–125', n:'盒子 = 三个"板"的交集。每个轴给出一段 [t0,t1]，三轴取交集：下界 = max(所有 t0)，上界 = min(所有 t1)，交集空就是没命中。', jump:[82,125], go:{tab:'trace', label:'▶ 看盒子测试'} },
+    { h:'★ 除零不用特判', ref:'91–101', n:'IEEE 754 里 <code>1.0/0.0 = +infinity</code>（不是崩溃），而 <code>(min−O)*inf</code> 的符号恰好自动给出"永远在板内"或"永远在板外"两种正确结果。所以什么都不用做。', jump:[91,101] },
+    { h:'方向分量为负时要交换', ref:'106–108', n:'方向为负时 t0/t1 的顺序会反过来，交换回来才是规范化区间 [t0 ≤ t1]。', jump:[106,108] },
+    { h:'除法优化（后来被实测打脸）', ref:'91 / ray.h:37–39', n:'原本每个轴都算一次 <code>1.0/D</code>，一次盒子测试 = 3 次除法。提前到 Ray 构造函数里预算后，<b>只快了 2.6%</b>。', jump:[88,92], go:{tab:'perf', label:'▶ 看这个假设怎么被推翻'} },
+    { h:'longest_axis()', ref:'138–145', n:'返回 0/1/2。它是<b>成员函数</b>而不是静态函数，所以必须写成 <code>total_box.longest_axis()</code> —— 今天踩过的坑。', jump:[138,145] },
+    { h:'surrounding() 是静态函数', ref:'48–58', n:'两个盒子合并成"刚好装下两者"的大盒。调用方式是 <code>AABB::surrounding(a,b)</code>，因为它不依赖任何对象。', jump:[48,58] }
+  ],
+  'hittable_list.h': [
+    { h:'组合模式：一堆物体也是"一个物体"', ref:'12 / 8–10', n:'<code>HittableList : public Hittable</code>。这就是六天后 BVH 能"零改动接入"的原因。', jump:[8,12] },
+    { h:'线性遍历 + closest 收紧', ref:'25–39', n:'把已找到的最近距离当作 t_max 传给下一个物体。这其实就是 BVH <code>t_max</code> 收紧的<b>单层版本</b>。', jump:[25,39] },
+    { h:'bounding_box 的并集循环', ref:'51–69', n:'第一个直接赋值，之后的求并集 —— BVH 建树第 1 步是一模一样的模式。', jump:[51,69] },
+    { h:'为什么 objects 是 public', ref:'71–75', n:'故意破坏封装：BVHNode 要拿这个数组去排序 + 对半分。RTIOW 也是这么做的。', jump:[71,75] }
+  ],
+  'sphere.h': [
+    { h:'二次方程求交', ref:'21–47', n:'把 P(t)=O+tD 代入 |P−C|²=r²，化成 a·t² + 2·half_b·t + c = 0，取区间内最小的根。', jump:[21,47], go:{tab:'trace', label:'▶ 看球体求交'} },
+    { h:'为什么要先试较小的根', ref:'35–39', n:'相机在球内时较小根为负，正确解是较大的根 —— 所以要试两次。', jump:[35,39] },
+    { h:'球的盒子是"紧"的', ref:'55–62', n:'球心 ± 半径，三个方向一样宽 → 盒子是个立方体，球正好内切，一点不浪费。', jump:[55,62] },
+    { h:'隐式转换：Point3 就是 Vec3', ref:'59–60', n:'<code>Point3</code> 和 <code>Vec3</code> 是同一个类，所以球心和偏移量可以直接相减相加。', jump:[59,60] }
+  ],
+  'ray.h': [
+    { h:'★ 预算方向倒数', ref:'15–31', n:'在构造函数里算一次 (1/Dx, 1/Dy, 1/Dz)，盒子求交里就只剩乘法。<b>结果完全不变</b>，只是把除法提前了。', jump:[15,31], go:{tab:'perf', label:'▶ 看它的真实收益'} },
+    { h:'为什么除法贵', ref:'19–26', n:'double 除法 ~26 个时钟周期，是乘法（~4 周期）的 6 倍。322,239,827 次盒子测试 × 3 次除法 ≈ 6.2 秒 —— 看着像铁证，但实测只快了 2.6%。', jump:[19,26] },
+    { h:'P(t) = O + tD', ref:'34', n:'光线上任意一点。', jump:[34,34] }
+  ],
+  'hittable.h': [
+    { h:'HitRecord：撞到之后带回什么', ref:'15–36', n:'交点位置、法线、t、是否正面、材质。<code>set_face_normal</code> 会根据光线方向把法线翻到朝向光线来的一侧。', jump:[15,36] },
+    { h:'hit() 的签名设计', ref:'58–59', n:'返回 bool 而非 double：命中与否是"是/否"的问题，细节通过引用参数带出来（C++ 的"多返回值"手法）。带 t_min/t_max 是因为调用方只关心区间内的交点。', jump:[58,59] },
+    { h:'bounding_box 给了默认实现', ref:'74–77', n:'<b>不是</b>纯虚函数，默认返回 false。好处是加新几何体时编译器不报错；代价是忘了实现的话，整个世界的包围盒会<b>静默地</b>变成"没有"。', jump:[74,77] }
+  ]
+};
+
+const SRC_META = {
+  'bvh.h':          '161 行 · Day 9 新建。BVHNode 继承 Hittable，把 481 个物体建成一棵二叉树。',
+  'aabb.h':         '149 行 · Day 8 建立，Day 9 新增 longest_axis()、并改用光线预算好的倒数。',
+  'hittable_list.h':'76 行 · Day 2 写的"组合模式"，Day 9 把 objects 改成 public 供 BVH 使用。',
+  'sphere.h':       '70 行 · 球体求交 + 包围盒。叶子节点里存的就是它。',
+  'ray.h':          '44 行 · Day 9 加了 direction_inv 缓存。',
+  'hittable.h':     '78 行 · Hittable 抽象接口 + HitRecord。整个多态体系的地基。'
+};
+
+/* 把行号区间映射到"文件:行"的可读文本 */
+function refText(from, to){
+  return from === to ? `L${from}` : `L${from}–${to}`;
+}
+
+function renderSrcNotes(file){
+  const host = $('#srcNotes');
+  const notes = SRC_NOTES[file] || [];
+  host.innerHTML = notes.map((nt, i) => `
+    <div class="srcitem">
+      <div class="h"><span>${nt.h}</span><code>${nt.ref}</code></div>
+      <p>${nt.n}</p>
+      <div class="go" style="display:flex;gap:7px;flex-wrap:wrap">
+        <button class="btn" data-jump="${file}|${nt.jump[0]}|${nt.jump[1]}">定位到 L${nt.jump[0]}${nt.jump[1]!==nt.jump[0] ? '–'+nt.jump[1] : ''}</button>
+        ${nt.go ? `<button class="btn primary" data-goto="${nt.go.tab}">${nt.go.label}</button>` : ''}
+      </div>
+    </div>`).join('');
+
+  host.querySelectorAll('[data-jump]').forEach(b => {
+    b.addEventListener('click', () => {
+      const [f, a, z] = b.dataset.jump.split('|').map((x, i) => i ? +x : x);
+      if (f !== currentSrcFile) selectSrcFile(f);
+      const v = codeViews.codeFull;
+      v.goto(+a);
+      flashRange(v, +a, +z);
+    });
+  });
+  host.querySelectorAll('[data-goto]').forEach(b => {
+    b.addEventListener('click', () => gotoTab(b.dataset.goto));
+  });
+}
+
+let flashTimer = 0;
+function flashRange(view, from, to){
+  view.paint([{ from, to, cls: 'hl2', strong: true }]);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    view.paint([]);
+    view.goto(from);
+  }, 2600);
+}
+
+let currentSrcFile = 'bvh.h';
+function selectSrcFile(file){
+  currentSrcFile = file;
+  document.querySelectorAll('#srcTabs button').forEach(b => b.classList.toggle('on', b.dataset.src === file));
+  const v = codeViews.codeFull;
+  if (!v) return;
+  /* 换文件 = 重新建一次 DOM */
+  createCodeView('codeFull', file);
+  codeViews.codeFull.host.classList.toggle('hidetodo', !$('#chkTodo4').checked);
+  $('#srcMeta').textContent = SRC_META[file] || '';
+  renderSrcNotes(file);
+}
+
+/* 跨页跳转 */
+function gotoTab(name){
+  const btn = document.querySelector(`nav.tabs button[data-tab="${name}"]`);
+  if (btn) btn.click();
+}
+
+document.querySelectorAll('#srcTabs button').forEach(b => {
+  b.addEventListener('click', () => selectSrcFile(b.dataset.src));
+});
+$('#chkTodo4').addEventListener('change', e => {
+  codeViews.codeFull.host.classList.toggle('hidetodo', !e.target.checked);
+});
+$('#chkTodo1').addEventListener('change', e => {
+  codeViews.codeBuild.host.classList.toggle('hidetodo', !e.target.checked);
+});
+
+/* ==================================================================
+   7 · Tab 切换 & 初始化
+   ================================================================== */
+document.querySelectorAll('nav.tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + btn.dataset.tab));
+    if (btn.dataset.tab === 'build'){ drawBuild(); drawTree(); lastBuildCodeNode = -2; updateNarration(); }
+    if (btn.dataset.tab === 'trace'){ drawTrace(); lastTraceEvt = -2; syncTraceCode(true); }
+    if (btn.dataset.tab === 'perf')  drawCurve();
+    if (btn.dataset.tab === 'src'){ selectSrcFile(currentSrcFile); }
+  });
+});
+
+let rz = 0;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(rz);
+  rz = requestAnimationFrame(() => { drawBuild(); drawTree(); drawTrace(); drawCurve(); });
+});
+
+/* 启动 */
+$('#lblSpeed').textContent = B.speed + '/s';
+$('#lblTraceSpeed').textContent = T.speed + '/s';
+
+/* 建立源码视图（内容来自仓库 include/ 下的原始文件） */
+createCodeView('codeBuild',  'bvh.h');
+createCodeView('codeHit',    'bvh.h');
+createCodeView('codeSphere', 'sphere.h');
+createCodeView('codeAabb',   'aabb.h');
+createCodeView('codeFull',   'bvh.h');
+$('#srcMeta').textContent = SRC_META['bvh.h'];
+renderSrcNotes('bvh.h');
+
+/* “跳到第几步”按钮：把面板滚到该步起始行（行号 = include/bvh.h 真实行号） */
+document.querySelectorAll('#stepJump .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    /* 叶子节点上 ③ ④ 不执行，点了也不动 */
+    if (chip.parentElement.classList.contains('leafmode')) return;
+    const v = codeViews.codeBuild;
+    if (!v) return;
+    v.goto(+chip.dataset.line, 0.12);
+    chip.parentElement.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === chip));
+    const upto = Math.floor(B.prog);
+    syncStepJump(upto > 0 ? B.bvh.nodes[upto - 1] : null, true);
+  });
+});
+
+rebuild();
+renderPerfBars();
+initTrace();
+setMode('bvh');
+drawCurve();
+
+/* 首屏自动播一次建树 */
+setTimeout(() => { B.playing = true; $('#btnPlay').textContent = '❚❚ 暂停'; }, 500);
+
+})();
+</script>
+</body>
+</html>
