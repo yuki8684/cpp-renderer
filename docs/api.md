@@ -611,9 +611,23 @@ AABB(const Point3& a, const Point3& b) {
 
 C++ 标准**明确规定** `fmin` / `fmax` 是 **NaN 感知**的：
 只要有一个参数是 NaN，就返回**另一个**参数。
-而 `a < b ? a : b` 依赖“NaN 比较返回 false”这个副作用，可读性和可移植性都差一些。
+而 `a < b ? a : b` 依赖“NaN 比较返回 false”这个副作用。
 
-> 📌 **能用标准函数就用标准函数** —— 语义明确、不依赖读者的推理。
+> ⚠️ **但注意：热路径上不要用 `std::fmin` / `std::fmax`！**
+>
+> Day 10 实测：它们会被编译成 **真正的函数调用**（`call fmax`），
+> 因为那套 NaN 语义比 x86 的 `maxsd` / `minsd` 指令更丰富，
+> GCC **不敢**用指令替代。
+>
+> 在 `AABB::hit` 这个热路径里，一次盒子测试要调 6 次，
+> 总计约 19 亿次函数调用 —— 光这一项就吃掉 **5 秒**。
+>
+> **因此本项目里的实际选择是：**
+> - **构造函数、`surrounding`**（只在建树时跑）：用 `std::fmin` / `std::fmax`，语义清楚
+> - **`AABB::hit`（热路径）**：用三目运算符 → 编译成 `maxsd` / `minsd` 指令
+>
+> 正确性的保证：在求交里 `t_min` / `t_max` 自身**永远不会**被赋成 NaN，
+> 所以三目的 NaN 行为与 `fmin`/`fmax` 在本场景是**等价**的。详见 devlog Day 10。
 
 ---
 
@@ -1162,126 +1176,197 @@ output = AABB::surrounding(output, ???);    // 旧数据已经没了
 
 ---
 
-## 8.4 `bvh.h` —— BVH 加速结构 ★ Day 9 新增
+## 8.4 `bvh.h` —— BVH 加速结构 ★ Day 9 建树 · Day 10 扁平化
 
 > **一句话**：把"一堆物体"递归地分成两堆、两堆再分两堆，形成二叉树。
 > 求交时先试大盒子，没中就跳过整个子树。
 >
-> **关键设计**：`BVHNode` 也**继承 `Hittable`** ——
+> **关键设计**：`BVH` 也**继承 `Hittable`** ——
 > 所以从外面看，"一棵 BVH 树"和"一个球"没区别，
-> `main.cpp` 里把 `HittableList` 换成 `BVHNode` 就行，**其他一行都不用改**。
+> `main.cpp` 里把 `HittableList` 换成 `BVH` 就行，**其他一行都不用改**。
+>
+> **Day 10 改了什么**：从"`shared_ptr` 串起来的树"改成
+> **"一个连续数组 + 整数下标"**（扁平化），求交从递归改成**显式栈迭代**。
 
-### `BVHNode(HittableList list)`
+### `BVH(HittableList list)`
 
 ```cpp
-BVHNode(HittableList list)
-    : BVHNode(list.objects, 0, list.objects.size()) {}
+BVH(HittableList list) : objects(std::move(list.objects)) {
+    if (objects.empty()) return;
+    nodes.reserve(objects.size() * 2);
+    build(0, objects.size());
+}
 ```
 
-**参数按值传**（故意拷贝一份）—— 建树过程要排序数组，不想弄乱调用方的列表。
-拷贝成本很低：里面存的是 `shared_ptr`，只是引用计数 +1。
-
-用法：
+**参数按值传**（故意拷贝一份）—— 建树要排序数组，不想弄乱调用方的列表。
+`std::move` 把拷贝来的 vector **"搬"** 成成员，不用再复制一次。
 
 ```cpp
 HittableList world_list = random_scene();
-BVHNode      world(world_list);        // ← 用 BVH 替掉线性列表
+BVH          world(world_list);        // ← 用 BVH 替掉线性列表
 ```
 
-### `BVHNode(objects, start, end)` —— 核心构造函数
-
-给 `objects` 数组的 `[start, end)` 区间建一棵子树。**递归**。
-
-#### 第 1 步：算这一堆物体的总包围盒
+### `Node` —— 一个结构体，两种含义 ★
 
 ```cpp
-AABB total_box;
-bool first = true;
-for (size_t i = start; i < end; ++i) {
-    AABB temp;
-    objects[i]->bounding_box(temp);
-    total_box = first ? temp : AABB::surrounding(total_box, temp);
-    first = false;
-}
-this->box = total_box;
+struct Node {
+    AABB box;      // 48 字节
+    int  left;     //  4   内部节点：左子下标 / 叶子：物体下标
+    int  right;    //  4   内部节点：右子下标 / 叶子：物体下标
+    int  count;    //  4   0 = 内部节点；1 或 2 = 叶子（有几个物体）
+};                 // 60 字节 → 对齐后 64 = 一条缓存线 ✓
 ```
 
-**必须是并集**：盒子要包住**所有**物体，才能保证"没打中盒子 ⟹ 没打中任何一个"。
-漏装一个 → 不保守 → BVH 会错误跳过真实交点 → 画面出现空洞。
+| `count` | 类型 | `left` / `right` 指向的数组 |
+|---|---|---|
+| `== 0` | 内部节点 | **`nodes[ ]`** |
+| `> 0` | 叶子 | **`objects[ ]`** |
 
-#### 第 2 步：选最长的那条轴
-
-```cpp
-int axis = total_box.longest_axis();   // 0=x, 1=y, 2=z
+```
+nodes 数组
+┌──────────────────────────────────────────────────────┐
+│ [0] 内部  left=1   right=2   count=0                 │
+│ [1] 内部  left=3   right=4   count=0                 │
+│ [2] 叶子  left=0   right=1   count=2  ──┐            │
+│ [3] 叶子  left=2   right=2   count=1  ──┤ 指向 objects│
+└─────────────────────────────────────────┼────────────┘
+                                          ▼
+objects 数组   [0] 球  [1] 球  [2] 球  [3] 球 ...
 ```
 
-物体在最长的那一维上分布最散 → 沿它切，两个子盒子缩得最快。
+> ⚠️ **最容易写错的点**：内部节点的 `left` 是**节点下标**，
+> 不能拿去索引 `objects`。两者靠 `count` 区分。
 
-#### 第 3 步：沿这条轴排序
+### `build(start, end)` —— 递归建树（返回新节点下标）
 
-```cpp
-auto comparator = [axis](const std::shared_ptr<Hittable>& a,
-                         const std::shared_ptr<Hittable>& b) {
-    AABB box_a, box_b;
-    a->bounding_box(box_a);
-    b->bounding_box(box_b);
-    return box_a.minimum[axis] < box_b.minimum[axis];
-};
-std::sort(objects.begin() + start, objects.begin() + end, comparator);
-```
-
-`[axis]` 是 **lambda 捕获**：把外面的 `axis` 复制进来给比较函数用。
-（`std::sort` 只吃"收两个参数"的比较器。）
-
-#### 第 4 步：对半分，递归
+算法和 Day 9 完全一样：**算盒子 → 选最长轴 → 排序 → 对半分**。
+只是把"造新对象"换成"往数组里追加一个节点"。
 
 ```cpp
-size_t span = end - start;
-if (span == 1) {
-    left = right = objects[start];        // 叶子
-} else if (span == 2) {
-    left  = objects[start];               // 叶子
-    right = objects[start + 1];
-} else {
-    std::sort(...);
+int build(size_t start, size_t end) {
+    int index = (int)nodes.size();
+    nodes.emplace_back();               // 先占个位置
+
+    // 第 1 步：总包围盒（必须是并集！）
+    AABB total_box;  bool first = true;
+    for (size_t i = start; i < end; ++i) {
+        AABB temp;
+        objects[i]->bounding_box(temp);
+        total_box = first ? temp : AABB::surrounding(total_box, temp);
+        first = false;
+    }
+    nodes[index].box = total_box;
+
+    size_t span = end - start;
+    if (span <= 2) {                    // 递归出口：叶子
+        nodes[index].count = (int)span;
+        nodes[index].left  = (int)start;
+        nodes[index].right = (span == 2) ? (int)(start + 1) : (int)start;
+        return index;
+    }
+
+    // 第 2、3 步：选最长轴 + 排序
+    int axis = total_box.longest_axis();
+    std::sort(objects.begin() + start, objects.begin() + end,
+              [axis](const std::shared_ptr<Hittable>& a,
+                     const std::shared_ptr<Hittable>& b) {
+                  AABB ba, bb;
+                  a->bounding_box(ba);  b->bounding_box(bb);
+                  return ba.minimum[axis] < bb.minimum[axis];
+              });
+
+    // 第 4 步：对半分，递归
     size_t mid = start + span / 2;
-    left  = std::make_shared<BVHNode>(objects, start, mid);   // ← 递归
-    right = std::make_shared<BVHNode>(objects, mid,   end);
+    int left_index  = build(start, mid);
+    int right_index = build(mid,   end);
+
+    nodes[index].count = 0;             // 0 = 内部节点
+    nodes[index].left  = left_index;
+    nodes[index].right = right_index;
+    return index;
 }
 ```
+
+> ## ⚠️ 为什么不能用 `Node& ref = nodes[index];` 记住节点
+>
+> ```cpp
+> Node& ref = nodes[index];      // 记下引用
+> ref.box = total_box;
+> int l = build(start, mid);     // ← 递归！这里会 emplace_back
+> ref.left = l;                  // ⚠️ ref 可能已经【悬空】
+> ```
+>
+> 递归会往 `nodes` 里追加元素；当 `size()` 超过 `capacity()` 时，
+> `std::vector` 会**重新分配内存、把元素全搬走、释放旧的** ——
+> `ref` 指向的内存已经被回收，写进去是**未定义行为**。
+>
+> **`std::vector` 扩容后，所有指向它元素的指针/引用/迭代器全部失效。**
+> 唯一安全的做法是**每次用 `nodes[index]` 重新寻址**。
 
 **为什么"按数量对半分"而不是"按空间位置切"**：
 按数量分保证深度严格是 `⌈log2(N)⌉`（481 个物体 → 实测深度 9，完美平衡）。
 按空间位置切，如果所有物体位置重合，每次切都会把全部物体放到同一侧 →
 树退化成链表 → 深度 = N → **栈溢出**。
 
-### ⭐ `BVHNode::hit(r, t_min, t_max, rec)` → `bool`
+### ⭐ `BVH::hit(r, t_min, t_max, rec)` → `bool` —— 显式栈迭代
 
 ```cpp
 bool hit(const Ray& r, double t_min, double t_max,
          HitRecord& rec) const override {
-    if (!box.hit(r, t_min, t_max)) return false;      // ① 先试大盒子
+    if (nodes.empty()) return false;
 
-    bool hit_left = left->hit(r, t_min, t_max, rec);  // ② 问左边
+    bool hit_anything = false;
+    int  stack[64];                    // 树深度 O(log N)，64 格绰绰有余
+    int  sp = 0;
+    stack[sp++] = 0;                   // 从根开始
 
-    // ③ 问右边，但 t_max 收紧
-    bool hit_right = right->hit(r, t_min, hit_left ? rec.t : t_max, rec);
+    while (sp > 0) {
+        const Node& node = nodes[stack[--sp]];
 
-    return hit_left || hit_right;
+        if (!node.box.hit(r, t_min, t_max)) continue;   // ① 盒子没中 → 跳过这个节点
+
+        if (node.count == 0) {                          // ② 内部节点 → 子节点进栈
+            stack[sp++] = node.left;
+            stack[sp++] = node.right;
+        } else {                                        // ③ 叶子 → 测物体
+            for (int k = 0; k < node.count; ++k) {
+                int obj = (k == 0) ? node.left : node.right;
+                if (objects[obj]->hit(r, t_min, t_max, rec)) {
+                    hit_anything = true;
+                    t_max = rec.t;                      // ★ 收紧：只找更近的
+                }
+            }
+        }
+    }
+    return hit_anything;
 }
 ```
 
-**第 ③ 步的技巧**：左子树命中在 `t = 3.2`，则任何 `t > 3.2` 的交点都被它挡住
-（更远 = 看不见）。所以右子树只用在 `(t_min, 3.2)` 里找。
+**① 必须 `continue`，不能 `return false`**：
+
+```
+return false → 整个函数结束，栈里还没处理的节点全丢掉 ✗
+continue     → 只跳过【这一个】节点，继续处理栈里其他节点 ✓
+```
+
+反例：光线同时穿过左半堆和右半堆的盒子。先弹左、盒子没中 →
+若 `return false`，右半堆就被无视了 → **画面凭空少掉一堆物体**。
+
+**③ 的 `t_max` 收紧**：命中在 `t = 3.2`，则任何 `t > 3.2` 的交点都被它挡住
+（更远 = 看不见）。所以后面的测试只用在 `(t_min, 3.2)` 里找。
 
 **为什么不会漏掉正确答案**：收紧 `t_max` 只是"提前排除不可能赢的候选"，
-不改变最终胜者。这就是为什么 **BVH 的渲染结果必须与朴素遍历逐像素一致**。
+不改变最终胜者。**这就是为什么 BVH 的渲染结果必须与朴素遍历逐像素一致。**
 
-### `BVHNode::bounding_box(output)` → `bool`
+**栈为什么 64 个格子够用**：每个内部节点"弹 1 压 2，净增 1"，
+栈深 ≈ 树深 + 1 ≈ 10。64 格能撑到 N ≈ 2⁶³ 个物体。
+
+### `BVH::bounding_box(output)` → `bool`
 
 ```cpp
 bool bounding_box(AABB& output) const override {
-    output = box;      // 直接返回建树时算好的
+    if (nodes.empty()) return false;
+    output = nodes[0].box;      // 根节点的盒子，建树时算好的
     return true;
 }
 ```
@@ -1292,31 +1377,68 @@ bool bounding_box(AABB& output) const override {
 > 📌 **BVH 树建好后应该是"不可变的"（immutable）。**
 > 要加物体就重建一棵新树，不要就地修改。
 
-### ⚠️ 实测性能（Day 9，重要）
+### ⚠️ 实测性能（完整优化历程）
 
-| 指标 | 朴素遍历 | **BVH** | 比值 |
+| 版本 | 渲染耗时 | 相对朴素 | `image.png` |
 |---|---|---|---|
-| 每光线球体求交次数 | 481 | **4.71** | 少 102× |
-| 每光线盒子测试次数 | 0 | 40.74 | —— |
-| 每光线总测试次数 | 481 | 45.4 | 少 10.6× |
-| **每次测试平均耗时** | **3.4 ns** | **18.7 ns** | **贵 5.5×** |
-| **渲染耗时** | **13.16 s** | **5.89 s** | **快 2.23×** |
+| Day 8 · 朴素遍历 | 13.16 s | 1.0× | 172,127 B |
+| Day 9 · 树形 BVH | 5.89 s | 2.23× | 172,127 B |
+| Day 10a · 扁平化 | 5.55 s | 2.37× | 172,127 B |
+| **Day 10b · `fmax` → 三目运算符** | **1.82 s** | **7.2×** | **172,127 B** |
 
-**测试次数少了 10.6 倍，但只快 2.23 倍** —— 因为每次测试贵了 5.5 倍：
+#### Day 9 的账（为什么树形只快 2.2 倍）
 
-- 朴素遍历：480 个 `Sphere` 内存**连续**、全体在缓存里、虚函数目标单一 → 3.4 ns
-- BVH：**指针跳转 + 虚函数 + 分支预测失败**（≈ 75 个 CPU 周期）→ 18.7 ns
+| 指标 | 朴素遍历 | 树形 BVH |
+|---|---|---|
+| 每光线球体求交次数 | 481 | **4.71**（少 102×） |
+| 每光线盒子测试次数 | 0 | 40.74 |
+| **每次测试平均耗时** | **3.4 ns** | **18.7 ns**（贵 5.5×） |
 
-**树本身是健康的**：节点 511、最大深度 9、巨型盒子节点只占 2.5%。
+测试次数少了 10.6 倍，但每次贵 5.5 倍 → 净收益只有 2.2 倍。
 
-> 📌 **核心教训：测试次数少 ≠ 快。**
-> 要把数据换算成「每次操作多少纳秒」，再和 CPU 的基本常数对照。
+#### Day 10 的账（真凶在别处）
+
+**扁平化只快了 6%** —— 说明成本既不是指针、也不是虚函数。
+
+看汇编才找到真凶：
+
+```
+call fmax       ← 不是指令，是函数调用！
+call fmin
+maxsd : 0       ← 一条 SSE max 指令都没生成
+```
+
+**`std::fmax` / `std::fmin` 有特殊的 NaN 语义**（任一参数为 NaN 就返回另一个），
+而 x86 的 `maxsd` / `minsd` 语义不同 → **GCC 不敢用指令代替，只能调库函数**。
+
+一次盒子测试 = 3 轴 × 2 次 = **6 次函数调用**。
+322M 次盒子测试 × 6 ≈ **19 亿次函数调用** ≈ 5 秒。
+
+```cpp
+// ❌ 3.4 倍慢：编译成函数调用
+t_min = std::fmax(t0, t_min);
+t_max = std::fmin(t1, t_max);
+
+// ✅ 编译成 maxsd / minsd 指令
+t_min = (t0 > t_min) ? t0 : t_min;
+t_max = (t1 < t_max) ? t1 : t_max;
+```
+
+修复后汇编：`maxsd` 0 → **24**，`minsd` 1 → **25**；BVH 求交 5.40 s → **1.58 s**。
+
+> ### 📌 核心教训
 >
-> 另外：BVH 的优势随 N 增大而放大 ——
-> 481 个物体时只有 2.2×，5,000 个物体时会有 20× 以上。
-
-**Day 10 的优化方向**：扁平化（树存进连续数组、用整数下标代替 `shared_ptr`、
-去掉虚函数），把节点从 88 字节压到 ≤ 64 字节（正好一条缓存线）。
+> **"测试次数少" ≠ "快"；"两个写法语义等价" ≠ "性能等价"。**
+>
+> 最"高级"的优化（扁平化）只值 **6%**；
+> 最"低级"的（一个函数名）值 **3 倍**。
+>
+> 找不到瓶颈时，**把编译器的汇编输出翻出来搜一搜函数名** ——
+> 这比继续猜快得多。
+>
+> ⚠️ 热路径上慎用"语义更丰富"的标准库函数：
+> `std::fmax` / `std::fmin` / `std::clamp` / `std::abs` 都有类似的坑。
+> **换之前先验证两件事**：① 汇编里变成了指令 ② NaN 行为在本场景等价。
 
 ---
 

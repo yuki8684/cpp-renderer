@@ -111,8 +111,23 @@ public:
             // TODO(你填 A4)：把 [t0, t1] 和 [t_min, t_max] 求交集
             //   交集的下界 = 两者【较大】的那个
             //   交集的上界 = 两者【较小】的那个
-            t_min = std::fmax(t0, t_min);
-            t_max = std::fmin(t1, t_max);
+            //
+            // ⚠️⚠️ 这里【绝对不要】用 std::fmax / std::fmin！
+            //
+            //   实测（Day 10）：std::fmax / std::fmin 有特殊的 NaN 语义，
+            //   GCC 不敢用 x86 的 maxsd / minsd 指令代替它们，只能生成
+            //   【真正的函数调用】。一次盒子测试要调 6 次（3 轴 × 2 次），
+            //   322M 次盒子测试 → 19 亿次函数调用 → 光这一项就吃掉几秒。
+            //
+            //   三目运算符则会被编译成 maxsd / minsd 【指令】。
+            //
+            //   NaN 行为在这里是【等价】的：
+            //     t0 是 NaN → NaN > t_min 为 false → 保留 t_min ✓
+            //     t1 是 NaN → NaN < t_max 为 false → 保留 t_max ✓
+            //   （这就是 Day 8 讨论的"NaN 被弹开"。
+            //     而且 t_min / t_max 自身永远不会被赋成 NaN，所以安全。）
+            t_min = (t0 > t_min) ? t0 : t_min;   // 交集下界取大
+            t_max = (t1 < t_max) ? t1 : t_max;   // 交集上界取小
 
 
             // TODO(你填 A5)：如果交集已经空了，立刻返回"没打到"

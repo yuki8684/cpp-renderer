@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="560" viewBox="0 0 920 560"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <rect width="920" height="560" fill="#0d1117"/>
+
+  <text x="460" y="40" fill="#e6edf3" font-size="21" font-weight="700" text-anchor="middle">
+    Day 8 → Day 10 · 从 13.16 秒到 1.82 秒
+  </text>
+  <text x="460" y="66" fill="#8b949e" font-size="13" text-anchor="middle">
+    random_scene（481 个物体）· 400×225 · 32 spp · 单线程 · g++ -O3 · 画面全程字节级不变
+  </text>
+
+  <!-- 坐标轴 -->
+  <line x1="80" y1="120" x2="80" y2="430" stroke="#30363d" stroke-width="2"/>
+  <line x1="80" y1="430" x2="880" y2="430" stroke="#30363d" stroke-width="2"/>
+
+  <!-- 网格线 -->
+  <line x1="80" y1="430" x2="880" y2="430" stroke="#21262d" stroke-width="1"/>
+  <line x1="80" y1="354" x2="880" y2="354" stroke="#21262d" stroke-width="1" stroke-dasharray="3 5"/>
+  <line x1="80" y1="278" x2="880" y2="278" stroke="#21262d" stroke-width="1" stroke-dasharray="3 5"/>
+  <line x1="80" y1="202" x2="880" y2="202" stroke="#21262d" stroke-width="1" stroke-dasharray="3 5"/>
+  <line x1="80" y1="126" x2="880" y2="126" stroke="#21262d" stroke-width="1" stroke-dasharray="3 5"/>
+  <text x="72" y="434" fill="#484f58" font-size="11" text-anchor="end">0</text>
+  <text x="72" y="358" fill="#484f58" font-size="11" text-anchor="end">4 s</text>
+  <text x="72" y="282" fill="#484f58" font-size="11" text-anchor="end">8 s</text>
+  <text x="72" y="206" fill="#484f58" font-size="11" text-anchor="end">12 s</text>
+  <text x="72" y="130" fill="#484f58" font-size="11" text-anchor="end">16 s</text>
+
+  <!-- 柱 1：朴素 13.16 s -->
+  <rect x="130" y="180" width="120" height="250" fill="#f85149" fill-opacity="0.80" rx="5"/>
+  <text x="190" y="168" fill="#f85149" font-size="17" font-weight="700" text-anchor="middle">13.16 s</text>
+  <text x="190" y="452" fill="#c9d1d9" font-size="13" text-anchor="middle">Day 8</text>
+  <text x="190" y="472" fill="#8b949e" font-size="11" text-anchor="middle">朴素遍历</text>
+  <text x="190" y="490" fill="#484f58" font-size="11" text-anchor="middle">基准 1.0×</text>
+
+  <!-- 柱 2：树形 BVH 5.89 s -->
+  <rect x="320" y="318" width="120" height="112" fill="#d29922" fill-opacity="0.80" rx="5"/>
+  <text x="380" y="306" fill="#d29922" font-size="17" font-weight="700" text-anchor="middle">5.89 s</text>
+  <text x="380" y="452" fill="#c9d1d9" font-size="13" text-anchor="middle">Day 9</text>
+  <text x="380" y="472" fill="#8b949e" font-size="11" text-anchor="middle">树形 BVH</text>
+  <text x="380" y="490" fill="#3fb950" font-size="11" text-anchor="middle">2.23×（累计）</text>
+
+  <!-- 柱 3：扁平化 5.55 s -->
+  <rect x="510" y="325" width="120" height="105" fill="#d29922" fill-opacity="0.50" rx="5"/>
+  <text x="570" y="313" fill="#8b949e" font-size="17" font-weight="700" text-anchor="middle">5.55 s</text>
+  <text x="570" y="452" fill="#c9d1d9" font-size="13" text-anchor="middle">Day 10a</text>
+  <text x="570" y="472" fill="#8b949e" font-size="11" text-anchor="middle">扁平化</text>
+  <text x="570" y="490" fill="#8b949e" font-size="11" text-anchor="middle">2.37×（只 +6%）</text>
+
+  <!-- 柱 4：三目 1.82 s -->
+  <rect x="700" y="395" width="120" height="35" fill="#3fb950" fill-opacity="0.85" rx="5"/>
+  <text x="760" y="383" fill="#3fb950" font-size="17" font-weight="700" text-anchor="middle">1.82 s</text>
+  <text x="760" y="452" fill="#c9d1d9" font-size="13" text-anchor="middle">Day 10b</text>
+  <text x="760" y="472" fill="#8b949e" font-size="11" text-anchor="middle">fmax → 三目运算符</text>
+  <text x="760" y="490" fill="#3fb950" font-size="13" font-weight="700" text-anchor="middle">7.2×（累计）</text>
+
+  <!-- 说明 -->
+  <g transform="translate(80, 508)">
+    <rect x="0" y="0" width="800" height="42" rx="6" fill="#161b22" stroke="#30363d"/>
+    <text x="14" y="18" fill="#d29922" font-size="12.5">
+      ⚠️ 最"高级"的优化（扁平化）只值 6%；最"低级"的（把一个 std::fmax 换成三目运算符）值 3 倍。
+    </text>
+    <text x="14" y="35" fill="#8b949e" font-size="12">
+      原因：std::fmax / std::fmin 因为 NaN 语义被编译成【函数调用】而不是 maxsd / minsd 指令。
+    </text>
+  </g>
+</svg>

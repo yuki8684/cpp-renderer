@@ -19,6 +19,7 @@
 #include "dielectric.h"
 #include "bvh.h"
 
+
 // ============================================================
 // 光线 -> 颜色
 // 必须定义在 main 外面；漫反射 / 金属都需要它递归调用自己
@@ -217,7 +218,7 @@ int main() {
     // ---------- 场景：一个装着所有物体的"世界" ----------
     // 想换场景只改这一行：simple_scene() 或 random_scene()
     HittableList world_list = random_scene();
-    BVHNode world(world_list);
+    BVH          world(world_list);        // ← 扁平化 BVH（Day 10）
 
     // ---------- 验证 Sphere / HittableList 的包围盒 ----------
     {
