@@ -80,10 +80,6 @@ if (-not $skipCommit) {
     Write-Host ""
     Write-Host "[3/4] Commit skipped (already committed)." -ForegroundColor DarkGray
 }
-if ($code -ne 0) {
-    Write-Host "COMMIT FAILED -- stopped." -ForegroundColor Red
-    exit 1
-}
 
 # ---------- 4. 推送 ----------
 if ($NoPush) {
