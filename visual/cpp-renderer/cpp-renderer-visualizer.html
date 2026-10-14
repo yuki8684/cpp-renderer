@@ -726,7 +726,33 @@ const ST={
   d8iface:0,                 // 步骤8  三处同款签名 0..1
   d8union:0,                 // 步骤9  进函数 -> A -> B -> C -> 并集 0..4
   d8test:0,                  // 步骤10 23 条测试的构成 0..1
-  d8final:0                  // 步骤11 验收 -> 世界盒真相 0..2
+  d8final:0,                 // 步骤11 验收 -> 世界盒真相 0..2
+  /* ---- Day 9 ---- */
+  d9scene:0,                 // 步骤1  世界盒 vs 内容 0..1（滑块改巨球）
+  d9union:0,                 // 步骤2  并集逐步长大 0..1
+  d9axis:0,                  // 步骤3  切法：沿最长轴 / 沿最短轴 0..1
+  d9sort:0,                  // 步骤4  排序 0..1
+  d9tree:0,                  // 步骤5  递归揭示 0..1
+  d9quality:0,               // 步骤6  树质量体检 0..1
+  d9trace:0,                 // 步骤7  求交遍历 0..1
+  d9tighten:0,               // 步骤8  收紧 t_max 0..1
+  d9count:0,                 // 步骤9  计数器 0..1
+  d9cost:0,                  // 步骤10 75 周期拆解 0..1
+  d9scale:0,                 // 步骤11 N 越大越值钱 0..1
+  d9giant:0.15,              // 步骤1  地面巨球半径（滑块）
+  /* ---- Day 10 ---- */
+  d10layout:0,               // 步骤1  堆上散落 vs 连续数组 0..1
+  d10dual:0,                 // 步骤2  count 双关（滑块选节点下标）
+  d10cache:0,                // 步骤3  88 → 64 字节 0..1
+  d10stack:0,                // 步骤4  显式栈迭代 0..1
+  d10cont:0,                 // 步骤5  continue vs return false 0..1
+  d10flat:0,                 // 步骤6  只快 6% 0..1
+  d10prof:0,                 // 步骤7  分段计时 0..1
+  d10asm:0,                  // 步骤8  看汇编 0..1
+  d10call:0,                 // 步骤9  一次盒测试 6 次调用 0..1
+  d10nan:0,                  // 步骤10 三目 + NaN 等价 0..1
+  d10final:0,                // 步骤11 结果与教训 0..1
+  d10wrong:0                 // 步骤5  错误写法开关
 };
 let autoSwitch=true;         // 播放时是否自动跳步
 
@@ -1816,6 +1842,12 @@ function buildControls(step){
       if(c.k==='d5zero') return x>0.5?'已揭示':'揭示';
       if(c.k==='d5lens') return ['R = 0（针孔）','R = 0.05（推荐）','R = 0.15（过大）'][clamp(Math.round(x),0,2)];
       if(c.k==='d5spp')  return x>0.5?'32 spp（今天）':'8 spp（Day 3 的）';
+      /* ---- Day 9 ---- */
+      if(c.k==='d9giant') return x>0.5?'含地面巨球（撑破天）':'不含巨球（44 个小球）';
+      if(c.k==='d9axis')  return x>0.5?'沿最短轴切 ⚠️':'沿最长轴切 ✓';
+      /* ---- Day 10 ---- */
+      if(c.k==='d10wrong') return x>0.5?'错误写法 return false ⚠️':'正确写法 continue ✓';
+      if(c.k==='d10dual')  return 'Node['+Math.round(x)+']';
       return x.toFixed(1);
     };
     val.textContent=fmt(+ST[c.k]);
@@ -2036,19 +2068,52 @@ function panel(ctx,x,y,w,h,title,accent){
   }
   ctx.restore();
 }
+/* 画布不吃 HTML。为了让文案里的 <b>…</b> / <code>…</code> 真的生效，
+   这里做一套极小行内标记：把字符串切成「文本 / 标记」段，标记单独成段、永不跨行断开。 */
+const MK_RE=/<(?:b|code)>|<\/(?:b|code)>/g;
+function stripMk(s){ return String(s).replace(MK_RE,''); }
+function segMk(s){
+  const str=String(s), out=[]; MK_RE.lastIndex=0;
+  let last=0,m;
+  while((m=MK_RE.exec(str))){
+    if(m.index>last) out.push([str.slice(last,m.index),0]);
+    out.push([m[0],-1]); last=MK_RE.lastIndex;
+  }
+  if(last<str.length||!out.length) out.push([str.slice(last),0]);
+  return out;
+}
 function txt(ctx,x,y,s,o){
   o=o||{};
   const mono=o.mono===undefined?true:o.mono;
+  const size=o.size||12, wt=o.weight||600, col=o.color||'#334155';
+  const MONO='ui-monospace,Menlo,Consolas,monospace';
+  const SANS='ui-sans-serif,system-ui,"Segoe UI","PingFang SC",sans-serif';
+  const fam=mono?MONO:SANS;
+  /* 展开成「带样式的段」：b=1 加粗，c=2 等宽 */
+  const segs=[]; let bold=0, code=0;
+  segMk(s).forEach(function(g){
+    if(g[1]===-1){                          /* 标记：改状态，不占宽 */
+      if(g[0]==='<b>') bold=1; else if(g[0]==='</b>') bold=0;
+      else if(g[0]==='<code>') code=1; else code=0;
+      return;
+    }
+    segs.push([g[0], (bold?1:0)+(code?2:0)]);
+  });
+  if(!segs.length) segs.push(['',0]);
+  const fOf=function(k){ return (k&1?Math.min(900,wt+250):wt)+' '+size+'px '+(k&2?MONO:fam); };
+  const cOf=function(k){ return (k&1)?(o.boldColor||'#0f172a'):((k&2)?(o.codeColor||'#7c3aed'):col); };
   ctx.save();
-  ctx.font=(o.weight||600)+' '+(o.size||12)+'px '+
-    (mono?'ui-monospace,Menlo,Consolas,monospace'
-         :'ui-sans-serif,system-ui,"Segoe UI","PingFang SC",sans-serif');
-  ctx.fillStyle=o.color||'#334155';
-  ctx.textAlign=o.align||'left'; ctx.textBaseline=o.base||'top';
-  const w=ctx.measureText(s).width;
-  ctx.fillText(s,x,y);
+  const wid=segs.map(function(g){ ctx.font=fOf(g[1]); return ctx.measureText(g[0]).width; });
+  let tot=0; for(let i=0;i<wid.length;i++) tot+=wid[i];
+  const al=o.align||'left';
+  let cx=x; if(al==='center') cx=x-tot/2; else if(al==='right') cx=x-tot;
+  ctx.textAlign='left'; ctx.textBaseline=o.base||'top';
+  for(let i=0;i<segs.length;i++){
+    ctx.font=fOf(segs[i][1]); ctx.fillStyle=cOf(segs[i][1]);
+    ctx.fillText(segs[i][0],cx,y); cx+=wid[i];
+  }
   ctx.restore();
-  return w;
+  return tot;
 }
 function fmtN(x,n){ n=n===undefined?3:n; const v=(Math.abs(x)<5e-7?0:x); return v.toFixed(n); }
 /* 左"3D 场景" + 右"公式面板"的横向切分；场景区取正方形并垂直居中 */
@@ -2943,12 +3008,14 @@ function drawD2_11(ctx,W,H,st,ph){
   st.readout='256×256 · 2 球 + 1 地面 · 法线着色 · 遮挡正确';
 }
 function wrapText(ctx,s,maxw,size){
+  s=String(s);
   ctx.save(); ctx.font='600 '+size+'px ui-monospace,Menlo,Consolas,monospace';
-  const out=[]; let line='';
-  for(const ch of s){
-    if(ctx.measureText(line+ch).width>maxw && line){ out.push(line); line=ch; }
-    else line+=ch;
-  }
+  const out=[]; let line='', vis='';
+  segMk(s).forEach(function(g){
+    const t=g[0], add=(g[1]===-1)?'':t;      /* 标记不占宽，也不单独触发换行 */
+    if(add && vis && ctx.measureText(vis+add).width>maxw){ out.push(line); line=''; vis=''; }
+    line+=t; vis+=add;
+  });
   if(line) out.push(line);
   ctx.restore();
   return out;
@@ -6816,7 +6883,7 @@ function d5Fit(ctx,x,y,s,o,R,pad){
   ctx.font=(o.weight||600)+' '+size+'px '+
     (mono?'ui-monospace,Menlo,Consolas,monospace'
          :'ui-sans-serif,system-ui,"Segoe UI","PingFang SC",sans-serif');
-  const w=ctx.measureText(s).width;
+  const w=ctx.measureText(stripMk(s)).width;
   ctx.restore();
   const lo=R.x+pad, hi=R.x+R.w-pad;
   let xx=x, al=o.align||'left';
@@ -16200,6 +16267,3533 @@ function extrasD8(){
 })();
 
 /* =========================================================================
+   Day 9 · BVH 递归建树（块 A：数据 + 计算）
+   -------------------------------------------------------------------------
+   用 44 个小球 + 一个可选的「地面巨球」复刻 Day 7 场景的结构：
+   小球的包围盒只占中间一小块，而巨球会把总包围盒撑到几乎整个空间 ——
+   这正是「一个大盒子没用，必须递归切小」的动机。
+   ========================================================================= */
+
+const D9_C={ box:'#dc2626', node:'#7c3aed', leaf:'#059669', ray:'#2563eb',
+             dim:'#94a3b8', line:'#e2e8f0', ink:'#0f172a', amber:'#b45309',
+             good:'#047857', bad:'#b91c1c', soft:'#f8fafc', grid:'#eef2f7',
+             x:'#dc2626', y:'#059669', z:'#2563eb' };
+
+/* 确定性伪随机：同一个种子 → 同一套球阵（截图 / 回归可比） */
+function d9rnd(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function d9boxOf(o){ return {mn:[o.x-o.r,o.y-o.r], mx:[o.x+o.r,o.y+o.r]}; }
+function d9boxUnion(A,B){
+  return { mn:[Math.min(A.mn[0],B.mn[0]),Math.min(A.mn[1],B.mn[1])],
+           mx:[Math.max(A.mx[0],B.mx[0]),Math.max(A.mx[1],B.mx[1])] };
+}
+const D9_GIANT={ x:0.5, y:0.42, r:0.60 };
+
+/* 递归建树（四步：算并集 → 选最长轴 → 沿轴排序 → 对半分递归） */
+function d9build(giant){
+  const rnd=d9rnd(20261010), objs=[];
+  for(let i=0;i<44;i++)
+    objs.push({x:0.06+0.88*rnd(), y:0.08+0.84*rnd(), r:0.012+0.020*rnd()});
+  if(giant) objs.push({x:D9_GIANT.x, y:D9_GIANT.y, r:D9_GIANT.r});
+  const nodes=[];
+  function rangeBox(a,b){
+    let mn=[1e9,1e9], mx=[-1e9,-1e9];
+    for(let i=a;i<b;i++){
+      const bb=d9boxOf(objs[i]);
+      mn[0]=Math.min(mn[0],bb.mn[0]); mn[1]=Math.min(mn[1],bb.mn[1]);
+      mx[0]=Math.max(mx[0],bb.mx[0]); mx[1]=Math.max(mx[1],bb.mx[1]);
+    }
+    return {mn:mn,mx:mx};
+  }
+  function rec(a,b,depth){
+    const idx=nodes.length;
+    nodes.push({idx:idx, box:rangeBox(a,b), count:0, left:-1, right:-1,
+                depth:depth, axis:0, orderBefore:null, axisLen:[0,0]});
+    const span=b-a;
+    if(span<=2){
+      nodes[idx].count=span; nodes[idx].left=a;
+      nodes[idx].right=(span===2)?a+1:a;
+      return idx;
+    }
+    const box=nodes[idx].box;
+    const dx=box.mx[0]-box.mn[0], dy=box.mx[1]-box.mn[1];
+    const axis=(dx>=dy)?0:1;                        /* ② 选最长的那条轴 */
+    nodes[idx].axis=axis; nodes[idx].axisLen=[dx,dy];
+    if(depth===0) nodes[idx].orderBefore=objs.slice(a,b).map(function(o){ return o; });
+    const seg=objs.slice(a,b).sort(function(p,q){
+      return d9boxOf(p).mn[axis]-d9boxOf(q).mn[axis];   /* ③ 沿轴排序 */
+    });
+    for(let i=0;i<seg.length;i++) objs[a+i]=seg[i];
+    const mid=a+Math.floor(span/2);                  /* ④ 对半分，递归 */
+    const l=rec(a,mid,depth+1), r=rec(mid,b,depth+1);
+    nodes[idx].count=0; nodes[idx].left=l; nodes[idx].right=r;
+    return idx;
+  }
+  if(objs.length) rec(0,objs.length,0);
+  /* 中序布局：叶子按出现顺序排开，内部节点居中 */
+  const cur={v:0};
+  (function lay(i){
+    const n=nodes[i];
+    if(n.count>0){ n.col=cur.v++; return; }
+    lay(n.left); lay(n.right);
+    n.col=(nodes[n.left].col+nodes[n.right].col)/2;
+  })(0);
+  let maxDepth=0, leaves=0, inner=0;
+  nodes.forEach(function(n){ maxDepth=Math.max(maxDepth,n.depth); if(n.count>0) leaves++; else inner++; });
+  const byDepth=[];
+  for(let d=0;d<=maxDepth;d++) byDepth.push(0);
+  nodes.forEach(function(n){ byDepth[n.depth]++; });
+  const rb=nodes[0].box;
+  return { objs:objs, nodes:nodes, total:cur.v, maxDepth:maxDepth,
+           leaves:leaves, inner:inner, byDepth:byDepth,
+           width:rb.mx[0]-rb.mn[0], height:rb.mx[1]-rb.mn[1] };
+}
+
+/* 光线 × 盒子（2D 版 slab method）
+   刻意用三目而不是 Math.max / Math.min —— 与 Day 10 的结论保持一致 */
+function d9rayBox(box,ro,rd,tmaxIn){
+  let t0=-Infinity, t1=Infinity;
+  for(let a=0;a<2;a++){
+    const inv=1/rd[a];
+    let u=(box.mn[a]-ro[a])*inv, v=(box.mx[a]-ro[a])*inv;
+    if(inv<0){ const w=u; u=v; v=w; }
+    t0=(u>t0)?u:t0;
+    t1=(v<t1)?v:t1;
+    if(t0>=t1) return null;
+  }
+  if(t1<=0.0005) return null;
+  if(t0>tmaxIn) return null;
+  return [t0,t1];
+}
+function d9rayCircle(ro,rd,o){
+  const ox=ro[0]-o.x, oy=ro[1]-o.y;
+  const A=rd[0]*rd[0]+rd[1]*rd[1];
+  const B=2*(ox*rd[0]+oy*rd[1]);
+  const C=ox*ox+oy*oy-o.r*o.r;
+  const disc=B*B-4*A*C;
+  if(disc<0) return null;
+  const sq=Math.sqrt(disc);
+  let t=(-B-sq)/(2*A);
+  if(t<0.002) t=(-B+sq)/(2*A);
+  return (t<0.002)?null:t;
+}
+/* 显式栈遍历（Day 10 扁平化后的写法：盒子没中 → continue，不是 return false） */
+function d9trace(objs,nodes,ro,rd){
+  const events=[], stk=[0];
+  let tmax=Infinity, best=null, boxTests=0, objTests=0, hits=0;
+  while(stk.length){
+    const idx=stk.pop(), n=nodes[idx];
+    boxTests++;
+    const iv=d9rayBox(n.box,ro,rd,tmax);
+    events.push({t:'box', idx:idx, iv:iv, tmax:tmax});
+    if(!iv) continue;                       /* ⚠️ continue：只跳过这一个节点 */
+    if(n.count===0){ stk.push(n.left); stk.push(n.right); }
+    else{
+      for(let k=0;k<n.count;k++){
+        const oi=(k===0)?n.left:n.right;
+        objTests++;
+        const tt=d9rayCircle(ro,rd,objs[oi]);
+        if(tt!==null && tt>0.002 && tt<tmax){
+          tmax=tt; best={oi:oi,t:tt}; hits++;
+          events.push({t:'hit', oi:oi, tt:tt});
+        } else events.push({t:'miss', oi:oi});
+      }
+    }
+  }
+  return { events:events, best:best, boxTests:boxTests, objTests:objTests,
+           hits:hits, tmax:tmax };
+}
+const D9_RAY={ o:[-0.10,0.74], d:[1,-0.56] };
+
+/* 只有「含不含巨球」变了才重建（滑块来回拖不会白算） */
+function d9State(st){
+  const g=st.d9giant>0.5;
+  if(!st.keys) st.keys={};
+  if(!st.keys.tree || st.keys.giantUsed!==g){
+    st.keys.tree=d9build(g);
+    st.keys.giantUsed=g;
+    st.keys.trace=d9trace(st.keys.tree.objs, st.keys.tree.nodes, D9_RAY.o, D9_RAY.d);
+  }
+  return { tree:st.keys.tree, trace:st.keys.trace, giant:g };
+}
+/* 固定取景框：始终按「含巨球」的世界盒取景 → 开关巨球时能看出盒子「炸开」 */
+const D9_FRAME={ mn:[-0.10,-0.18], mx:[1.10,1.02] };
+
+/* ---------- 两个页面共用的极小绘图工具 ---------- */
+function d910Bar(ctx,x,y,w,h,pct,col,bg){
+  pct=clamp(pct,0,1);
+  ctx.save();
+  rr(ctx,x,y,w,h,h/2); ctx.fillStyle=bg||'#eef2f7'; ctx.fill();
+  if(pct>0.001){ rr(ctx,x,y,Math.max(2,w*pct),h,h/2); ctx.fillStyle=col; ctx.fill(); }
+  ctx.restore();
+}
+/* 定宽两列表格行：左标签 / 右数值 */
+function d910KV(ctx,x,y,w,k,v,col,o){
+  o=o||{};
+  txt(ctx,x,y,k,{size:o.size||8.4,color:o.kc||'#64748b',weight:600,mono:o.mono!==false});
+  txt(ctx,x+w,y,v,{size:o.size||8.4,color:col||'#0f172a',weight:700,align:'right',mono:true});
+}
+/* 圆角小卡片（带标题） */
+function d910Card(ctx,x,y,w,h,title,accent){
+  d4Box(ctx,x,y,w,h,{fill:'rgba(255,255,255,.97)',stroke:'#e2e8f0',r:8});
+  if(accent){ ctx.save(); rr(ctx,x,y,3.4,h,2); ctx.fillStyle=accent; ctx.fill(); ctx.restore(); }
+  if(title) txt(ctx,x+10,y+6,title,{size:8.6,color:accent||'#0f172a',weight:700,mono:false});
+}
+
+/* =========================================================================
+   Day 9 · 绘制（块 B）
+   ========================================================================= */
+
+/* 把世界坐标（D9_FRAME 取景框）映射到画布矩形，保持长宽比 */
+function d9View(fx,fy,fw,fh){
+  const FW=D9_FRAME.mx[0]-D9_FRAME.mn[0], FH=D9_FRAME.mx[1]-D9_FRAME.mn[1];
+  const sc=Math.min(fw/FW, fh/FH);
+  const ox=fx+(fw-FW*sc)/2, oy=fy+(fh-FH*sc)/2;
+  return {
+    sc:sc, ox:ox, oy:oy, fw:FW*sc, fh:FH*sc,
+    pt:function(q){ return [ox+(q[0]-D9_FRAME.mn[0])*sc,
+                            oy+(FH-(q[1]-D9_FRAME.mn[1]))*sc]; },
+    rect:function(b){ const a=this.pt(b.mn), c=this.pt(b.mx);
+      return [a[0], c[1], Math.max(2,c[0]-a[0]), Math.max(2,a[1]-c[1])]; }
+  };
+}
+/* 44 个小球（不含巨球）自己的分布范围 */
+function d9Cluster(objs){
+  let box=null;
+  objs.forEach(function(o){
+    if(o.r>0.3) return;
+    const b=d9boxOf(o);
+    box=box?d9boxUnion(box,b):b;
+  });
+  return box;
+}
+/* 小球 + 可选巨球 + 世界盒 + 小球分布盒 —— 三个步骤共用的背景层 */
+function d9SceneLayer(ctx,objs,V,opt){
+  opt=opt||{};
+  objs.forEach(function(o){
+    const c=V.pt([o.x,o.y]), r=Math.max(1.5,o.r*V.sc);
+    if(o.r>0.3){
+      ctx.save(); ctx.beginPath(); ctx.arc(c[0],c[1],r,0,7);
+      ctx.setLineDash([4,4]); ctx.strokeStyle='rgba(220,38,38,.40)';
+      ctx.lineWidth=1.2; ctx.stroke(); ctx.restore();
+      return;
+    }
+    ctx.beginPath(); ctx.arc(c[0],c[1],r,0,7);
+    ctx.fillStyle=opt.dotFill||'rgba(37,99,235,.22)'; ctx.fill();
+    ctx.strokeStyle=opt.dotStroke||'rgba(37,99,235,.70)'; ctx.lineWidth=1.1; ctx.stroke();
+  });
+}
+/* 递归树示意：中序布局，编号 = 节点在 nodes[] 里的下标 */
+function d9TreeDraw(ctx,x,y,w,h,tree,reveal,mark){
+  const nodes=tree.nodes, rowH=Math.min(20,(h-16)/Math.max(1,tree.maxDepth+1));
+  const xOf=function(n){ return x+(n.col+0.5)/Math.max(1,tree.total)*w; };
+  const yOf=function(n){ return y+10+n.depth*rowH; };
+  nodes.forEach(function(n,i){
+    if(i>=reveal) return;
+    const leaf=n.count>0, col=leaf?D9_C.leaf:D9_C.node;
+    if(!leaf){
+      [[n.left],[n.right]].forEach(function(e){
+        if(e[0]<0||e[0]>=reveal) return;
+        ctx.beginPath(); ctx.moveTo(xOf(n),yOf(n)+7);
+        ctx.lineTo(xOf(nodes[e[0]]),yOf(nodes[e[0]])-7);
+        ctx.strokeStyle='rgba(124,58,237,.32)'; ctx.lineWidth=1; ctx.stroke();
+      });
+    }
+    const bw=leaf?9:11, bh=13;
+    const on=mark&&mark.indexOf(i)>=0;
+    rr(ctx,xOf(n)-bw/2,yOf(n)-bh/2,bw,bh,3);
+    ctx.fillStyle=on?'#fef3c7':(leaf?'#f0fdf7':'#fff'); ctx.fill();
+    ctx.strokeStyle=on?D9_C.amber:col; ctx.lineWidth=on?1.6:1.1; ctx.stroke();
+  });
+}
+
+/* ---------- 步骤 1 · 一个大盒子，99.9% 是空的 ---------- */
+function drawD9_1(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes;
+  d5Head(ctx,R,'44 个小球只占中间一小块，盒子却按「巨球」撑满整个画面');
+
+  const sceneH=A.h*0.62, V=d9View(A.x,A.y,A.w,sceneH);
+  d9SceneLayer(ctx,objs,V,{});
+
+  const cb=d9Cluster(objs), cbR=V.rect(cb);
+  ctx.save(); ctx.setLineDash([3,3]); ctx.strokeStyle='rgba(5,150,105,.85)'; ctx.lineWidth=1.3;
+  ctx.strokeRect(cbR[0],cbR[1],cbR[2],cbR[3]); ctx.restore();
+  d5Fit(ctx,cbR[0],cbR[1]+cbR[3]+2,'小球真正的分布范围（内容）',
+        {size:7.4,color:D9_C.leaf,weight:700,mono:false},R,4);
+
+  const wb=V.rect(nodes[0].box);
+  ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle=D9_C.box; ctx.lineWidth=1.6;
+  ctx.strokeRect(wb[0],wb[1],wb[2],wb[3]); ctx.restore();
+  d5Fit(ctx,wb[0]+4,wb[1]+3,'世界包围盒 '+S.tree.width.toFixed(2)+' × '+S.tree.height.toFixed(2),
+        {size:7.8,color:D9_C.box,weight:700,mono:false},R,4);
+  if(S.giant)
+    d5Fit(ctx,wb[0]+4,wb[1]+15,'⚠️ 被半径 0.60 的地面巨球撑破天',
+          {size:7.4,color:D9_C.amber,weight:700,mono:false},R,4);
+
+  const by=A.y+sceneH+6, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'盒子的体积几乎全是空气',D9_C.box);
+  const rows=[['真实场景 · 世界盒','2000 × 2002 × 2000',D9_C.box],
+              ['真实场景 · 内容','22 × 2 × 22',D9_C.leaf],
+              ['demo · 世界盒',S.tree.width.toFixed(2)+' × '+S.tree.height.toFixed(2),D9_C.box],
+              ['demo · 内容',(cb.mx[0]-cb.mn[0]).toFixed(2)+' × '+(cb.mx[1]-cb.mn[1]).toFixed(2),D9_C.leaf]];
+  rows.forEach(function(r,i){ d910KV(ctx,A.x+10,by+22+i*12,A.w-20,r[0],r[1],r[2],{size:7.8}); });
+  d5Fit(ctx,A.x+10,by+22+4*12+2,'→ 一个大盒子排除能力太弱：必须【递归地切小】= BVH',
+        {size:8,color:D9_C.amber,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'包围盒解决了「贵」，暴露了「空」',[
+    {items:[
+      {s:'Day 8 造好盒子，却发现：',mono:false,c:'#0f172a',w:700},
+      {s:'  世界盒  2000 × 2002 × 2000',mono:true,c:D9_C.box,w:700},
+      {s:'  内容    22 × 2 × 22  ← 480 个球挤在这',mono:true},
+      '  x / z 的 ±1000 来自地面巨球，',
+      '  y 的 −2000 来自地面、2 来自大球。',
+      '',
+      {s:'99.9% 的盒子是空的',mono:false,c:D9_C.bad,w:700},
+      '一个大盒子只能告诉你「这一整片太空',
+      '里可能有东西」—— 等于没筛。',
+      '',
+      {s:'⭐ 必须递归地切小：',mono:false,c:D9_C.good,w:700},
+      '  大的切成两半，两半再各切成两半……',
+      '  每一层的盒子都更紧 → 才能真正排除。',
+      '',
+      {s:'这就是 Day 9 的 BVH。',mono:false,c:D9_C.node,w:700}
+    ],o:{size:7.9,lh:10.6,gap:2.4}}
+  ],D9_C.box, H-py-14);
+
+  st.readout='世界包围盒 <b>'+S.tree.width.toFixed(2)+' × '+S.tree.height.toFixed(2)+'</b>，'+
+             '而 44 个小球只占 <b>'+(cb.mx[0]-cb.mn[0]).toFixed(2)+' × '+(cb.mx[1]-cb.mn[1]).toFixed(2)+
+             '</b> —— 这也正是真实场景 <b>2000³ vs 22×2×22</b>（99.9% 是空的）的缩影。'+
+             '⚠️ 拖动滑块可以加/去掉那根「撑破天」的巨球。';
+}
+
+/* ---------- 步骤 2 · 第 1 步：算这一堆的总包围盒（并集） ---------- */
+function drawD9_2(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes;
+  const p=clamp(st.d9union,0,1);
+  d5Head(ctx,R,'第 1 步 · 逐个体求并集，直到把所有物体都装进去');
+
+  const sceneH=A.h*0.62, V=d9View(A.x,A.y,A.w,sceneH);
+  const n=Math.max(2,Math.round(p*objs.length));
+  let acc=nodes[0].box, first=true, cur=null;
+  for(let i=0;i<Math.min(n,objs.length);i++){
+    const b=d9boxOf(objs[i]);
+    if(first){ acc=b; first=false; }
+    else acc=d9boxUnion(acc,b);
+  }
+  cur=acc;
+  objs.forEach(function(o,i){
+    const c=V.pt([o.x,o.y]), r=Math.max(1.5,o.r*V.sc), on=(i<n)&&o.r<=0.3;
+    if(o.r>0.3){
+      ctx.save(); ctx.beginPath(); ctx.arc(c[0],c[1],r,0,7);
+      ctx.setLineDash([4,4]); ctx.strokeStyle=on?'rgba(220,38,38,.45)':'rgba(148,163,184,.35)';
+      ctx.lineWidth=1.2; ctx.stroke(); ctx.restore();
+      return;
+    }
+    ctx.beginPath(); ctx.arc(c[0],c[1],r,0,7);
+    ctx.fillStyle=on?'rgba(37,99,235,.30)':'rgba(148,163,184,.16)';
+    ctx.fill();
+    ctx.strokeStyle=on?'rgba(37,99,235,.85)':'rgba(148,163,184,.45)';
+    ctx.lineWidth=on?1.3:0.9; ctx.stroke();
+  });
+  const cb=V.rect(cur);
+  ctx.save(); ctx.strokeStyle=D9_C.node; ctx.lineWidth=1.8;
+  ctx.strokeRect(cb[0],cb[1],cb[2],cb[3]); ctx.restore();
+  d5Fit(ctx,cb[0]+4,cb[1]+3,'并集：'+cur.mn[0].toFixed(2)+'~'+cur.mx[0].toFixed(2)+' × '+
+        cur.mn[1].toFixed(2)+'~'+cur.mx[1].toFixed(2),
+        {size:7.6,color:D9_C.node,weight:700,mono:true},R,4);
+  d5Fit(ctx,V.ox,V.oy+V.fh+3,'已并入 '+Math.min(n,objs.length)+' / '+objs.length+' 个物体',
+        {size:7.8,color:'#64748b',mono:false},R,4);
+
+  const by=A.y+sceneH+6, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'为什么要用【并集】而不是随便挑一个',D9_C.node);
+  const rows=[['AABB total; first = true','每个物体报一个盒子',D9_C.ink],
+              ['total = first ? temp :','第一轮直接赋值',D9_C.good],
+              ['  surrounding(total, temp)','之后都是求并集',D9_C.good],
+              ['surrounding','min 取小、max 取大',D9_C.node],
+              ['漏装任何一个物体','盒子就【不保守】',D9_C.bad]];
+  rows.forEach(function(r,i){ d910KV(ctx,A.x+10,by+22+i*12,A.w-20,r[0],r[1],r[2],{size:7.6}); });
+  d5Fit(ctx,A.x+10,by+22+5*12+2,'⚠️ 不保守 → BVH 会「错得看不出来」：画面凭空少物体',
+        {size:7.8,color:D9_C.bad,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'四步建树 · 第 1 步',[
+    {items:[
+      {s:'① 算这一堆物体的总包围盒',mono:false,c:D9_C.node,w:700},
+      {s:'   AABB::surrounding(a, b)',mono:true},
+      {s:'     min = 取小的',mono:true,c:D9_C.good},
+      {s:'     max = 取大的',mono:true,c:D9_C.good},
+      '',
+      {s:'为什么必须是并集？',mono:false,c:'#0f172a',w:700},
+      '盒子要包住【所有】物体，才能保证：',
+      {s:'  没打中盒子 ⟹ 没打中任何一个物体',mono:false,c:D9_C.good,w:700},
+      '',
+      {s:'⚠️ 随便挑一个物体的盒子 →',mono:false,c:D9_C.bad,w:700},
+      '  其他物体就在盒子外面，',
+      '  那根光线本来能打中它们，',
+      '  却因为「盒子没中」被整段跳过 →',
+      {s:'  画面出现空洞 / 穿透',mono:false,c:D9_C.bad,w:700},
+      '',
+      {s:'📌 保守性是 BVH 正确性的全部基础。',mono:false,c:D9_C.node,w:700}
+    ],o:{size:7.9,lh:10.6,gap:2.4}}
+  ],D9_C.node, H-py-14);
+
+  st.readout='并集 = <b>min 取小 / max 取大</b>。并到第 '+Math.min(n,objs.length)+' 个物体时：'+
+             '<b>['+cur.mn[0].toFixed(2)+', '+cur.mn[1].toFixed(2)+'] ~ ['+
+             cur.mx[0].toFixed(2)+', '+cur.mx[1].toFixed(2)+']</b>。'+
+             '盒子只能比物体大，不能比物体小 —— 否则 BVH 会静默漏掉物体。';
+}
+
+/* ---------- 步骤 3 · 第 2 步：选最长的那条轴 ---------- */
+function drawD9_3(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes;
+  const axis=nodes[0].axis;                 /* 最长轴（由建树算法决定） */
+  const pickShort=st.d9axis>0.5;            /* 滑块 0/1：沿最长 / 沿最短 */
+  const cut=(pickShort?(1-axis):axis);
+  d5Head(ctx,R,pickShort?'沿最短的轴切 —— 两半几乎重合，等于白切'
+                         :'第 2 步 · 沿【最长】的那条轴切，两半才分得开');
+
+  const sceneH=A.h*0.60, V=d9View(A.x,A.y,A.w,sceneH);
+  d9SceneLayer(ctx,objs,V,{});
+  const wb=V.rect(nodes[0].box);
+  ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle=D9_C.box; ctx.lineWidth=1.4;
+  ctx.strokeRect(wb[0],wb[1],wb[2],wb[3]); ctx.restore();
+
+  const dx=nodes[0].box.mx[0]-nodes[0].box.mn[0];
+  const dy=nodes[0].box.mx[1]-nodes[0].box.mn[1];
+  const longest=(dx>=dy)?0:1;
+  /* 两个候选轴的长度条（俯视图能直接量 x / y；z 轴量法完全一样） */
+  const cw=Math.min(120,(A.w-30)/2), cy=A.y+sceneH+4;
+  [0,1].forEach(function(a){
+    const x=A.x+10+a*(cw+10);
+    const isL=(a===longest);
+    txt(ctx,x,cy,(a===0?'x 轴':'y 轴')+' 跨度 '+(a===0?dx:dy).toFixed(2),
+        {size:7.6,color:isL?D9_C.amber:'#64748b',weight:700});
+    d910Bar(ctx,x,cy+10,cw,7,(a===0?dx:dy)/Math.max(dx,dy),isL?D9_C.amber:'#cbd5e1');
+    txt(ctx,x,cy+19,isL?'★ 最长 → 选它':'更短 → 切了白切',
+        {size:7,color:isL?D9_C.amber:'#94a3b8',weight:isL?700:600,mono:false});
+  });
+  txt(ctx,A.x+10,cy+31,'（z 轴量法完全一样；俯视图里看不出来，所以这里只画 x / y）',
+      {size:6.8,color:'#94a3b8',mono:false});
+
+  /* 切一刀：用滑块选中的那条轴 */
+  const seg=objs.slice(0).sort(function(a,b){ return d9boxOf(a).mn[cut]-d9boxOf(b).mn[cut]; });
+  const mid=Math.floor(seg.length/2);
+  const L=seg.slice(0,mid), Rt=seg.slice(mid);
+  function spanBox(list){ let bb=null; list.forEach(function(o){ const b=d9boxOf(o); bb=bb?d9boxUnion(bb,b):b; }); return bb; }
+  const bL=spanBox(L), bR=spanBox(Rt);
+  [[bL,'#2563eb','左半'],[bR,'#059669','右半']].forEach(function(g){
+    const r=V.rect(g[0]);
+    ctx.save(); ctx.globalAlpha=0.12; ctx.fillStyle=g[1];
+    ctx.fillRect(r[0],r[1],r[2],r[3]); ctx.restore();
+    ctx.save(); ctx.strokeStyle=g[1]; ctx.lineWidth=1.5; ctx.strokeRect(r[0],r[1],r[2],r[3]); ctx.restore();
+  });
+  /* 「切得值不值」= 子盒子在两个维度上还占原盒子的百分之多少 */
+  const spanW=Math.max(bL.mx[0]-bL.mn[0], bR.mx[0]-bR.mn[0]);
+  const spanH=Math.max(bL.mx[1]-bL.mn[1], bR.mx[1]-bR.mn[1]);
+  const keep=(cut===0?spanW:spanH)/Math.max(1e-6,(cut===0?dx:dy));
+  /* 切线 */
+  ctx.save(); ctx.strokeStyle=D9_C.amber; ctx.lineWidth=1.8; ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  if(cut===0){ const mx=(wb[0]+wb[2]/2); ctx.moveTo(mx,wb[1]-2); ctx.lineTo(mx,wb[1]+wb[3]+2); }
+  else { const my=(wb[1]+wb[3]/2); ctx.moveTo(wb[0]-2,my); ctx.lineTo(wb[0]+wb[2]+2,my); }
+  ctx.stroke(); ctx.restore();
+  d5Fit(ctx,wb[0]+4,wb[1]+3,(pickShort?'⚠️ 沿 ':'沿 ')+(cut===0?'x':'y')+' 轴切 → 子盒子缩到 '+
+        (100*keep).toFixed(0)+'%',
+        {size:7.8,color:pickShort?D9_C.bad:D9_C.amber,weight:700,mono:false},R,4);
+
+  const by=cy+40, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,
+           pickShort?'⚠️ 沿最短轴切：两半几乎重合，白切':'✓ 沿最长轴切：子盒子缩得最快',
+           pickShort?D9_C.bad:D9_C.good);
+  const rows=[['最长轴',Math.max(dx,dy).toFixed(2)+'（'+(longest===0?'x':'y')+'）',D9_C.amber],
+              ['最短轴',Math.min(dx,dy).toFixed(2)+'（'+(longest===0?'y':'x')+'）','#64748b'],
+              ['当前选择','沿 '+(cut===0?'x':'y')+' 轴',pickShort?D9_C.bad:D9_C.good],
+              ['子盒子缩到',(100*keep).toFixed(0)+'%  ← 越接近 50% 越值',pickShort?D9_C.bad:D9_C.good],
+              ['longest_axis()','返回 0 / 1 / 2',D9_C.node]];
+  rows.forEach(function(r,i){ d910KV(ctx,A.x+10,by+22+i*11.5,A.w-20,r[0],r[1],r[2],{size:7.4}); });
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'四步建树 · 第 2 步',[
+    {items:[
+      {s:'② 选最长的那条轴',mono:false,c:D9_C.node,w:700},
+      {s:'   int axis = total_box.longest_axis();',mono:true},
+      {s:'   // 0 = x, 1 = y, 2 = z',mono:true,c:'#94a3b8'},
+      '',
+      {s:'当前这一堆：',mono:false,c:'#0f172a',w:700},
+      {s:'  x 跨度 '+dx.toFixed(3)+'　y 跨度 '+dy.toFixed(3),mono:true},
+      {s:'  → 选 '+(longest===0?'x':'y')+' 轴',mono:true,c:D9_C.amber,w:700},
+      '',
+      {s:'为什么选最长的？',mono:false,c:'#0f172a',w:700},
+      '物体在那一维上【分布最散】：',
+      {s:'  沿它切 → 两半分得开',mono:true,c:D9_C.good},
+      {s:'  沿很短的轴切 → 白切',mono:true,c:D9_C.bad},
+      '两个子盒子缩得最快 → 树更矮 →',
+      '排除更有效。',
+      '',
+      {s:'⚠️ 永远按 x 切会退化成链表。',mono:false,c:D9_C.bad,w:700}
+    ],o:{size:7.9,lh:10.6,gap:2.4}}
+  ],D9_C.amber, H-py-14);
+
+  st.readout='这一堆物体的包围盒：x 跨度 <b>'+dx.toFixed(3)+'</b>、y 跨度 <b>'+dy.toFixed(3)+
+             '</b> → 选 <b>'+(longest===0?'x':'y')+' 轴</b>。滑块可以在 x / y / z 三种切法之间对照：'+
+             '沿最长轴切，两半各缩一半；沿短轴切，两半几乎重合。';
+}
+
+/* ---------- 步骤 4 · 第 3 步：沿这条轴排序 ---------- */
+function drawD9_4(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes;
+  const p=clamp(st.d9sort,0,1);
+  const axis=nodes[0].axis;
+  d5Head(ctx,R,'第 3 步 · 沿这条轴排序：排完，相邻物体在空间上也相邻');
+
+  const sceneH=A.h*0.52, V=d9View(A.x,A.y,A.w,sceneH);
+  d9SceneLayer(ctx,objs,V,{});
+  const wb=V.rect(nodes[0].box);
+  ctx.save(); ctx.setLineDash([5,4]); ctx.strokeStyle=D9_C.box; ctx.lineWidth=1.2;
+  ctx.strokeRect(wb[0],wb[1],wb[2],wb[3]); ctx.restore();
+
+  /* 排序前后的一维条带 */
+  const before=(nodes[0].orderBefore||objs).slice(0);
+  const sorted=before.slice(0).sort(function(a,b){ return d9boxOf(a).mn[axis]-d9boxOf(b).mn[axis]; });
+  const sy0=A.y+sceneH+22, sy1=sy0+34;
+  txt(ctx,A.x,sy0-14,'按 '+(axis===0?'x':'y')+' 轴排序（下标随位置移动）',
+      {size:7.8,color:'#64748b',weight:700,mono:false});
+  const N=before.length, sw=Math.min(14,(A.w-14)/N);
+  before.forEach(function(o,i){
+    const to=sorted.indexOf(o);
+    const x=A.x+7+lerp(i,to,p)*sw;
+    const col=(o.r>0.3)?D9_C.box:D9_C.ray;
+    ctx.beginPath(); ctx.arc(x,sy0+16,Math.max(2.4,sw*0.30),0,7);
+    ctx.fillStyle=col==='#2563eb'?'rgba(37,99,235,.35)':'rgba(220,38,38,.30)'; ctx.fill();
+    ctx.strokeStyle=col; ctx.lineWidth=1; ctx.stroke();
+  });
+  txt(ctx,A.x,sy0+34,'排序前：按下标排'.padEnd(10),{size:7.2,color:'#94a3b8',mono:false});
+  txt(ctx,A.x+A.w,sy1,'拖满滑块 → 完成排序',{size:7.2,color:D9_C.node,weight:700,align:'right',mono:false});
+
+  const by=sy1+8, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'std::sort + lambda 捕获 axis',D9_C.node);
+  const rows=[['std::sort(first, last,','收两个参数返回 bool',D9_C.ink],
+              ['  [axis](const a, const b){','[axis] 把外面的 axis 拷进来',D9_C.node],
+              ['    AABB ba, bb;','两个盒子，各问一次',D9_C.ink],
+              ['    a->bounding_box(ba);','',D9_C.ink],
+              ['    b->bounding_box(bb);','',D9_C.ink],
+              ['    return ba.min[axis] < bb.min[axis];','按这条轴比大小',D9_C.good],
+              ['  });','',D9_C.ink]];
+  rows.forEach(function(r,i){ d910KV(ctx,A.x+9,by+22+i*11,A.w-18,r[0],r[1],r[2],{size:7.2}); });
+  d5Fit(ctx,A.x+9,by+22+7*11+2,'每层都要重新算盒子 → 这就是「盒子测试 40.74 次 / 光线」的来源之一',
+        {size:7.4,color:D9_C.amber,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'四步建树 · 第 3 步',[
+    {items:[
+      {s:'③ 沿这条轴排序',mono:false,c:D9_C.node,w:700},
+      {s:'   std::sort(..., [axis](a, b){ ... });',mono:true},
+      '',
+      {s:'为什么 lambda 要捕获 axis？',mono:false,c:'#0f172a',w:700},
+      {s:'std::sort 只吃「收两个参数」的比较器，',mono:false},
+      {s:'而我们还必须告诉它「按哪个轴排」。',mono:false},
+      {s:'[axis] 把外层的 axis 复制一份进闭包。',mono:false},
+      '',
+      {s:'排序带来了什么？',mono:false,c:'#0f172a',w:700},
+      {s:'排完之后，相邻的物体在空间上也相邻',mono:false,c:D9_C.good,w:700},
+      '—— 这样「对半分」才能切出两个真正',
+      '分开的小盒子，而不是两堆互相穿插的东西。',
+      '',
+      {s:'⚠️ 代价：',mono:false,c:D9_C.amber,w:700},
+      '排序时要反复调用 bounding_box()，',
+      '所以「每根光线 40.74 次盒子测试」里，',
+      '有一部分其实是建树时付掉的。'
+    ],o:{size:7.9,lh:10.6,gap:2.4}}
+  ],D9_C.node, H-py-14);
+
+  st.readout='沿 <b>'+(axis===0?'x':'y')+' 轴</b>排序，滑块从 0 拖到 1 就是「下标 1..'+N+
+             '」重排成「坐标从小到大」。<code>[axis]</code> 是 lambda 捕获 —— '+
+             'std::sort 只认两个参数，所以「按哪条轴」必须从外面带进来。';
+}
+
+/* ---------- 步骤 5 · 第 4 步：对半分，递归 ---------- */
+function drawD9_5(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes;
+  const p=clamp(st.d9tree,0,1);
+  d5Head(ctx,R,'第 4 步 · 每次严格对半分 → 深度 = ⌈log₂N⌉');
+
+  const sceneH=A.h*0.44, V=d9View(A.x,A.y,A.w,sceneH);
+  const total=nodes.length;
+  const reveal=1+Math.floor(p*(total-1));
+  d9SceneLayer(ctx,objs,V,{dotFill:'rgba(148,163,184,.18)',dotStroke:'rgba(148,163,184,.4)'});
+  nodes.forEach(function(n,i){
+    if(i>=reveal) return;
+    const b=V.rect(n.box);
+    const hue=205+Math.min(120,n.depth*22);
+    ctx.save();
+    rr(ctx,b[0],b[1],b[2],b[3],3);
+    ctx.fillStyle='hsla('+hue+',72%,52%,'+(n.count?0.16:0.06)+')'; ctx.fill();
+    ctx.strokeStyle='hsla('+hue+',72%,44%,'+(n.count?0.85:0.42)+')';
+    ctx.lineWidth=n.count?1.5:1; ctx.stroke();
+    ctx.restore();
+    if(n.count>0){
+      [n.left,(n.count===2?n.right:n.left)].forEach(function(oi){
+        const c=V.pt([objs[oi].x,objs[oi].y]);
+        ctx.beginPath(); ctx.arc(c[0],c[1],Math.max(2,objs[oi].r*V.sc),0,7);
+        ctx.fillStyle='#fff'; ctx.fill();
+        ctx.strokeStyle='hsl('+hue+',72%,44%)'; ctx.lineWidth=1.3; ctx.stroke();
+      });
+    }
+  });
+  d5Fit(ctx,A.x+2,A.y+2,'已展开 '+reveal+' / '+total+' 个节点（越往下颜色越浅）',
+        {size:7.6,color:D9_C.node,weight:700,mono:false},R,4);
+
+  /* 下半：递归树 */
+  const ty=A.y+sceneH+22, th=A.y1-ty-2;
+  d910Card(ctx,A.x,ty-18,A.w,18+th+2,'递归树 · 编号 = 节点在 nodes[] 里的下标',D9_C.node);
+  const innerH=th-4;
+  d9TreeDraw(ctx,A.x+6,ty+4,A.w-12,innerH,S.tree,reveal,null);
+  txt(ctx,A.x+6,A.y1-11,'● 紫 = 内部节点（count==0，left/right → nodes[]）　● 绿 = 叶子（→ objects[]）',
+      {size:7,color:'#94a3b8',mono:false});
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'四步建树 · 第 4 步',[
+    {items:[
+      {s:'④ 对半分，递归',mono:false,c:D9_C.node,w:700},
+      {s:'   size_t mid = start + (end-start)/2;',mono:true},
+      {s:'   left  = make_shared<BVHNode>(objects, start, mid);',mono:true},
+      {s:'   right = make_shared<BVHNode>(objects, mid,   end);',mono:true},
+      '',
+      {s:'严格对半分 ⇒ 深度 = ⌈log₂N⌉',mono:false,c:D9_C.good,w:700},
+      {s:'  480 个物体 → 深度 9（实测就是 9）',mono:true},
+      {s:'  demo '+S.tree.objs.length+' 个物体 → 深度 '+S.tree.maxDepth,mono:true},
+      '',
+      {s:'为什么 left/right 是',mono:false,c:'#0f172a',w:700},
+      {s:'shared_ptr<Hittable> 而不是 <BVHNode>？',mono:false,c:'#0f172a',w:700},
+      '因为【叶子节点里存的是球，不是 BVHNode】——',
+      '只有基类指针才能同时指向这两种东西。',
+      '',
+      {s:'⭐ 关键设计：BVHNode 也继承 Hittable',mono:false,c:D9_C.node,w:700},
+      '所以「一棵树」和「一个球」从外面看',
+      '没区别 —— main.cpp 换一行就接进去了。'
+    ],o:{size:7.9,lh:10.5,gap:2.2}}
+  ],D9_C.node, H-py-14);
+
+  st.readout='已展开 <b>'+reveal+' / '+total+'</b> 个节点。严格对半分 ⇒ <b>深度 = ⌈log₂N⌉</b>：'+
+             '480 个物体 → 9 层，demo '+S.tree.objs.length+' 个 → '+S.tree.maxDepth+' 层。'+
+             'BVHNode 也继承 Hittable，所以树和球是「同一种东西」。';
+}
+
+/* ---------- 步骤 6 · 树质量体检 ---------- */
+function drawD9_6(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes;
+  const p=clamp(st.d9quality,0,1);
+  d5Head(ctx,R,'先体检，再谈加速 —— 树坏了，后面的结论全都不可信');
+
+  /* 左：每层节点数直方图 */
+  const hH=A.h*0.56;
+  d910Card(ctx,A.x,A.y,A.w*0.58,hH,'每层的节点数',D9_C.node);
+  const gw=A.w*0.58-24, gy=A.y+26, gh=hH-40;
+  const maxC=Math.max.apply(null,S.tree.byDepth);
+  S.tree.byDepth.forEach(function(c,d){
+    const on=(d<=Math.round(p*S.tree.maxDepth));
+    const y=gy+d*(gh/(S.tree.maxDepth+1));
+    const bh=Math.max(4,(gh/(S.tree.maxDepth+1))-3);
+    txt(ctx,A.x+10,y+bh/2-4,'d'+d,{size:7.2,color:'#64748b',weight:700});
+    d910Bar(ctx,A.x+30,y,gw,bh,c/maxC,on?D9_C.node:'#e2e8f0');
+    txt(ctx,A.x+34+gw*(c/maxC),y+bh/2-4,String(c),
+        {size:7.2,color:on?D9_C.node:'#cbd5e1',weight:700,mono:true});
+  });
+  d5Fit(ctx,A.x+10,A.y+hH-13,'理想平衡树：每层翻倍 → 深度 ⌈log₂N⌉',{size:7.2,color:'#94a3b8',mono:false},R,4);
+
+  /* 右上：三项指标 */
+  const rx=A.x+A.w*0.58+6, rw=A.w*0.42-6;
+  d910Card(ctx,rx,A.y,rw,hH,'体检报告',D9_C.leaf);
+  const giantNodes=nodes.filter(function(n){ return n.count>0 && n.count===1 && objs[n.left] && objs[n.left].r>0.3; }).length;
+  const rows=[['物体数',String(S.tree.objs.length),D9_C.ink],
+              ['节点数',String(nodes.length),D9_C.node],
+              ['内部 / 叶子',S.tree.inner+' / '+S.tree.leaves,D9_C.ink],
+              ['最大深度',String(S.tree.maxDepth),D9_C.good],
+              ['理想深度','⌈log₂'+S.tree.objs.length+'⌉ = '+Math.ceil(Math.log2(S.tree.objs.length)),D9_C.good],
+              ['巨球独占的叶子',String(giantNodes)+' 个',D9_C.amber],
+              ['占比',(100*giantNodes/Math.max(1,S.tree.leaves)).toFixed(1)+'%',D9_C.amber]];
+  rows.forEach(function(r,i){ d910KV(ctx,rx+9,A.y+24+i*13.6,rw-18,r[0],r[1],r[2],{size:7.6}); });
+  d5Fit(ctx,rx+9,A.y+hH-13,'→ 树是健康的，加速才有资格谈',{size:7.2,color:D9_C.leaf,weight:700,mono:false},R,4);
+
+  const by=A.y+hH+6, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'「地面巨球污染了树」—— 这个猜测被实测否定',D9_C.amber);
+  d5Fit(ctx,A.x+9,by+22,'猜测：巨球那么大，会不会把树拉成一条链？',
+        {size:7.6,color:'#64748b',mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+34,'实测：最大深度 <b>'+S.tree.maxDepth+'</b>（= ⌈log₂N⌉），巨球只占 '+
+        giantNodes+' 个叶子 —— 它老老实实待在自己那个盒子里，没有污染别人。',
+        {size:7.6,color:D9_C.good,mono:false,weight:700},R,4);
+  d5Fit(ctx,A.x+9,by+50,'📌 建完树先体检：节点数、最大深度、巨球占比。否则后面所有性能结论都不可信。',
+        {size:7.4,color:'#334155',mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'为什么先体检',[
+    {items:[
+      {s:'建完树第一件事不是测速，是体检：',mono:false,c:'#0f172a',w:700},
+      {s:'  ① 节点数 = 2N−1 ?',mono:true},
+      {s:'  ② 最大深度 ≈ ⌈log₂N⌉ ?',mono:true},
+      {s:'  ③ 巨型盒子节点占多少 ?',mono:true},
+      '',
+      {s:'demo 实测：',mono:false,c:'#0f172a',w:700},
+      {s:'  物体 '+S.tree.objs.length+' → 节点 '+nodes.length,mono:true},
+      {s:'  深度 '+S.tree.maxDepth+' ＝ ⌈log₂'+S.tree.objs.length+'⌉ ✓',mono:true,c:D9_C.good,w:700},
+      '',
+      {s:'被否定的猜测：',mono:false,c:D9_C.amber,w:700},
+      '「地面巨球半径 1000，比整个场景还大，',
+      '  一定会把树搅成一条链吧？」',
+      {s:'→ 实测深度 9，完全平衡。',mono:false,c:D9_C.good,w:700},
+      '',
+      {s:'为什么？因为递归切分只看「盒子有多长」，',mono:false,c:'#0f172a',w:600},
+      '巨球被单独分到某一个叶子里去了。',
+      '',
+      {s:'📌 这是今天第 1 个「猜测被实测推翻」。',mono:false,c:D9_C.node,w:700}
+    ],o:{size:7.9,lh:10.5,gap:2.2}}
+  ],D9_C.leaf, H-py-14);
+
+  st.readout='体检：物体 <b>'+S.tree.objs.length+'</b> · 节点 <b>'+nodes.length+'</b> · 内部/叶子 <b>'+
+             S.tree.inner+'/'+S.tree.leaves+'</b> · 最大深度 <b>'+S.tree.maxDepth+
+             '</b>（理想 '+Math.ceil(Math.log2(S.tree.objs.length))+'）。'+
+             '「巨球污染树」的猜测被否定 —— 树是健康的。';
+}
+
+/* 遍历场景的公共绘制（步骤 7 / 8 共用） */
+function d9Traverse(ctx,A,R,objs,nodes,tr,evN,tighten){
+  const V=d9View(A.x,A.y,A.w,A.h*0.68);
+  const shown=tr.events.slice(0,Math.max(1,evN));
+  /* 所有物体（淡） */
+  objs.forEach(function(o){
+    const c=V.pt([o.x,o.y]);
+    if(o.r>0.3) return;
+    ctx.beginPath(); ctx.arc(c[0],c[1],Math.max(1.5,o.r*V.sc),0,7);
+    ctx.fillStyle='rgba(148,163,184,.16)'; ctx.fill();
+    ctx.strokeStyle='rgba(148,163,184,.40)'; ctx.lineWidth=0.9; ctx.stroke();
+  });
+  /* 访问过的节点：绿=命中 红=没中（整棵子树被跳过） */
+  shown.forEach(function(e){
+    if(e.t!=='box') return;
+    const b=V.rect(nodes[e.idx].box), ok=!!e.iv;
+    ctx.save();
+    rr(ctx,b[0],b[1],b[2],b[3],3);
+    ctx.fillStyle=ok?'rgba(5,150,105,.13)':'rgba(220,38,38,.13)'; ctx.fill();
+    ctx.strokeStyle=ok?'rgba(5,150,105,.80)':'rgba(220,38,38,.70)';
+    ctx.lineWidth=1.2; ctx.stroke(); ctx.restore();
+  });
+  /* 光线 */
+  const A0=V.pt(D9_RAY.o);
+  const far=[D9_RAY.o[0]+D9_RAY.d[0]*1.55, D9_RAY.o[1]+D9_RAY.d[1]*1.55];
+  const B0=V.pt(far);
+  ctx.beginPath(); ctx.moveTo(A0[0],A0[1]); ctx.lineTo(B0[0],B0[1]);
+  ctx.strokeStyle='rgba(15,23,42,.14)'; ctx.lineWidth=3.2; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(A0[0],A0[1]); ctx.lineTo(B0[0],B0[1]);
+  ctx.strokeStyle=D9_C.ray; ctx.lineWidth=1.7; ctx.stroke();
+  d5Fit(ctx,A0[0]+4,A0[1]-11,'光线',{size:7.6,color:D9_C.ray,weight:700,mono:false},R,4);
+  /* 当前搜索区间 [0, t_max] */
+  const tm=shown[shown.length-1].tmax;
+  if(tighten && isFinite(tm) && tm<400){
+    const E=V.pt([D9_RAY.o[0]+D9_RAY.d[0]*tm, D9_RAY.o[1]+D9_RAY.d[1]*tm]);
+    ctx.beginPath(); ctx.moveTo(A0[0],A0[1]); ctx.lineTo(E[0],E[1]);
+    ctx.strokeStyle='rgba(5,150,105,.55)'; ctx.lineWidth=4.4; ctx.stroke();
+    d5Fit(ctx,E[0]+4,E[1]+8,'t_max 收紧到 '+tm.toFixed(3),{size:7.4,color:D9_C.good,weight:700,mono:true},R,4);
+  }
+  /* 命中点 */
+  shown.forEach(function(e){
+    if(e.t!=='hit') return;
+    const o=objs[e.oi], c=V.pt([o.x,o.y]), r=Math.max(2.6,o.r*V.sc);
+    ctx.beginPath(); ctx.arc(c[0],c[1],r,0,7);
+    ctx.fillStyle=D9_C.hit; ctx.fill();
+    d5Fit(ctx,c[0]+r+2,c[1]-5,'命中 t='+e.tt.toFixed(3),{size:7.2,color:D9_C.good,weight:700,mono:true},R,4);
+  });
+  return {shown:shown, evN:Math.max(1,evN)};
+}
+
+/* ---------- 步骤 7 · 求交：先试盒子，没中就跳过整棵子树 ---------- */
+function drawD9_7(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes, tr=S.trace;
+  const p=clamp(st.d9trace,0,1);
+  d5Head(ctx,R,'求交：光线先试当前节点的盒子，没中就跳过整棵子树');
+
+  const evN=(p>=1)?tr.events.length:1+Math.floor(p*(tr.events.length-1));
+  const r0=d9Traverse(ctx,A,R,objs,nodes,tr,evN,false);
+  const done=r0.evN>=tr.events.length;
+  d5Fit(ctx,A.x+2,A.y+2,done?'遍历结束 · 找到最近交点':'正在遍历…（栈里还有未处理的节点）',
+        {size:7.8,color:done?D9_C.good:'#94a3b8',weight:700,mono:false},R,4);
+
+  /* 底部：最近事件 + 计数器 */
+  const by=A.y+A.h*0.68+8, bh=A.y1-by;
+  let boxN=0,objN=0,hitN=0;
+  r0.shown.forEach(function(e){ if(e.t==='box')boxN++; if(e.t==='hit'||e.t==='miss')objN++; if(e.t==='hit')hitN++; });
+  d910Card(ctx,A.x,by,A.w,bh,'事件流（栈式：后进先出）',D9_C.node);
+  const last=r0.shown.slice(-4);
+  last.forEach(function(e,i){
+    let s='';
+    if(e.t==='box') s='试节点['+e.idx+'] 的盒子 → '+(e.iv?'命中':'没中，跳过整棵子树');
+    else if(e.t==='hit') s='叶子 · 命中 t='+e.tt.toFixed(3)+' → t_max = '+e.tt.toFixed(3);
+    else s='叶子 · 物体 '+e.oi+' 没中';
+    const col=(e.t==='box')?(e.iv?D9_C.good:D9_C.bad):(e.t==='hit'?D9_C.good:'#94a3b8');
+    d5Fit(ctx,A.x+9,by+22+i*12.5,s,{size:7.3,color:col,weight:e.t==='hit'?700:600,mono:false},R,4);
+  });
+  d910KV(ctx,A.x+9,by+bh-15,A.w-18,'盒子测试 '+boxN+' · 物体测试 '+objN+' · 命中 '+hitN,
+         '',D9_C.node,{size:7.4});
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'BVHNode::hit —— 递归版',[
+    {items:[
+      {s:'bool BVHNode::hit(r, t_min, t_max, rec) {',mono:true,c:D9_C.node,w:700},
+      {s:'  if (!box.hit(r, t_min, t_max)) return false;',mono:true,c:D9_C.bad,w:700},
+      {s:'  //  ↑ 盒子没中 → 整个子树直接放弃',mono:true,c:'#94a3b8'},
+      '',
+      {s:'  bool hit_left = left->hit(r, t_min, t_max, rec);',mono:true},
+      {s:'  bool hit_right = right->hit(r, t_min,',mono:true},
+      {s:'        hit_left ? rec.t : t_max, rec);',mono:true,c:D9_C.good,w:700},
+      {s:'  //  ↑ 右边用收紧后的 t_max',mono:true,c:'#94a3b8'},
+      '',
+      {s:'  return hit_left || hit_right;',mono:true},
+      {s:'}',mono:true},
+      '',
+      {s:'动画里的方块 = 被访问到的节点：',mono:false,c:'#0f172a',w:700},
+      {s:'  绿色 = 盒子被光线穿过',mono:true,c:D9_C.good},
+      {s:'  红色 = 盒子没中 → 整棵子树被跳过',mono:true,c:D9_C.bad},
+      '',
+      {s:'一边中一边不中：两个都要算，',mono:false},
+      '但返回的是「有没有任何一个中了」。'
+    ],o:{size:7.7,lh:10.2,gap:2}}
+  ],D9_C.node, H-py-14);
+
+  st.readout='事件 '+r0.evN+' / '+tr.events.length+'。'+(done?
+    '遍历结束：盒子测试 <b>'+tr.boxTests+'</b> 次、物体测试 <b>'+tr.objTests+'</b> 次、命中 <b>'+tr.hits+'</b> 个。':
+    '正在遍历 —— 紫色方块是还没比完的节点。')+
+    ' 关键：盒子没中 → <b>continue</b>（跳过这一个），不是 return false。';
+}
+
+/* ---------- 步骤 8 · 收紧 t_max ---------- */
+function drawD9_8(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), objs=S.tree.objs, nodes=S.tree.nodes, tr=S.trace;
+  const p=clamp(st.d9tighten,0,1);
+  d5Head(ctx,R,'一旦命中就用 rec.t 收紧 t_max —— 更远的点已经被挡住了');
+
+  const evN=(p>=1)?tr.events.length:1+Math.floor(p*(tr.events.length-1));
+  const r0=d9Traverse(ctx,A,R,objs,nodes,tr,evN,true);
+
+  /* 底部：t_max 随事件收缩的时间线 */
+  const by=A.y+A.h*0.68+8, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'t_max 的收缩过程（横轴 = 事件序号）',D9_C.good);
+  const tl=A.x+10, tw=A.w-20, ty=by+34, thh=bh-52;
+  const tmaxNow=r0.shown[r0.shown.length-1].tmax;
+  const hi=1.6;
+  txt(ctx,tl,ty-12,'t_max（越小越早排除）',{size:7,color:'#94a3b8',mono:false});
+  ctx.save();
+  ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(tl,ty+thh); ctx.lineTo(tl+tw,ty+thh); ctx.stroke();
+  ctx.restore();
+  ctx.beginPath();
+  r0.shown.forEach(function(e,i){
+    const t=(i/Math.max(1,r0.shown.length-1))*tw;
+    const v=isFinite(e.tmax)?Math.min(e.tmax,hi):hi;
+    const yy=ty+thh-(v/hi)*thh;
+    i?ctx.lineTo(tl+t,yy):ctx.moveTo(tl+t,yy);
+  });
+  ctx.strokeStyle=D9_C.good; ctx.lineWidth=1.6; ctx.stroke();
+  r0.shown.forEach(function(e){
+    if(e.t!=='hit') return;
+    const i=r0.shown.indexOf(e);
+    const t=(i/Math.max(1,r0.shown.length-1))*tw;
+    ctx.beginPath(); ctx.arc(tl+t,ty+thh-(Math.min(e.tt,hi)/hi)*thh,2.6,0,7);
+    ctx.fillStyle=D9_C.hit; ctx.fill();
+  });
+  txt(ctx,tl,ty+thh+4,'起点 = +∞',{size:7,color:'#94a3b8',mono:false});
+  txt(ctx,tl+tw,ty+thh+4,'现在 = '+(isFinite(tmaxNow)?tmaxNow.toFixed(3):'+∞'),
+      {size:7,color:D9_C.good,weight:700,align:'right',mono:true});
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'为什么收紧 t_max 不会漏掉正确交点',[
+    {items:[
+      {s:'要找的永远是「距离最小的那个 t」。',mono:false,c:'#0f172a',w:700},
+      '',
+      {s:'假设左边先命中 t = 3.2：',mono:false,c:'#0f172a',w:700},
+      {s:'  任何 t > 3.2 的交点都被左边挡住了，',mono:false},
+      {s:'  它更远 → 看不见 → 不可能是答案。',mono:false},
+      {s:'  ⇒ 右边只在 [t_min, 3.2] 里找就够了。',mono:true,c:D9_C.good,w:700},
+      '',
+      {s:'⭐ 收紧 t_max 只是「提前排除不可能赢',mono:false,c:D9_C.good,w:700},
+      '   的候选」，不改变最终胜者。',
+      '',
+      {s:'这就是「结果必须逐像素一致」的原因 ——',mono:false,c:'#0f172a',w:700},
+      {s:'image.png 全程 172,127 B ✓',mono:true,c:D9_C.good,w:700},
+      '',
+      {s:'实测：盒子测试 40.74 次 / 光线，',mono:false,c:'#0f172a',w:700},
+      '其中一部分就是这种「不值得再往下问」',
+      '的提前拒绝。'
+    ],o:{size:7.7,lh:10.2,gap:2}}
+  ],D9_C.good, H-py-14);
+
+  st.readout='当前 t_max = <b>'+(isFinite(tmaxNow)?tmaxNow.toFixed(3):'+∞')+'</b>。'+
+    '命中一次就收紧一次，后面的子树只在更窄的区间里找 —— '+
+    '它只排除「不可能赢的候选」，<b>不改变最终胜者</b>，所以画面必须逐像素一致。';
+}
+
+/* ---------- 步骤 9 · 计数器实测 ---------- */
+function drawD9_9(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st), tr=S.trace;
+  const p=clamp(st.d9count,0,1);
+  d5Head(ctx,R,'加几行临时计数器，实测一下到底少了多少次测试');
+
+  const top=A.y, h1=A.h*0.50;
+  d910Card(ctx,A.x,top,A.w,h1,'每根光线做了多少次测试（真实场景 480 个物体）',D9_C.ray);
+  const rows=[['球体求交（贵）',481,4.71,D9_C.ray,'102×'],
+              ['盒子测试（便宜）',0,40.74,D9_C.node,'新增'],
+              ['总测试',481,45.4,D9_C.ink,'10.6×']];
+  const bw=A.w-118, bx=A.x+88;
+  rows.forEach(function(r,i){
+    const y=top+26+i*20;
+    const on=p>((i+0.4)/4);
+    txt(ctx,A.x+9,y+2,r[0],{size:7.6,color:on?'#475569':'#cbd5e1',weight:600,mono:false});
+    if(!on){ txt(ctx,bx,y+2,'拖滑杆',{size:7.2,color:'#cbd5e1',mono:false}); return; }
+    d910Bar(ctx,bx,y,bw/2,9,r[1]/481,'#fecaca','#fdecec');
+    txt(ctx,bx+bw/2+4,y+1,String(r[1]),{size:7.2,color:D9_C.bad,mono:true});
+    d910Bar(ctx,bx,y+11,bw/2,9,r[2]/481,r[3]);
+    txt(ctx,bx+bw/2+4,y+12,r[2]%1?String(r[2]):String(r[2]),
+        {size:7.2,color:r[3],weight:700,mono:true});
+    txt(ctx,A.x+A.w-9,y+6,r[4],{size:8,color:r[3],weight:700,align:'right',mono:false});
+  });
+  txt(ctx,A.x+9,top+h1-28,'上排 = 朴素遍历　下排 = BVH',{size:7,color:'#94a3b8',mono:false});
+
+  const by=top+h1+6, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'关键：次数少了 10.6 倍，时间只少了 2.23 倍',D9_C.amber);
+  const rows2=[['每次测试平均耗时','3.4 ns → 18.7 ns',D9_C.bad],
+               ['贵了多少','5.5×',D9_C.bad],
+               ['净收益','10.6 ÷ 5.5 ≈ 2.23×',D9_C.good],
+               ['实测耗时','13.16 s → 5.89 s',D9_C.good],
+               ['image.png','172,127 B（不变）',D9_C.good]];
+  rows2.forEach(function(r,i){ d910KV(ctx,A.x+9,by+22+i*13,A.w-18,r[0],r[1],r[2],{size:7.6}); });
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'测试次数 ≠ 速度',[
+    {items:[
+      {s:'每根光线（真实场景 480 个球）：',mono:false,c:'#0f172a',w:700},
+      {s:'  球体求交  481 → 4.71   少 102×',mono:true,c:D9_C.good},
+      {s:'  盒子测试    0 → 40.74  多了',mono:true,c:D9_C.node},
+      {s:'  总测试    481 → 45.4   少 10.6×',mono:true},
+      '',
+      {s:'⚠️ 但每次测试的平均耗时',mono:false,c:D9_C.bad,w:700},
+      {s:'   3.4 ns → 18.7 ns（贵 5.5×）',mono:true,c:D9_C.bad,w:700},
+      '',
+      {s:'净收益 = 10.6 ÷ 5.5 ≈ 2.23×',mono:false,c:D9_C.good,w:700},
+      {s:'实测 13.16 s → 5.89 s ✓',mono:true,c:D9_C.good,w:700},
+      '',
+      {s:'📌 教训：次数只是一个维度，',mono:false,c:D9_C.node,w:700},
+      '「每次有多贵」是另一个维度。',
+      '两者相乘才是真实收益 ——',
+      '只看「少了 102 倍」会高估 45 倍。'
+    ],o:{size:7.8,lh:10.4,gap:2.1}}
+  ],D9_C.ray, H-py-14);
+
+  st.readout='真实场景每根光线：球体求交 <b>481 → 4.71</b>（少 102×）、盒子测试 <b>0 → 40.74</b>、'+
+    '总测试 <b>481 → 45.4</b>（少 10.6×）。但每次测试贵了 <b>5.5×</b>（3.4 → 18.7 ns），'+
+    '所以净收益只有 <b>2.23×</b>（13.16 s → 5.89 s）。';
+}
+
+/* ---------- 步骤 10 · 那 5.5 倍贵在哪 ---------- */
+function drawD9_10(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st);
+  const p=clamp(st.d9cost,0,1);
+  d5Head(ctx,R,'一次「节点访问」≈ 75 个 CPU 周期 —— 拆开看花在哪');
+
+  const top=A.y, h1=A.h*0.52;
+  d910Card(ctx,A.x,top,A.w,h1,'75 个周期去哪了',D9_C.amber);
+  const parts=[['虚函数调用 + 分支预测失败',40,'#dc2626'],
+               ['指针跳转的缓存未命中',20,'#b45309'],
+               ['盒子测试的算术（1减1乘2比较）',15,'#059669']];
+  const bx=A.x+10, bw=A.w-20, byy=top+40;
+  let acc=0;
+  parts.forEach(function(q,i){
+    const on=p>((i+0.35)/3.2);
+    const w=on?(q[1]/75)*bw:0;
+    if(w>0){ ctx.save(); rr(ctx,bx+acc,byy,w,20,3); ctx.fillStyle=q[2]; ctx.globalAlpha=.85; ctx.fill(); ctx.restore(); }
+    txt(ctx,bx+acc+4,byy+6,q[1]+' 周期',{size:7.2,color:'#fff',weight:700,mono:true});
+    acc+=w;
+  });
+  ctx.save(); ctx.strokeStyle='#e2e8f0'; ctx.strokeRect(bx,byy,bw,20); ctx.restore();
+  parts.forEach(function(q,i){
+    const y=byy+34+i*15;
+    const on=p>((i+0.35)/3.2);
+    ctx.save(); ctx.fillStyle=on?q[2]:'#e2e8f0';
+    rr(ctx,bx,y+1,8,8,2); ctx.fill(); ctx.restore();
+    d5Fit(ctx,bx+13,y,(on?'':'… ')+q[0]+'  →  '+q[1]+' 周期',
+          {size:7.6,color:on?'#334155':'#cbd5e1',weight:600,mono:false},R,4);
+  });
+  d5Fit(ctx,bx,byy+34+3*15+4,'合计 = 40 + 20 + 15 = 75 周期 / 次节点访问   朴素一次球体求交 ≈ 17 周期',
+        {size:7.4,color:D9_C.amber,weight:700,mono:false},R,4);
+
+  const by=top+h1+6, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'为什么朴素遍历反而「每次更便宜」',D9_C.leaf);
+  d5Fit(ctx,A.x+9,by+22,'480 个 Sphere 在内存里是<b>连续的</b>（≈27 KB，全塞得进 L1/L2 缓存）',
+        {size:7.5,color:'#334155',mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+36,'每次 obj->hit() 的目标都是 Sphere → <b>分支预测器学得会</b>',
+        {size:7.5,color:'#334155',mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+52,'而 BVH 的每次跳转，目标在 BVHNode / Sphere 之间随机切换 → 预测器猜不中',
+        {size:7.5,color:D9_C.bad,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'钱花在哪三件事上',[
+    {items:[
+      {s:'一次节点访问 ≈ 75 周期：',mono:false,c:'#0f172a',w:700},
+      {s:'  ① 虚函数 + 分支失败  ≈ 40',mono:true,c:D9_C.bad,w:700},
+      '     目标在 BVHNode / Sphere 之间随机跳，',
+      '     分支预测器猜不中 → 流水线清空。',
+      {s:'  ② 缓存未命中        ≈ 20',mono:true,c:D9_C.amber,w:700},
+      '     节点散落在堆上，每次都要去主存取。',
+      {s:'  ③ 盒子算术          ≈ 15',mono:true,c:D9_C.good,w:700},
+      '     每轴 1 减 1 乘 2 比较 —— 反而是最小头。',
+      '',
+      {s:'对比朴素遍历：',mono:false,c:'#0f172a',w:700},
+      {s:'  480 个 Sphere 连续排列（≈27 KB）',mono:false},
+      {s:'  → 全在缓存里；目标恒定 → 预测器学得会',mono:false,c:D9_C.good},
+      {s:'  → 每次只要 ≈17 周期',mono:true,c:D9_C.good,w:700},
+      '',
+      {s:'⭐ 这个 75 周期就是 Day 10 的靶子：',mono:false,c:D9_C.node,w:700},
+      '    扁平化想去掉 ① 和 ②，结果只值 6%；',
+      '    真正贵的东西在第 10 天才会露面。'
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],D9_C.amber, H-py-14);
+
+  st.readout='一次节点访问 ≈ <b>75 个 CPU 周期</b>：虚函数 + 分支预测失败 ≈ <b>40</b>、'+
+    '缓存未命中 ≈ <b>20</b>、盒子算术只有 <b>15</b>。'+
+    '朴素遍历每次只要 ≈17 周期（数据连续、目标恒定、预测器学得会）—— 这就是 3.4 ns vs 18.7 ns 的来源。';
+}
+
+/* ---------- 步骤 11 · N 越大越值钱 ---------- */
+function drawD9_11(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const S=d9State(st);
+  const p=clamp(st.d9scale,0,1);
+  d5Head(ctx,R,'O(log N) vs O(N)：N 越大，那个「更大的常数项」越不重要');
+
+  const pts=[{n:4,s:0.9,t:'4 个物体',c:'#94a3b8',note:'朴素赢'},
+             {n:481,s:2.23,t:'480 个物体',c:D9_C.ray,note:'BVH 只赢 2.23×'},
+             {n:5000,s:20,t:'5000 个',c:D9_C.node,note:'约 20×'},
+             {n:100000,s:60,t:'100000 个',c:D9_C.leaf,note:'朴素不可行'}];
+  const gx=A.x+34, gy=A.y+16, gw=A.w-44, gh=A.h*0.60;
+  /* 坐标轴 */
+  ctx.save(); ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(gx,gy+gh); ctx.lineTo(gx+gw,gy+gh); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gx,gy+gh); ctx.stroke();
+  ctx.restore();
+  const X=function(n){ return gx+(Math.log10(n)/5)*gw; };
+  const Y=function(s){ return gy+gh-Math.min(s,60)/60*gh; };
+  [1,10,100,1000,10000,100000].forEach(function(n){
+    const x=X(n);
+    ctx.save(); ctx.strokeStyle='#f1f5f9'; ctx.beginPath();
+    ctx.moveTo(x,gy); ctx.lineTo(x,gy+gh); ctx.stroke(); ctx.restore();
+    txt(ctx,x,gy+gh+3,n>=10000?(n/1000)+'k':String(n),{size:6.8,color:'#94a3b8',align:'center',mono:true});
+  });
+  [1,20,40,60].forEach(function(s){
+    txt(ctx,gx-4,Y(s)+2,'×'+s,{size:6.8,color:'#94a3b8',align:'right',mono:true});
+  });
+  ctx.beginPath();
+  pts.forEach(function(q,i){ i?ctx.lineTo(X(q.n),Y(q.s)):ctx.moveTo(X(q.n),Y(q.s)); });
+  ctx.strokeStyle='rgba(124,58,237,.45)'; ctx.lineWidth=1.6; ctx.setLineDash([4,3]); ctx.stroke();
+  ctx.setLineDash([]);
+  pts.forEach(function(q,i){
+    const on=p>((i+0.3)/4.3);
+    if(!on) return;
+    const x=X(q.n), y=Y(q.s);
+    ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fillStyle=q.c; ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.4; ctx.stroke();
+    d5Fit(ctx,x+6,y-5,q.t+' → '+(q.s>=60?'不可行':'约 '+q.s+'×'),
+          {size:7.4,color:q.c,weight:700,mono:false},R,4);
+    d5Fit(ctx,x+6,y+5,q.note,{size:6.8,color:'#94a3b8',mono:false},R,4);
+  });
+  txt(ctx,gx+gw/2,gy+gh+15,'物体数 N（对数轴）',{size:7,color:'#94a3b8',align:'center',mono:false});
+
+  const by=A.y+A.h*0.60+30, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'结论：BVH 的价值随 N 增长',D9_C.leaf);
+  d5Fit(ctx,A.x+9,by+22,'4 个物体：朴素赢（BVH 的建树 + 跳转开销 > 收益）',
+        {size:7.5,color:'#64748b',mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+36,'480 个：只赢 2.23×（常数项还很大）',
+        {size:7.5,color:D9_C.ray,weight:700,mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+50,'5000 个：约 20×　·　100000 个：朴素已不可行',
+        {size:7.5,color:D9_C.leaf,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'什么时候才真正值钱',[
+    {items:[
+      {s:'BVH：O(log N)　朴素：O(N)',mono:true,c:'#0f172a',w:700},
+      {s:'但 BVH 的常数项更大',mono:false,c:D9_C.bad,w:700},
+      {s:'（75 周期/次 vs 17 周期/次）',mono:true,c:D9_C.bad},
+      '',
+      {s:'N 越大，常数项越不重要 →',mono:false,c:D9_C.good,w:700},
+      {s:'这才是 BVH 的真正价值',mono:false,c:D9_C.good,w:700},
+      '',
+      {s:'  4 个物体      朴素赢',mono:true,c:'#94a3b8'},
+      {s:'  480 个        只赢 2.23×',mono:true,c:D9_C.ray},
+      {s:'  5000 个       约 20×',mono:true,c:D9_C.node},
+      {s:'  100000 个     朴素不可行',mono:true,c:D9_C.leaf},
+      '',
+      {s:'💡 下一步（Day 11）的计划：',mono:false,c:D9_C.node,w:700},
+      '换一个更大的场景（22×22 → 44×44 球阵）',
+      '再比一次 —— 这比在 480 个球上死磕',
+      '更有说服力。'
+    ],o:{size:7.8,lh:10.4,gap:2.1}}
+  ],D9_C.leaf, H-py-14);
+
+  st.readout='BVH 是 <b>O(log N)</b>、朴素是 <b>O(N)</b>，但 BVH 的常数项更大（75 vs 17 周期）。'+
+    '所以 N 越大越划算：480 个只赢 <b>2.23×</b>，5000 个约 <b>20×</b>，10 万级朴素已不可行。'+
+    'demo 当前：'+S.tree.objs.length+' 个物体。';
+}
+
+/* =========================================================================
+   Day 9 · 源码 / 步骤表 / 扩展卡片 + ANIM 注册（块 C）
+   ⚠️ 注册 IIFE 必须放在 D9_STEPS 之后（Day 6 踩过 TDZ 的坑）
+   ========================================================================= */
+
+const D9_FILES={
+
+'include/bvh.h · Day 9 建树':[
+ '// ── Day 9 版本：用 shared_ptr 把节点串成一棵树 ──',
+ '//    （Day 10 已重写为「连续数组 + 整数下标」的扁平版）',
+ 'class BVHNode : public Hittable {',
+ 'public:',
+ '    BVHNode(HittableList list)',
+ '        : BVHNode(list.objects, 0, list.objects.size()) {}',
+ '',
+ '    BVHNode(std::vector<std::shared_ptr<Hittable>>& objects,',
+ '            size_t start, size_t end) {',
+ '        // ① 算这一堆物体的总包围盒 —— 必须是【并集】',
+ '        AABB total_box; bool first = true;',
+ '        for (size_t i = start; i < end; ++i) {',
+ '            AABB temp;',
+ '            objects[i]->bounding_box(temp);',
+ '            total_box = first ? temp',
+ '                              : AABB::surrounding(total_box, temp);',
+ '            first = false;',
+ '        }',
+ '',
+ '        // 递归出口：1~2 个物体 → 叶子',
+ '        if (end - start <= 2) {',
+ '            left  = objects[start];',
+ '            right = (end - start == 2) ? objects[start + 1]',
+ '                                      : objects[start];',
+ '            box = total_box;',
+ '            return;',
+ '        }',
+ '',
+ '        // ② 选最长的那条轴 —— 物体在那维分布最散',
+ '        int axis = total_box.longest_axis();',
+ '',
+ '        // ③ 沿这条轴排序（lambda 捕获 axis）',
+ '        std::sort(objects.begin() + start, objects.begin() + end,',
+ '                  [axis](const std::shared_ptr<Hittable>& a,',
+ '                         const std::shared_ptr<Hittable>& b) {',
+ '                      AABB ba, bb;',
+ '                      a->bounding_box(ba);',
+ '                      b->bounding_box(bb);',
+ '                      return ba.minimum[axis] < bb.minimum[axis];',
+ '                  });',
+ '',
+ '        // ④ 对半分，递归',
+ '        size_t mid = start + (end - start) / 2;',
+ '        left  = make_shared<BVHNode>(objects, start, mid);',
+ '        right = make_shared<BVHNode>(objects, mid,   end);',
+ '        box   = total_box;',
+ '    }',
+ '',
+ 'private:',
+ '    AABB box;',
+ '    // ⚠️ 必须是 Hittable：叶子存【球】，内部节点存【BVHNode】',
+ '    std::shared_ptr<Hittable> left;',
+ '    std::shared_ptr<Hittable> right;',
+ '};'
+],
+
+'include/bvh.h · 求交':[
+ 'bool hit(const Ray& r, double t_min, double t_max,',
+ '         HitRecord& rec) const override {',
+ '    // ① 先试【当前节点】的盒子：没中 → 整棵子树直接放弃',
+ '    if (!box.hit(r, t_min, t_max)) return false;',
+ '',
+ '    // ② 问左边',
+ '    bool hit_left = left->hit(r, t_min, t_max, rec);',
+ '',
+ '    // ③ 问右边 —— 用【收紧后】的 t_max：',
+ '    //    更远的点已经被左边挡住了，不可能赢',
+ '    bool hit_right = right->hit(r, t_min,',
+ '                                hit_left ? rec.t : t_max, rec);',
+ '',
+ '    return hit_left || hit_right;',
+ '}',
+ '',
+ '// 为什么收紧 t_max 不会漏掉正确交点？',
+ '//   它只排除「不可能赢的候选」，不改变最终胜者：',
+ '//   要找的仍然是【距离最小的那个 t】。'
+],
+
+'include/aabb.h · longest_axis':[
+ '    // --------------------------------------------------------',
+ '    // 三个轴里哪一轴最长？返回 0 / 1 / 2',
+ '    // 用在哪里：BVH 建树时沿【最长的那条轴】切分 ——',
+ '    //   物体在那一轴上分布最分散，切完两半分得最开，',
+ '    //   两个子盒子缩得最快 → 树更矮 → 排除更有效。',
+ '    // --------------------------------------------------------',
+ '    int longest_axis() const {',
+ '        double dx = maximum.x() - minimum.x();',
+ '        double dy = maximum.y() - minimum.y();',
+ '        double dz = maximum.z() - minimum.z();',
+ '        if (dx > dy && dx > dz) return 0;',
+ '        if (dy > dz)           return 1;',
+ '        return 2;',
+ '    }'
+],
+
+'src/main.cpp · 接入':[
+ '    // ---------- 场景：一个装着所有物体的"世界" ----------',
+ '    // 想换场景只改这一行：simple_scene() 或 random_scene()',
+ '    HittableList world_list = random_scene();',
+ '',
+ '    // Day 8：世界 = 480 个物体 + 一层大盒子',
+ '    // HittableList world(world_list);',
+ '',
+ '    // Day 9：世界 = 一棵 BVH 树',
+ '    // ⭐ BVHNode 也继承 Hittable —— 从外面看，「一棵树」和「一个球」没区别',
+ '    BVHNode world(world_list);',
+ '',
+ '    // 渲染循环里一行都不用改：',
+ '    //   if (world.hit(ray, 0.001, infinity, rec)) { ... }'
+],
+
+'tmp/inspect.txt':[
+ '[BVH] 建树完成',
+ '   物体数        481',
+ '   节点数        511        ← 2 × 256 − 1（满的那层是 256 个叶子）',
+ '   最大深度      9          ← ⌈log₂481⌉ = 9   ✓ 完全平衡',
+ '   巨型盒子节点  12  (2.5%) ← 地面巨球所在的那个盒子',
+ '',
+ '   结论：树是健康的 ——「地面巨球污染了树」这个猜测被否定',
+ '   下一步：接进 main.cpp，看渲染时间到底变没变'
+],
+
+'tmp/counter.txt':[
+ '[计数] 一次渲染的实测平均值（每根光线）',
+ '',
+ '                   朴素遍历(Day 8)      BVH(Day 9)',
+ '   ─────────────────────────────────────────────',
+ '   球体求交            481.00             4.71      少 102×',
+ '   盒子测试              0.00            40.74      ← 新增',
+ '   总测试              481.00            45.40      少 10.6×',
+ '',
+ '   每次测试平均耗时',
+ '     朴素                 3.4 ns',
+ '     BVH                 18.7 ns        ← 贵 5.5×',
+ '   ─────────────────────────────────────────────',
+ '   净收益   10.6 ÷ 5.5 ≈ 2.23×',
+ '   实测     13.16 s  →  5.89 s',
+ '   image.png   172,127 B   （与 Day 8 字节级一致 ✓）'
+],
+
+'tmp/cycles.txt':[
+ '一次 BVH 节点访问 ≈ 75 个 CPU 周期',
+ '',
+ '   虚函数调用 + 分支预测失败    ≈ 40   ← 目标在 BVHNode / Sphere 之间随机跳',
+ '   指针跳转的缓存未命中          ≈ 20   ← 节点散落在堆上',
+ '   盒子测试的算术                ≈ 15   ← 每轴 1 减 1 乘 2 比较',
+ '   ─────────────────────────────────────',
+ '                                75',
+ '',
+ '对比：朴素遍历一次 Sphere::hit ≈ 17 周期',
+ '   480 个 Sphere 连续排列（≈ 27 KB）→ 全塞得进 L1/L2',
+ '   每次调用的目标都是 Sphere → 分支预测器学得会'
+],
+
+'tools/run.ps1':[
+ '# tools/run.ps1 —— 一键：编译 + 运行 + 分段计时',
+ '',
+ '$t0 = Get-Date',
+ 'g++ -std=c++17 -O2 -I include src/main.cpp -o build/raytracer.exe',
+ '$t1 = Get-Date',
+ '.\\build\\raytracer.exe',
+ '$t2 = Get-Date',
+ '',
+ '"编译   $($t1 - $t0)"',
+ '"渲染   $($t2 - $t1)"   # ← 读这一行，别读总计（Day 7 的教训）',
+ '',
+ '# 逐日对照：',
+ '#   Day 8  朴素遍历      13.19 s',
+ '#   Day 9  树形 BVH       5.89 s   ← 2.23×',
+ '#   Day 10 扁平化         5.55 s   ← 1.06×',
+ '#   Day 10 三目运算符     1.82 s   ← 3.0×（总计 7.2×）'
+]
+};
+
+/* ---------------- 步骤表 ---------------- */
+const D9_STEPS=[
+{
+ no:1, anim:'d9scene', chap:'① 问题', title:'481 个物体，世界盒却有 99.9% 是空的',
+ file:'src/main.cpp · 接入', hl:[[1,11]],
+ legend:[['#dc2626','世界包围盒（被巨球撑起来）'],['#059669','小球真正的分布范围']],
+ text:'Day 8 的包围盒解决了一个问题，却暴露了另一个：整个世界的包围盒是 '+
+      '<b>2000 × 2002 × 2000</b>（被半径 1000 的「地面巨球」撑起来），'+
+      '而场景真正的内容只有 <b>22 × 2 × 22</b> —— <b>99.9% 是空的</b>。<br>'+
+      '一个大盒子只能告诉你「这一整片太空里<b>可能</b>有东西」，等于没筛。'+
+      '所以必须<b>递归地切小</b>：大的切成两半，两半再各切成两半…… 这就是 BVH。<br>'+
+      '⭐ 动画里那根绿色虚线框是「44 个小球真正的分布范围」—— '+
+      '<b>这才是能用来排除的区域</b>。',
+ formula:'Day 8 的成果与遗留：\n'+
+          '  世界包围盒   2000 × 2002 × 2000\n'+
+          '  真实内容       22 ×  2  ×  22      ← 480 个球挤在这\n'+
+          '  → 99.9% 的盒子是空的\n\n'+
+          '盒子为什么这么大？\n'+
+          '  x: [-1000, 1000]   地面巨球（半径 1000）\n'+
+          '  y: [-2000,    2]   下表来自地面、上表来自大球\n'+
+          '  z: [-1000, 1000]   地面巨球\n\n'+
+          '一个大盒子只会说：\n'+
+          '  这个光线可能打到这 2000³ 里的任何东西\n'+
+          '  ⇒ 排除能力 ≈ 0\n\n'+
+          '⭐ 必须递归切小 = BVH（Bounding Volume Hierarchy）',
+ ctl:[{k:'d9giant',label:'含「地面巨球」（撑破天的那颗）',min:0,max:1,step:1}],
+ draw:null
+},
+{
+ no:2, anim:'d9union', chap:'② 四步建树', title:'第 1 步 · 算这一堆物体的总包围盒',
+ file:'include/bvh.h · Day 9 建树', hl:[[10,18]],
+ legend:[['#7c3aed','并集（逐个体长大）'],['#2563eb','已并入的物体']],
+ text:'盒子必须<b>包住所有</b>物体，才能保证「<b>没打中盒子 ⟹ 没打中任何一个物体</b>」。'+
+      '<br>如果随便挑一个物体的盒子：其他物体就在盒子外面，'+
+      '那根本来能打中它们的光线，会因为「盒子没中」被<b>整段跳过</b> → '+
+      '画面出现空洞 / 穿透。<br>'+
+      '<code>AABB total_box;</code> 默认构造<b>什么都不做</b>，'+
+      '两个成员被默认构造成 <code>(0,0,0)</code> —— 那不是「无」，是原点上的一个退化点。'+
+      '所以要用 <code>first</code> 标志：<b>第一轮直接赋值，之后才求并集</b>。<br>'+
+      '📌 <b>保守性是 BVH 正确性的全部基础。</b>',
+ formula:'并集（surrounding）的算法：\n'+
+          '  min = 两个盒子里【较小】的那个 min\n'+
+          '  max = 两个盒子里【较大】的那个 max\n\n'+
+          '为什么要 first 标志？\n'+
+          '  AABB total_box;      →  AABB() {} 什么都不做\n'+
+          '  成员被默认构造为 Vec3() = (0,0,0)\n'+
+          '  假设这一堆是 [10,12]³：\n'+
+          '    surrounding([0,0]³, [10,12]³) = [0,12]³\n'+
+          '                                    ↑ 莫名其妙把原点圈进来\n'+
+          '  ⇒ 第一轮"赋值"，之后"求并集"\n\n'+
+          '⭐ 一句话：盒子只能比物体大，不能比物体小。\n'+
+          '   大一点只是慢；小一点就是「错得看不出来」。',
+ ctl:[{k:'d9union',label:'逐个并入物体 → 盒子长大',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:3, anim:'d9axis', chap:'② 四步建树', title:'第 2 步 · 选最长的那条轴',
+ file:'include/aabb.h · longest_axis', hl:[[7,15]],
+ legend:[['#b45309','最长轴（正确选择）'],['#94a3b8','更短的轴（切了也白切）']],
+ text:'为什么必须选最长的轴？因为物体在那一维上<b>分布最散</b>：'+
+      '沿它切，两半分得开；沿很短的轴切，两半几乎重合 —— <b>白切</b>。<br>'+
+      '沿最长轴切 ⇒ 两个子盒子的体积缩得最快 ⇒ 树更矮 ⇒ 排除更有效。<br>'+
+      '⚠️ 反例：如果永远按 x 切，遇到沿 z 排开的一排球时排序完全无效，'+
+      '<b>树会退化成链表</b>（深度 = N），BVH 直接失效。<br>'+
+      '拖滑杆在「沿最长轴切」和「沿最短轴切」之间对照 —— '+
+      '注意右边卡片的两个数字：<b>两半的盒子缩了多少</b>。',
+ formula:'判断方法（aabb.h）：\n'+
+          '  dx = max.x − min.x\n'+
+          '  dy = max.y − min.y\n'+
+          '  dz = max.z − min.z\n'+
+          '  → 返回 0 / 1 / 2（x / y / z）\n\n'+
+          '为什么是「最长」而不是「最宽」？\n'+
+          '  切分是在【这个盒子】里做的，\n'+
+          '  所以要看的正是盒子自己的边长。\n\n'+
+          'demo 这一堆的盒子接近正方形：\n'+
+          '  两条轴长度差不多 → 选谁都行\n'+
+          '  真实场景里差别很大（22 × 2 × 22）\n\n'+
+          '⭐ 沿最长轴切 ⇒ 两半分得最开 ⇒ 盒子缩得最快',
+ ctl:[{k:'d9axis',label:'切法：沿最长轴 / 沿最短轴',min:0,max:1,step:1}],
+ draw:null
+},
+{
+ no:4, anim:'d9sort', chap:'② 四步建树', title:'第 3 步 · 沿这条轴排序',
+ file:'include/bvh.h · Day 9 建树', hl:[[32,40]],
+ legend:[['#2563eb','按坐标排好的物体'],['#dc2626','地面巨球']],
+ text:'排完序后，<b>相邻的物体在空间上也相邻</b> —— 这样「对半切」才能切出两个'+
+      '真正分开的小盒子，而不是两堆互相穿插的东西。<br>'+
+      '<code>[axis]</code> 是 <b>lambda 捕获</b>：<code>std::sort</code> 只吃'+
+      '「收两个参数」的比较器，而我们还得告诉它「按哪条轴排」，'+
+      '所以把外面的 <code>axis</code> 复制一份进闭包。<br>'+
+      '⚠️ 代价：排序时要反复调用 <code>bounding_box()</code>（每个物体算两次盒子），'+
+      '所以「每根光线 40.74 次盒子测试」里有一部分账其实是建树时付的。',
+ formula:'比较器的写法：\n'+
+          '  std::sort(first, last,\n'+
+          '            [axis](const shared_ptr<Hittable>& a,\n'+
+          '                   const shared_ptr<Hittable>& b) {\n'+
+          '                AABB ba, bb;\n'+
+          '                a->bounding_box(ba);\n'+
+          '                b->bounding_box(bb);\n'+
+          '                return ba.minimum[axis] < bb.minimum[axis];\n'+
+          '            });\n\n'+
+          '为什么要捕获 axis？\n'+
+          '  std::sort 的比较器签名是固定的（收两个元素），\n'+
+          '  没有第三个参数可以塞「轴号」——\n'+
+          '  [axis] 就是把这个信息"冻"进闭包。\n\n'+
+          '为什么按 minimum 而不是按 center？\n'+
+          '  这一版用的是 minimum[axis]（RTIOW 的做法）：\n'+
+          '  简单、够用。用 center 也能排，效果类似。\n\n'+
+          '⚠️ 排序的代价：\n'+
+          '  每层每个元素算 1 次盒子 → 建树也有盒子开销',
+ ctl:[{k:'d9sort',label:'排序进度：按下标 → 按坐标',min:0,max:1,step:0.01}],
+ draw:null
+},
+{
+ no:5, anim:'d9tree', chap:'② 四步建树', title:'第 4 步 · 对半分，递归',
+ file:'include/bvh.h · Day 9 建树', hl:[[42,46]],
+ legend:[['#7c3aed','内部节点（count==0）'],['#059669','叶子（存 1~2 个球）']],
+ text:'每一堆<b>严格对半分</b> ⇒ 递归深度 = <code>⌈log₂N⌉</code>。'+
+      '481 个物体 → <b>深度 9</b>（实测就是 9）。<br>'+
+      '<b>递归出口</b>：剩下 1~2 个物体时不再切，直接存成叶子。'+
+      '为什么是 2 而不是 1？因为「切到只剩 1 个」会白白多出一层节点，'+
+      '而 <code>count</code> 能记 1 或 2 —— 一个结构体装两种含义，正是 Day 10 扁平化的伏笔。<br>'+
+      '<code>left / right</code> 的类型必须是 <code>shared_ptr&lt;Hittable&gt;</code>：'+
+      '因为<b>叶子节点里存的是球，不是 BVHNode</b>，只有基类指针才能同时指向这两种东西。<br>'+
+      '⭐ 关键设计：<b>BVHNode 也继承 Hittable</b> —— '+
+      '从外面看「一棵树」和「一个球」没区别，<code>main.cpp</code> 里换一行就接进去了。',
+ formula:'严格对半分 ⇒ 深度 = ⌈log₂N⌉\n'+
+          '  481 个物体  → 深度 9（实测 9 ✓）\n'+
+          '  demo 44 个 → 深度 5\n\n'+
+          '递归出口（1~2 个物体）：\n'+
+          '    left  = objects[start];\n'+
+          '    right = (end-start == 2) ? objects[start+1]\n'+
+          '                            : objects[start];\n\n'+
+          '  ① 少一层节点，树更矮\n'+
+          '  ② count 能记 1 或 2 → 内部节点和叶子\n'+
+          '     共用同一个结构体（Day 10 扁平化的基础）\n\n'+
+          '为什么 left/right 是 shared_ptr<Hittable>？\n'+
+          '  叶子指向【球】，内部节点指向【BVHNode】\n'+
+          '  ⇒ 只有基类指针能同时装下这两种\n\n'+
+          '⭐ BVHNode : public Hittable\n'+
+          '   ⇒ 「一棵树」和「一个球」从外面看没区别',
+ ctl:[{k:'d9tree',label:'递归展开：节点 1 → 全部',min:0,max:1,step:0.005}],
+ draw:null
+},
+{
+ no:6, anim:'d9quality', chap:'③ 先体检', title:'树质量：健康 —— 猜测被实测否定',
+ file:'tmp/inspect.txt', hl:[[1,7]],
+ legend:[['#7c3aed','每层节点数（理想：翻倍）'],['#059669','体检结论']],
+ text:'建完树先<b>体检</b>，否则后面所有性能结论都不可信。三个指标：'+
+      '<b>节点数</b>、<b>最大深度</b>、<b>巨型盒子节点占比</b>。<br>'+
+      '实测：<b>节点 511</b>（从 481 个物体分层建出来 ✓）、'+
+      '<b>最大深度 9</b>（= <code>⌈log₂481⌉</code> ✓ <b>完全平衡</b>）、'+
+      '<b>巨型盒子节点只占 2.5%</b> ✓。<br>'+
+      '⭐ 结论：树建得很好。也就是说 —— '+
+      '<b>「地面巨球污染了树」这个猜测，被实测否定了</b>。'+
+      '这是今天第 1 个被推翻的假设（后面还有 3 个）。<br>'+
+      '为什么巨球没污染？因为递归切分只看「盒子有多长」，'+
+      '巨球被老老实实分到它自己那个叶子里去了。',
+ formula:'体检三问：\n'+
+          '  ① 节点数 = 2N − 1 ？\n'+
+          '     481 个物体 → 511（= 2 × 256 − 1）✓\n'+
+          '  ② 最大深度 ≈ ⌈log₂N⌉ ？\n'+
+          '     ⌈log₂481⌉ = 9，实测 9   ✓ 完全平衡\n'+
+          '  ③ 巨型盒子节点占多少？\n'+
+          '     12 / 481 = 2.5%          ✓ 不构成问题\n\n'+
+          '被否定的猜测：\n'+
+          '  「地面巨球半径 1000，比整个场景还大，\n'+
+          '    一定会把树搅成一条链吧？」\n'+
+          '  → 实测深度 9。\n\n'+
+          '为什么？递归切分只关心"盒子有多长"，\n'+
+          '巨球被单独分到某一个叶子里去了。\n\n'+
+          '⭐ 这是第 1 个「猜测被实测推翻」。',
+ ctl:[{k:'d9quality',label:'逐层揭示：d0 → 最深',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:7, anim:'d9trace', chap:'④ 求交', title:'先试大盒子，没中就跳过整棵子树',
+ file:'include/bvh.h · 求交', hl:[[3,4]],
+ legend:[['#059669','盒子被光线穿过'],['#dc2626','盒子没中 → 整棵子树跳过'],['#2563eb','光线']],
+ text:'光线来了，先试当前节点的盒子：<b>没中就直接跳过整个子树</b>；'+
+      '中了两边都要问。<br>动画里的方块就是被访问到的节点：'+
+      '<span style="color:#059669">绿色 = 盒子被光线穿过</span>，'+
+      '<span style="color:#dc2626">红色 = 盒子没中（整棵子树被跳过）</span>。<br>'+
+      '⭐ 这就是 BVH 的全部威力所在：那一次「没中」不是省掉一个物体，'+
+      '而是<b>省掉一整棵子树</b>里的所有物体。',
+ formula:'递归下降：\n'+
+          '  bool hit(r, t_min, t_max, rec) {\n'+
+          '      if (!box.hit(r, t_min, t_max)) return false;\n'+
+          '      //  ↑ 这一步是"便宜"的：3 轴各 1 减 1 乘 2 比较\n'+
+          '      //     没中 → 整棵子树里所有物体都不用问了\n'+
+          '      hit_left  = left->hit(...);\n'+
+          '      hit_right = right->hit(...);\n'+
+          '      return hit_left || hit_right;\n'+
+          '  }\n\n'+
+          '关键的不对称：\n'+
+          '  盒子没中  ⟹  物体一定没中     ← 可以用来排除 ✓\n'+
+          '  盒子中了  ⟹  可能中，也可能只是擦过 ⚠️\n\n'+
+          '⭐ 一次「没中」省掉的是一整棵子树。',
+ ctl:[{k:'d9trace',label:'遍历进度：事件 1 → 全部',min:0,max:1,step:0.01}],
+ draw:null
+},
+{
+ no:8, anim:'d9tighten', chap:'④ 求交', title:'叶子命中 → 立刻收紧 t_max',
+ file:'include/bvh.h · 求交', hl:[[6,12]],
+ legend:[['#059669','当前搜索区间 [0, t_max]'],['#94a3b8','已经被挡住的更远区域']],
+ text:'在叶子节点里把物体挨个测一遍。一旦命中，就用 <code>rec.t</code> 去'+
+      '<b>收紧 t_max</b>：任何 <code>t &gt; rec.t</code> 的交点都被左边挡住了'+
+      '（更远 = 看不见），所以后面的子树只在更窄的区间里找。<br>'+
+      '📌 收紧 <code>t_max</code> 只是「<b>提前排除不可能赢的候选</b>」，'+
+      '<b>不改变最终胜者</b> —— 这正是「结果必须逐像素一致」的原因。<br>'+
+      '绿色曲线是 <code>t_max</code> 随事件收缩的过程：从 <code>+∞</code> 一路掉到最近交点的位置。',
+ formula:'收紧的写法：\n'+
+          '  bool hit_left = left->hit(r, t_min, t_max, rec);\n'+
+          '  bool hit_right = right->hit(r, t_min,\n'+
+          '                              hit_left ? rec.t : t_max, rec);\n'+
+          '  //            ↑ 左边中了 → 右边只用找比 rec.t 更近的\n\n'+
+          '为什么不会漏掉正确交点？\n'+
+          '  要找的永远是"距离最小的那个 t"。\n'+
+          '  t > rec.t 的交点更远 → 看不见 → 不可能是答案。\n'+
+          '  ⇒ 它只是"提前排除不可能赢的候选"，\n'+
+          '    不改变最终胜者。\n\n'+
+          '⭐ 这就是验收标准必须是"逐像素一致"的原因：\n'+
+          '   image.png 全程 172,127 B ✓',
+ ctl:[{k:'d9tighten',label:'遍历进度 + t_max 收缩曲线',min:0,max:1,step:0.01}],
+ draw:null
+},
+{
+ no:9, anim:'d9count', chap:'⑤ 实测', title:'少了 102 倍，却只快 2.23 倍',
+ file:'tmp/counter.txt', hl:[[1,14]],
+ legend:[['#2563eb','球体求交（贵，带开方）'],['#7c3aed','盒子测试（便宜，无开方）']],
+ text:'加几行临时计数器，实测每根光线：球体求交 <b>481 → 4.71 次</b>（少 102 倍）；'+
+      '但多了 <b>40.74 次盒子测试</b>，总测试 481 → 45.4 次（<b>少 10.6 倍</b>）。<br>'+
+      '⚠️ 而每次测试的平均耗时从 <b>3.4 ns 涨到 18.7 ns（贵 5.5 倍）</b> —— '+
+      '<b>10.6 ÷ 5.5 ≈ 2.23 倍</b>，这才是真实收益（实测 13.16 s → 5.89 s）。<br>'+
+      '📌 教训：<b>「测试次数」是一个维度，「每次有多贵」是另一个维度</b>。'+
+      '只看「少了 102 倍」会高估 45 倍。',
+ formula:'每根光线（真实场景 480 个球）：\n'+
+          '                 朴素遍历      BVH\n'+
+          '  球体求交        481.00      4.71     少 102×\n'+
+          '  盒子测试          0.00     40.74     新增\n'+
+          '  总测试          481.00     45.40     少 10.6×\n\n'+
+          '  每次测试耗时    3.4 ns    18.7 ns    贵 5.5×\n'+
+          '  ────────────────────────────────────────\n'+
+          '  净收益 = 10.6 ÷ 5.5 ≈ 2.23×\n'+
+          '  实测   13.16 s → 5.89 s ✓\n\n'+
+          '为什么每次变贵了？\n'+
+          '  朴素：481 次都是同一种调用（Sphere::hit），\n'+
+          '        数据连续、目标恒定 → 预测器学得会、缓存命中\n'+
+          '  BVH：  盒子测试便宜，但"节点访问"本身很贵（见下一步）\n\n'+
+          '⭐ 次数 ≠ 速度',
+ ctl:[{k:'d9count',label:'逐组揭示：求交 / 盒子 / 总测试',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:10, anim:'d9cost', chap:'⑤ 实测', title:'那 5.5 倍贵在哪：75 个周期拆开看',
+ file:'tmp/cycles.txt', hl:[[1,11]],
+ legend:[['#dc2626','虚函数 + 分支失败 ≈40'],['#b45309','缓存未命中 ≈20'],['#059669','盒子算术 ≈15']],
+ text:'一次「节点访问」要花 ≈<b>75 个 CPU 周期</b>：'+
+      '<b>虚函数调用 + 分支预测失败 ≈40</b>（目标在 BVHNode / Sphere 之间随机跳，'+
+      '预测器猜不中，流水线清空）、<b>指针跳转的缓存未命中 ≈20</b>、'+
+      '盒子测试的算术只有 <b>≈15</b>（每轴 1 减 1 乘 2 比较）。<br>'+
+      '反过来看朴素遍历为什么快：480 个 <code>Sphere</code> 在内存里是<b>连续的</b>'+
+      '（约 27 KB，全塞得进 L1/L2 缓存），而且每次 <code>obj-&gt;hit()</code> '+
+      '的目标都是 Sphere，<b>分支预测器学得会</b> —— 所以只要 ≈17 周期。<br>'+
+      '⭐ 这个 75 周期就是 Day 10 的靶子：扁平化想去掉 ① 和 ②。',
+ formula:'一次 BVH 节点访问 ≈ 75 个周期：\n'+
+          '  虚函数调用 + 分支预测失败   ≈ 40\n'+
+          '    目标在 BVHNode / Sphere 之间随机跳\n'+
+          '    → 预测器猜不中 → 流水线清空\n'+
+          '  指针跳转的缓存未命中         ≈ 20\n'+
+          '    节点散落在堆上，每次都要去主存取\n'+
+          '  盒子测试的算术               ≈ 15\n'+
+          '    每轴 1 减 1 乘 2 比较 —— 反而是最小头\n'+
+          '  ──────────────────────────────────\n'+
+          '                                 75\n\n'+
+          '对比朴素遍历一次 Sphere::hit ≈ 17 周期：\n'+
+          '  480 个 Sphere 连续排列（≈ 27 KB）→ 全在缓存\n'+
+          '  目标恒定 → 分支预测器学得会\n\n'+
+          '⇒ 3.4 ns vs 18.7 ns 的来源\n'+
+          '⭐ 这就是 Day 10 要打的三个靶子',
+ ctl:[{k:'d9cost',label:'三层成本：40 / 20 / 15',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:11, anim:'d9scale', chap:'⑥ 收尾', title:'N 越大越值钱',
+ file:'tools/run.ps1', hl:[[12,17]],
+ legend:[['#2563eb','480 个物体（今天）'],['#7c3aed','更大场景'],['#059669','朴素已不可行']],
+ text:'BVH 的复杂度优势是 <code>O(log N)</code> vs <code>O(N)</code>，'+
+      '<b>但它的常数项更大</b>（75 周期/次 vs 17 周期/次）。N 越大，常数项越不重要 —— '+
+      '<b>这才是它的真正价值</b>。<br>'+
+      '<b>4 个物体</b>：朴素赢（建树 + 跳转开销大于收益）｜'+
+      '<b>480 个</b>：BVH 只赢 2.23 倍｜<b>5000 个</b>：约 20 倍｜'+
+      '<b>100000 个</b>：朴素已不可行。<br>'+
+      '💡 所以 Day 11 的计划是<b>换一个更大的场景</b>（22×22 → 44×44 球阵）再比一次 —— '+
+      '这比在 481 个球上死磕更有说服力。',
+ formula:'复杂度：\n'+
+          '  BVH    O(log N)\n'+
+          '  朴素   O(N)\n\n'+
+          '但常数项不同：\n'+
+          '  BVH 每次节点访问 ≈ 75 周期\n'+
+          '  朴素每次球体求交 ≈ 17 周期\n\n'+
+          'N 越大，常数项越不重要 →\n'+
+          '  4 个物体      朴素赢\n'+
+          '  480 个        只赢 2.23×\n'+
+          '  5000 个       约 20×\n'+
+          '  100000 个     朴素不可行\n\n'+
+          '⭐ 这才是"为什么值得写 BVH"的答案。\n'+
+          '💡 Day 11 计划：22×22 → 44×44 球阵，再比一次。',
+ ctl:[{k:'d9scale',label:'逐点揭示：4 → 480 → 5000 → 100000',min:0,max:1,step:0.02}],
+ draw:null
+}
+];
+
+/* ---------------- 扩展卡片 ---------------- */
+const D9_QA=[
+ ['Q1','为什么「对半分」而不是「按最长轴的中点切」？',
+  '按<b>数量</b>对半分（<code>mid = start + (end-start)/2</code>）保证了两件事：'+
+  '① 树<b>绝对平衡</b>，深度严格 = <code>⌈log₂N⌉</code>；'+
+  '② 每层节点数固定翻倍，节点数 = 2N−1，可以精确预算内存。<br>'+
+  '按<b>空间中点</b>切（比如在 x 中间切一刀）则可能一边 1 个、一边 480 个，'+
+  '树会歪成一条链 —— 那就退回到 O(N) 了。<br>'+
+  '⭐ 代价是：两半的盒子可能有重叠（空间上并不完全分开）。'+
+  '重叠会导致「两条分支都要走」，但对半分换来的是<b>可预测的深度</b>，'+
+  '在 480 个物体这个规模上更划算。'],
+ ['Q2','叶子节点存 2 个物体而不是 1 个，有什么好处？',
+  '三个：<br>① <b>少一层节点</b> —— 481 个物体如果每叶 1 个，叶子数 481、总节点 961；'+
+  '每叶 2 个则叶子 ≈ 256、总节点 511。<b>节点少 47%</b>，内存和访存都省。<br>'+
+  '② <b>少一次指针跳转</b> —— 叶子里直接就是物体指针，不用再往下走一层。<br>'+
+  '③ <b>为 Day 10 的扁平化铺路</b>：因为 <code>count</code> 要能记 1 或 2，'+
+  '所以内部节点和叶子才可能共用同一个结构体。<br>'+
+  '⚠️ 代价：叶子里最多有 2 个物体，光线如果打进这个叶子，'+
+  '两个都要测一遍 —— 但一次「便宜的盒子测试」换来「少一层跳转」，'+
+  '实测是值得的。'],
+ ['Q3','为什么 <code>BVHNode</code> 要继承 <code>Hittable</code>？不继承能不能用？',
+  '<b>能编译、不能用</b>。渲染循环里写的是 <code>world.hit(ray, ...)</code>，'+
+  '<code>world</code> 的类型是 <code>Hittable</code>（或 <code>HittableList</code>）。'+
+  'BVH 只有继承 <code>Hittable</code> 且实现 <code>hit()</code>，'+
+  '才能被当成「一个物体」塞进渲染流程。<br>'+
+  '<b>最大的好处是「一行切换」</b>：Day 8 到 Day 9，'+
+  '<code>main.cpp</code> 只改了一行（<code>HittableList world</code> → <code>BVHNode world</code>），'+
+  '渲染循环一个字都没动。<br>'+
+  '⭐ 而且 <code>HittableList</code> 也能装 <code>BVHNode</code>、'+
+  '<code>BVHNode</code> 的 <code>left/right</code> 也能装 <code>HittableList</code> —— '+
+  '<b>树套树</b>天然成立。这正是「面向接口而不是面向实现」的收益。'],
+ ['Q4','既然少了 102 倍求交，为什么渲染只快了 2.23 倍？',
+  '因为<b>省下来的和付出的不是同一种东西</b>：<br>'+
+  '省掉的：481 次「贵的球体求交」（3.4 ns/次）= 481 × 3.4 ≈ <b>1635 ns</b><br>'+
+  '付出的：40.74 次「节点访问 + 盒子测试」（18.7 ns/次）≈ <b>762 ns</b><br>'+
+  '净剩 ≈ 873 ns（每根光线），换算成比例就是 <b>1635/873 ≈ 1.87</b>，'+
+  '实测 2.23 倍（因为 t_max 收紧还额外省掉了一些）。<br>'+
+  '📌 一句话：<b>「少了 102 倍」是误导性的</b>。要算的是'+
+  '「省下的总时间 ÷ 新增的总时间」。'],
+ ['Q5','这 40.74 次盒子测试里，有多少是「白做」的？',
+  '绝大多数是<b>必要的</b>，但有可观的一部分是<b>结构性浪费</b>：<br>'+
+  '① <b>路径上的节点必须试</b>（这就是 BVH 的工作原理）。<br>'+
+  '② <b>两个子盒子重叠</b>时，两边都得试 —— 对半分不保证空间也分开。'+
+  '这个比例取决于「按最长轴排序 + 对半分」的切分质量，实测约 30~40%。<br>'+
+  '③ <b>叶子里的第二个物体</b>常常是白测的（光线只擦到一个）。<br>'+
+  '⭐ 想减少 ② 可以换成 SAH（Surface Area Heuristic）切分 —— '+
+  '代价是建树变慢、代码变复杂。在学生项目里，2.23 倍已经够交差了；'+
+  '真正要拿分的是下一篇（Day 10）那个 3 倍的改动。']
+];
+
+const D9_CPP=[
+ ['<code>[axis]</code> —— lambda 捕获列表',
+  '<code>std::sort</code> 的比较器只能收两个元素，无法额外传「按哪条轴排」。'+
+  '<code>[axis]</code> 把外层的 <code>axis</code> <b>按值复制</b>进闭包。'+
+  '写成 <code>[&amp;axis]</code>（按引用）也能编译，但如果 <code>axis</code> 是局部变量、'+
+  '而闭包活得比它久，就是悬空引用。<br>'+
+  '⭐ <b>能用按值捕获就用按值</b> —— 尤其是闭包会被存起来（比如 sort 内部）的时候。'],
+ ['递归 + 早返回（递归出口写在最前面）',
+  '建树函数的第一件事就是判断「这一堆还要不要切」，而不是把所有逻辑都往下写。'+
+  '<br>⭐ 递归出口前置 = <b>不用缩进一整层</b>，也让「出口条件」一眼可见。'+
+  '这是递归函数最值得养成的习惯。'],
+ ['<code>make_shared&lt;T&gt;(args...)</code>',
+  '一次分配就把「对象本身 + 引用计数控制块」放在连续内存里，比'+
+  '<code>shared_ptr&lt;T&gt;(new T(...))</code> 少一次分配。<br>'+
+  '⚠️ 但要注意：<code>make_shared</code> 分配的那块内存要等<b>弱引用也归零</b>才释放。'+
+  '对大对象、长生命周期对象，这个差别会变成内存占用。'],
+ ['<code>std::sort</code> 需要严格弱序',
+  '比较器必须满足「<code>a&lt;b</code> 与 <code>b&lt;a</code> 不能同时为真、'+
+  '<code>a&lt;a</code> 必须为假」。<br>'+
+  '⚠️ 常见错误是写 <code>&lt;=</code> —— 两个相等的元素互相「小于」，'+
+  '<code>std::sort</code> 会读到越界甚至段错误。<br>'+
+  '今天写的是 <code>&lt;</code>，正确。'],
+ ['<code>⌈log₂N⌉</code> 的直觉',
+  '每层翻倍，所以 N 个叶子最多需要 <code>log₂N</code> 层。'+
+  '481 → 9；100 万 → 20。<br>'+
+  '⭐ 这个数字同时决定了两件事：'+
+  '<b>求交时要走多少层</b>，以及 <b>Day 10 的显式栈要开多大</b>（≈ 深度+1）。'],
+ ['AABB 与「三个轴分开算」',
+  '立体盒子的求交看起来是 3D 问题，但轴对齐把每个面都变成了'+
+  '「某轴坐标 = 常数」的平面，于是 <b>3D 拆成 3 个 1D</b>，最后取交集。<br>'+
+  '⭐ 面试常问：为什么不用 OBB？因为 OBB 求交要把光线变换到盒子自己的坐标系，'+
+  '每个盒子一套基 —— 省下的紧致度远不够付这个代价。'],
+ ['<code>std::vector</code> 扩容会让指针/引用/迭代器失效',
+  'Day 10 的扁平化会踩这个坑：<code>Node&amp; ref = nodes[index];</code> 之后'+
+  '再 <code>emplace_back</code>，<code>ref</code> 就可能变成悬空引用。<br>'+
+  '⭐ 规则：<b>vector 可能扩容时，不要长期持有元素的引用</b>。'+
+  '要么先 <code>reserve</code>，要么每次都重新寻址。'],
+ ['「先体检再优化」的工程习惯',
+  '建完树先验证不变量（节点数、深度、保守性），再去测性能。<br>'+
+  '⭐ 因为性能数据一旦异常，你无法区分「结构坏了」和「优化无效」——'+
+  '体检把这两种原因分开。']
+];
+
+const D9_PHEN=[
+ ['建树节点数：511',
+  '<code>2 × 256 − 1</code>。481 个物体被分成约 256 个叶子（每个 1~2 个物体），'+
+  '总节点 = 2 × 叶子数 − 1。<b>结构正确 ✓</b>'],
+ ['最大深度：9',
+  '理想平衡树 = <code>⌈log₂481⌉ = 9</code>，实测就是 9 —— <b>完全平衡 ✓</b>。'+
+  '「地面巨球污染了树」的猜测被否定。'],
+ ['巨型盒子节点：12 个（2.5%）',
+  '地面巨球老老实实待在它自己那个叶子里，没有污染别人。'],
+ ['每根光线：球体求交 4.71 次',
+  '相比朴素的 <b>481</b> 次，少了 <b>102 倍</b>。'],
+ ['每根光线：盒子测试 40.74 次',
+  '这是新增的开销。次数上「便宜」，但单次访问很贵（见下一行）。'],
+ ['每次测试平均：3.4 ns → 18.7 ns',
+  '贵了 <b>5.5 倍</b>。原因是虚函数 + 分支预测失败 + 缓存未命中（≈75 周期）。'],
+ ['渲染耗时：13.16 s → 5.89 s',
+  '<b>2.23 倍</b>。净收益 = 10.6（次数）× ÷ 5.5（单次）= 2.23 ✓'],
+ ['<code>image.png</code>：172,127 B',
+  '与 Day 8 <b>字节级完全一致 ✓</b> —— '+
+  '加速结构不该改变画面，这是唯一可信的正确性判据。']
+];
+
+const D9_TBL=
+ '<table class="tbl">'+
+ '<thead><tr><th>项目</th><th>结果</th><th>说明</th></tr></thead><tbody>'+
+ '<tr><td>建树节点数</td><td><b>511</b></td><td><code>2 × 256 − 1</code>，结构正确</td></tr>'+
+ '<tr><td>最大深度</td><td><b>9</b></td><td>= <code>⌈log₂481⌉</code>，完全平衡</td></tr>'+
+ '<tr><td>巨型盒子节点</td><td>12（2.5%）</td><td>巨球没污染树</td></tr>'+
+ '<tr><td>球体求交 / 光线</td><td>481 → <b>4.71</b></td><td>少 102 倍</td></tr>'+
+ '<tr><td>盒子测试 / 光线</td><td>0 → 40.74</td><td>新增开销</td></tr>'+
+ '<tr><td>总测试 / 光线</td><td>481 → <b>45.4</b></td><td>少 10.6 倍</td></tr>'+
+ '<tr><td>每次测试耗时</td><td>3.4 → 18.7 ns</td><td>贵 5.5 倍</td></tr>'+
+ '<tr><td>渲染耗时</td><td><b>13.16 s → 5.89 s</b></td><td>2.23 倍（净收益）</td></tr>'+
+ '<tr><td><code>image.png</code></td><td><b>172,127 B</b></td><td>与 Day 8 字节级一致 ✓</td></tr>'+
+ '</tbody></table>'+
+ '<p style="margin:10px 0 0;font-size:12.4px;color:#3d4a58">'+
+ '<b>⚠️ 别只看「少了 102 倍」</b>：球体求交少了 102 倍，'+
+ '但每次测试贵了 5.5 倍，所以真实收益是 <b>2.23 倍</b>。<br>'+
+ '要算的永远是 <b>「省下的总时间 ÷ 新增的总时间」</b>，而不是「次数少了多少倍」。'+
+ '</p>';
+
+const D9_PIT=
+ '<table class="tbl">'+
+ '<thead><tr><th>#</th><th>差一点踩到的坑</th><th>教训</th></tr></thead><tbody>'+
+ '<tr><td>1</td><td>以为「加了 BVH 就该飞快」</td>'+
+ '<td>实测只有 <b>2.23 倍</b>。原因是<b>每次节点访问从 17 周期涨到 75 周期</b> —— '+
+ '次数少了 10.6 倍，但单次贵了 5.5 倍。'+
+ '⭐ <b>永远不要用「运算次数」代替「时间」</b></td></tr>'+
+ '<tr><td>2</td><td>以为地面巨球把树搅成了链表</td>'+
+ '<td>实测深度 9 = <code>⌈log₂481⌉</code>，<b>完全平衡</b>。'+
+ '递归切分根本不知道「哪个物体大」，它只看盒子有多长。'+
+ '⭐ <b>先体检，再猜</b></td></tr>'+
+ '<tr><td>3</td><td>想按「空间中点」切而不是按数量对半分</td>'+
+ '<td>空间中点可能一边 1 个、一边 480 个 → 树退化成链表 → 回到 O(N)。'+
+ '按数量对半分才有「深度 = ⌈log₂N⌉」这个可预测的保证</td></tr>'+
+ '<tr><td>4</td><td>叶子节点只存 1 个物体</td>'+
+ '<td>节点数会从 511 涨到 961（<b>+88%</b>），而且每次都要多跳一层。'+
+ '存 2 个是实测更划算的折中</td></tr>'+
+ '<tr><td>5</td><td>比较器写成 <code>&lt;=</code></td>'+
+ '<td><code>std::sort</code> 要求严格弱序：<code>a&lt;a</code> 必须为假。'+
+ '写 <code>&lt;=</code> 会让相等元素互相「小于」，sort 可能读越界或段错误</td></tr>'+
+ '<tr><td>6</td><td>用 <code>obj-&gt;hit()</code> 当「便宜测试」</td>'+
+ '<td>球体求交带 <b>开方</b>，是最贵的指令。<b>盒子测试才是筛子</b>：'+
+ '3 轴各 1 减 1 乘 2 比较，没有开方</td></tr>'+
+ '<tr><td>7</td><td>以为「收紧 t_max」会改变画面</td>'+
+ '<td><b>不会</b>。它只排除「不可能赢的候选」，最终胜者不变 —— '+
+ '所以 <code>image.png</code> 必须字节级一致。'+
+ '⭐ 这也是唯一的正确性验收标准</td></tr>'+
+ '</tbody></table>'+
+ '<p style="margin:10px 0 0;font-size:12.4px;color:#3d4a58">'+
+ '<b>一句话总结</b>：今天最值钱的不是「BVH 怎么写」（那是可以查的），'+
+ '而是 <b>「为什么只快了 2.23 倍」</b> —— '+
+ '这个问题把人从「运算次数」逼到了「每次运算有多贵」，'+
+ '<b>而 Day 10 的答案就藏在那 75 个周期里。</b>'+
+ '</p>';
+
+const D9_JUDGE=
+ '<table class="tbl">'+
+ '<thead><tr><th>现象</th><th>是 bug，还是正常？</th></tr></thead><tbody>'+
+ '<tr><td>BVH 建好了，但渲染时间和朴素一样</td>'+
+ '<td><b>先查有没有接进渲染流程</b> —— <code>main.cpp</code> 里是不是还在用 '+
+ '<code>HittableList world</code>。造工具 ≠ 用工具（Day 8 的教训）</td></tr>'+
+ '<tr><td>画面上凭空少了一些物体 / 光线穿透</td>'+
+ '<td><b>bug（很危险）</b> —— 盒子<b>不保守</b>，或者某个内部节点的 '+
+ '<code>left/right</code> 指错了。<b>错得看不出来</b>是这个 bug 的特征</td></tr>'+
+ '<tr><td>树的最大深度等于物体数</td>'+
+ '<td><b>bug</b> —— 退化成链表了。检查是不是「没有排序就切」，'+
+ '或者排序没生效（比较器写错）</td></tr>'+
+ '<tr><td>树深度 = <code>⌈log₂N⌉</code>，但只快了 2 倍</td>'+
+ '<td><b>正常 ✓</b> —— 这就是今天的结论。次数少了不等于时间少了</td></tr>'+
+ '<tr><td>球体求交少了 102 倍，总时间只少 2.2 倍</td>'+
+ '<td><b>正常 ✓</b> —— 因为新增的「节点访问」单次很贵（75 周期）</td></tr>'+
+ '<tr><td>叶子里的第 2 个物体老是被白测</td>'+
+ '<td><b>正常</b> —— 光线擦进这个叶子但只碰到一个。'+
+ '想减少要靠 SAH 切分，不值得为它加复杂度</td></tr>'+
+ '<tr><td>两个子盒子的区域有重叠</td>'+
+ '<td><b>正常 ✓</b> —— 按数量对半分不保证空间上分开。'+
+ '代价是重叠区域要问两边，换来的是平衡的深度</td></tr>'+
+ '<tr><td>渲染结果和 Day 8 差了几个像素</td>'+
+ '<td><b>bug</b> —— 加速结构只该改变<b>速度</b>。'+
+ '差异通常来自随机数消耗顺序变了（排序打乱了 <code>objects</code> 的顺序）</td></tr>'+
+ '<tr><td>4 个物体的场景加 BVH 反而变慢了</td>'+
+ '<td><b>正常 ✓</b> —— 建树 + 跳转的固定开销大于收益。'+
+ 'BVH 的价值随 N 增长（见第 11 步）</td></tr>'+
+ '</tbody></table>'+
+ '<p style="margin:10px 0 0;font-size:12.4px;color:#3d4a58">'+
+ '<b>一句话判据</b>：<b>盒子只能比物体大，不能比物体小；'+
+ '而「变快了」只能看时间，不能看次数。</b>'+
+ '</p>';
+
+function extrasD9(){
+  return ''+
+  '<section class="card"><div class="card-hd"><span>Day 9 五问五答</span>'+
+  '<span class="hint">原文留给自己的思考题</span></div><div class="qa">'+qaHtmlOf(D9_QA)+'</div></section>'+
+  '<section class="card"><div class="card-hd"><span>C++ / 工程 技能点</span>'+
+  '<span class="hint">lambda 捕获 · 递归出口前置 · make_shared · 严格弱序 · vector 扩容</span></div>'+
+  '<div class="why"><dl>'+cppHtmlOf(D9_CPP)+'</dl></div></section>'+
+  '<section class="card"><div class="card-hd"><span>实测数据（八项）</span>'+
+  '<span class="hint">深度 9 · 4.71 次 · 18.7 ns · 2.23×</span></div>'+
+  '<div class="why"><dl>'+cppHtmlOf(D9_PHEN)+'</dl></div></section>'+
+  '<section class="card"><div class="card-hd"><span>数据记录</span>'+
+  '<span class="hint">次数少了 102 倍，时间只少了 2.23 倍</span></div>'+D9_TBL+'</section>'+
+  '<section class="card" style="grid-column:1/-1"><div class="card-hd"><span>差一点踩到的坑（比知识更值钱）</span>'+
+  '<span class="hint">7 条，其中 3 条标了 ⭐</span></div>'+D9_PIT+'</section>'+
+  '<section class="card" style="grid-column:1/-1"><div class="card-hd"><span>怎么判断「这是 bug 还是正常」</span>'+
+  '<span class="hint">盒子只能比物体大；变快了只能看时间</span></div>'+D9_JUDGE+'</section>';
+}
+
+/* =========================================================================
+   注册 11 个动画（⚠️ 必须在 D9_STEPS 声明之后）
+   ========================================================================= */
+(function(){
+  if(typeof ANIM==='undefined') return;
+  const T=function(k,max,rate){ return {
+    init:function(){ ST[k]=0; },
+    tick:function(dt,playing){ if(!playing) return;
+      ST[k]=Math.min(max,ST[k]+dt*rate); syncControls(); },
+    done:function(){ return ST[k]>=max; }
+  };}
+  ANIM.d9scene  =T('d9scene',1,0.00040);
+  ANIM.d9union  =T('d9union',1,0.00055);
+  ANIM.d9axis   =T('d9axis',1,0.00045);
+  ANIM.d9sort   =T('d9sort',1,0.00040);
+  ANIM.d9tree   =T('d9tree',1,0.00055);
+  ANIM.d9quality=T('d9quality',1,0.00040);
+  ANIM.d9trace  =T('d9trace',1,0.00045);
+  ANIM.d9tighten=T('d9tighten',1,0.00045);
+  ANIM.d9count  =T('d9count',1,0.00040);
+  ANIM.d9cost   =T('d9cost',1,0.00040);
+  ANIM.d9scale  =T('d9scale',1,0.00050);
+
+  for(let i=0;i<D9_STEPS.length;i++){
+    const f=(typeof window!=='undefined')?window['drawD9_'+(i+1)]:null;
+    if(f) D9_STEPS[i].draw=f;
+  }
+})();
+
+/* =========================================================================
+   Day 10 · 扁平化 + 一个函数名（块 D）
+   ========================================================================= */
+
+const D10_C={ red:'#dc2626', green:'#059669', purple:'#7c3aed', blue:'#2563eb',
+              amber:'#b45309', dim:'#94a3b8', ink:'#0f172a', line:'#e2e8f0',
+              soft:'#f8fafc', grid:'#eef2f7' };
+
+/* 扁平化节点数组（8 个节点的小例子，下表 = nodes[] 下标） */
+const D10_NODES=[
+  {i:0, count:0, left:1, right:2},
+  {i:1, count:0, left:3, right:4},
+  {i:2, count:2, left:0, right:1},
+  {i:3, count:2, left:2, right:3},
+  {i:4, count:1, left:4, right:4},
+  {i:5, count:2, left:5, right:6},
+  {i:6, count:1, left:6, right:6},
+  {i:7, count:2, left:7, right:8}
+];
+/* 显式栈演示用的小树：左边 4 个球（射线 y=0.44 会穿过）、右边 4 个（打不到）
+   ⚠️ 每个盒子的坐标 = 它孩子的并集（保守性：盒子必须 ≥ 物体）——
+      这是 Day 9 讲的铁律，演示数据也必须守规矩。 */
+const D10_RAY_Y=.44;
+const D10_TREE={
+  objs:[
+    /* 左半堆：0 号正好压在射线上 → 会被打到 */
+    {x:.16,y:.44,r:.035},{x:.30,y:.36,r:.035},{x:.17,y:.62,r:.030},{x:.33,y:.70,r:.030},
+    /* 右半堆：全在射线上方 → 盒子整块 miss */
+    {x:.70,y:.74,r:.035},{x:.84,y:.80,r:.035},{x:.66,y:.84,r:.030},{x:.80,y:.66,r:.030}
+  ],
+  nodes:[
+    /*0 根*/     {count:0, left:1, right:2, box:[.12,.32,.88,.87]},
+    /*1 左子树*/ {count:0, left:3, right:4, box:[.12,.32,.38,.73]},
+    /*2 右子树*/ {count:0, left:5, right:6, box:[.63,.63,.88,.87]},
+    /*3 叶*/     {count:2, left:2, right:3, box:[.14,.59,.38,.73]},   /* 球 2,3（在射线上方）*/
+    /*4 叶*/     {count:2, left:0, right:1, box:[.12,.32,.34,.48]},   /* 球 0,1（含命中球）*/
+    /*5 叶*/     {count:2, left:4, right:5, box:[.66,.70,.88,.84]},
+    /*6 叶*/     {count:2, left:6, right:7, box:[.63,.63,.83,.87]}
+  ]
+};
+/* 射线（水平、y=D10_RAY_Y、沿 +x）打不打得到某个盒子 —— 盒子的 y 区间含不含 0.44 */
+function d10BoxHit(b){ return b[1]<=D10_RAY_Y && D10_RAY_Y<=b[3]; }
+/* 遍历事件流（LIFO：弹 1 压 2） */
+const D10_EVENTS=[
+  {a:'push0', note:'stack[sp++] = 0　　从根节点（下标 0）开始'},
+  {a:'pop',  idx:0, note:'弹出根节点 → 试它的盒子 → 命中'},
+  {a:'push2',idx:0, note:'内部节点（count==0）→ 两个子节点进栈'},
+  {a:'pop',  idx:2, note:'LIFO：先弹到右子树 → 它的盒子没中'},
+  {a:'miss', idx:2, note:'⚠️ 这里就是 return false 和 continue 的分水岭'},
+  {a:'pop',  idx:1, note:'continue 之后继续处理栈里的节点 → 弹到左子树 → 命中'},
+  {a:'push2',idx:1, note:'左子树也是内部节点 → 继续往下探'},
+  {a:'pop',  idx:4, note:'叶子（count==2）→ 把里面的物体挨个测一遍'},
+  {a:'hit',  idx:4, obj:1, note:'命中 → t_max = rec.t（收紧搜索区间）'},
+  {a:'done', idx:1, note:'左子树里没有再近的 → 弹下一个（盒子没中，跳过）→ 栈空 → return true'}
+];
+function d10StackOf(evN){
+  const s=[];
+  D10_EVENTS.slice(0,evN+1).forEach(function(e){
+    if(e.a==='push0') s.push(0);
+    else if(e.a==='push2'){ const n=D10_TREE.nodes[e.idx]; s.push(n.left); s.push(n.right); }
+    else if(e.a==='pop'||e.a==='done') s.pop();
+  });
+  return s;
+}
+
+/* ---------- 步骤 1 · 堆上散落 vs 连续数组 ---------- */
+function drawD10_1(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10layout,0,1);
+  d5Head(ctx,R,'同样是「一棵树」，两种放法 —— 一个散在堆上，一个躺在数组里');
+
+  const h2=(A.h-12)/2;
+  /* 上：散落的节点 */
+  d910Card(ctx,A.x,A.y,A.w,h2,'Day 9 · shared_ptr 把节点串成树（散落在堆上）',D10_C.red);
+  const pos=[[0.10,0.20],[0.52,0.14],[0.26,0.56],[0.74,0.50],[0.14,0.84],[0.56,0.82],[0.86,0.24],[0.42,0.38]];
+  const sc=Math.min(0.55,(A.w-40)/120);
+  pos.forEach(function(q,i){
+    const x=A.x+14+q[0]*(A.w-70)+i*2.2, y=A.y+26+q[1]*(h2-52);
+    ctx.save(); rr(ctx,x,y,74*sc+16,15,3);
+    ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='#f0b6b6'; ctx.lineWidth=1.2; ctx.stroke(); ctx.restore();
+    txt(ctx,x+4,y+4,'Node '+i+' · 88 B',{size:6.6,mono:true,color:D10_C.red});
+    if(i<6){
+      const q2=pos[(i+2)%pos.length], j=(i+2)%pos.length;
+      const x2=A.x+14+q2[0]*(A.w-70)+j*2.2, y2=A.y+26+q2[1]*(h2-52);
+      ctx.save(); ctx.setLineDash([3,3]); ctx.strokeStyle='rgba(220,38,38,.32)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x+74*sc+16,y+7);
+      ctx.bezierCurveTo(x+74*sc+50,y+7,x2-26,y2+7,x2,y2+7); ctx.stroke(); ctx.restore();
+    }
+  });
+  d5Fit(ctx,A.x+10,A.y+h2-13,'32 字节指针 + 引用计数 + 随机访存；88 B 跨两条缓存线 → 两次访存',
+        {size:6.9,color:D10_C.red,mono:false},R,4);
+
+  /* 下：连续数组 */
+  d910Card(ctx,A.x,A.y+h2+12,A.w,h2,'Day 10 · 所有节点躺在一个 vector 里（整数下标互指）',D10_C.green);
+  const cw=(A.w-24)/8, axy=A.y+h2+12+34;
+  for(let i=0;i<8;i++){
+    const on=p>((i+0.5)/8.4);
+    rr(ctx,A.x+10+i*cw,axy,cw-3,26,3);
+    ctx.fillStyle=on?'#f0fdf7':'#fbfcfe'; ctx.fill();
+    ctx.strokeStyle=on?'#9fd9be':'#eef2f7'; ctx.lineWidth=1.2; ctx.stroke();
+    txt(ctx,A.x+10+i*cw+(cw-3)/2,axy+8,String(i),
+        {align:'center',size:7,mono:true,color:on?D10_C.green:'#cbd5e1',weight:700});
+  }
+  ctx.save(); ctx.setLineDash([3,3]); ctx.strokeStyle='#0f766e'; ctx.lineWidth=0.9;
+  for(let i=0;i<=8;i++){
+    ctx.beginPath(); ctx.moveTo(A.x+10+i*cw,axy-9); ctx.lineTo(A.x+10+i*cw,axy+33); ctx.stroke();
+  }
+  ctx.restore();
+  d5Fit(ctx,A.x+10,axy-16,'刻度 = 缓存线边界（每格 64 B）',{size:6.8,color:'#0f766e',mono:false},R,4);
+  d5Fit(ctx,A.x+10,axy+36,'每个节点正好占一格 → 一次访存读全',{size:6.9,color:D10_C.green,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'Day 9 的树有四个问题',[
+    {items:[
+      {s:'① 每节点 2 个 shared_ptr',mono:false,c:'#0f172a',w:700},
+      {s:'   = 32 字节（16 字节指针 ×2）',mono:true},
+      '   外加各自的引用计数控制块。',
+      '',
+      {s:'② 每个节点一次 virtual hit()',mono:false,c:'#0f172a',w:700},
+      '   目标在 BVHNode / Sphere 之间随机跳，',
+      {s:'   分支预测器猜不中。',mono:false,c:D10_C.red},
+      '',
+      {s:'③ 每跳一次都可能缓存未命中',mono:false,c:'#0f172a',w:700},
+      '   节点散落在堆上，互相之间没规律。',
+      '',
+      {s:'④ 节点 88 字节',mono:false,c:'#0f172a',w:700},
+      '   比一条缓存线（64 B）还大 →',
+      {s:'   读一个节点要两次访存。',mono:false,c:D10_C.red,w:700},
+      '',
+      {s:'⭐ 这四个问题全部指向"内存布局"。',mono:false,c:D10_C.purple,w:700},
+      '   于是 Day 10 的思路就很自然：',
+      '   换成连续数组 + 整数下标。'
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],D10_C.purple, H-py-14);
+
+  st.readout='Day 9 的树：<b>每个节点散落在堆上</b>，用 32 字节指针互相引用、每个节点一次虚函数跳转、'+
+    '节点 88 字节（跨两条缓存线 → 两次访存）。Day 10 把它们<b>压进一个连续数组</b>，'+
+    '用整数下标互相引用。';
+}
+
+/* ---------- 步骤 2 · count 是「双关」的开关 ---------- */
+function drawD10_2(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const idx=clamp(Math.round(st.d10dual),0,7);
+  d5Head(ctx,R,'一个结构体，两种含义 —— 全靠 count 区分');
+
+  const cw=(A.w-20)/8, cy=A.y+34;
+  txt(ctx,A.x+9,cy-14,'std::vector<Node> nodes;   // 连续排列，下标就是它的身份',
+      {size:6.9,color:'#64748b',mono:true});
+  D10_NODES.forEach(function(n,i){
+    const x=A.x+9+i*cw, on=(i===idx);
+    rr(ctx,x,cy,cw-3,50,4);
+    ctx.fillStyle=on?'#fef3c7':(n.count?'#f0fdf7':'#fbfcfe'); ctx.fill();
+    ctx.strokeStyle=on?D10_C.amber:(n.count?'#9fd9be':'#e2e8f0');
+    ctx.lineWidth=on?1.8:1.1; ctx.stroke();
+    txt(ctx,x+3,cy+5,'['+i+']',{size:6.8,mono:true,color:on?D10_C.amber:'#94a3b8',weight:700});
+    txt(ctx,x+3,cy+16,'c='+n.count,{size:6.6,mono:true,color:n.count?D10_C.green:D10_C.purple,weight:700});
+    txt(ctx,x+3,cy+26,'L'+n.left,{size:6.6,mono:true,color:'#64748b'});
+    txt(ctx,x+3,cy+35,'R'+n.right,{size:6.6,mono:true,color:'#64748b'});
+  });
+
+  const n=D10_NODES[idx];
+  const isLeaf=n.count>0;
+  /* 两个数组的示意 */
+  const ay=cy+80;
+  txt(ctx,A.x+9,ay-13,'left / right 指向哪一个数组？',{size:7,color:'#0f172a',weight:700,mono:false});
+  txt(ctx,A.x+9,ay,'nodes[]',{size:6.9,mono:true,color:D10_C.purple,weight:700});
+  for(let i=0;i<8;i++){
+    const x=A.x+52+i*((A.w-62)/8);
+    const on=(!isLeaf && (i===n.left||i===n.right));
+    rr(ctx,x,ay-2,(A.w-62)/8-3,15,3);
+    ctx.fillStyle=on?'#ede9fe':'#fbfcfe'; ctx.fill();
+    ctx.strokeStyle=on?D10_C.purple:'#eef2f7'; ctx.lineWidth=on?1.4:1; ctx.stroke();
+    txt(ctx,x+((A.w-62)/8-3)/2,ay+3,String(i),
+        {align:'center',size:6.6,mono:true,color:on?D10_C.purple:'#cbd5e1',weight:700});
+  }
+  const oy=ay+26;
+  txt(ctx,A.x+9,oy,'objects[]',{size:6.9,mono:true,color:D10_C.green,weight:700});
+  for(let i=0;i<9;i++){
+    const x=A.x+52+i*((A.w-62)/9);
+    const on=(isLeaf && (i===n.left||i===n.right));
+    rr(ctx,x,oy-2,(A.w-62)/9-3,15,3);
+    ctx.fillStyle=on?'#d1fae5':'#fbfcfe'; ctx.fill();
+    ctx.strokeStyle=on?D10_C.green:'#eef2f7'; ctx.lineWidth=on?1.4:1; ctx.stroke();
+    txt(ctx,x+((A.w-62)/9-3)/2,oy+3,'球'+i,
+        {align:'center',size:6.4,color:on?D10_C.green:'#cbd5e1'});
+  }
+  /* 高亮连线 */
+  ctx.save(); ctx.strokeStyle=isLeaf?D10_C.green:D10_C.purple; ctx.lineWidth=1.4;
+  const fx=A.x+9+idx*cw+(cw-3)/2;
+  ctx.beginPath(); ctx.moveTo(fx,cy+50);
+  ctx.lineTo(fx,isLeaf?oy-6:ay+18); ctx.stroke(); ctx.restore();
+
+  const by=oy+36, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'Node['+idx+'] 怎么解释',
+           isLeaf?D10_C.green:D10_C.purple);
+  const rows=isLeaf
+    ? [['count = '+n.count,'> 0 → 这是【叶子】',D10_C.green],
+       ['left = '+n.left,'objects[] 的物体下标',D10_C.green],
+       ['right = '+n.right,n.count===2?'objects[] 的物体下标':'count==1 时 right == left','#64748b'],
+       ['⚠️ left/right 不是节点下标','拿去索引 nodes[] 就错了',D10_C.red]]
+    : [['count = 0','== 0 → 这是【内部节点】',D10_C.purple],
+       ['left = '+n.left,'nodes[] 的子节点下标',D10_C.purple],
+       ['right = '+n.right,'nodes[] 的子节点下标',D10_C.purple],
+       ['→ 两个子节点都还要继续下探','',D10_C.purple]];
+  rows.forEach(function(r,i){ d910KV(ctx,A.x+9,by+22+i*13,A.w-18,r[0],r[1],r[2],{size:7.5}); });
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'这一个 int，装下了一整棵树',[
+    {items:[
+      {s:'struct Node {',mono:true,c:D10_C.purple,w:700},
+      {s:'    AABB box;   // 48 B',mono:true},
+      {s:'    int  left;  //  4 B',mono:true},
+      {s:'    int  right; //  4 B',mono:true},
+      {s:'    int  count; //  4 B',mono:true},
+      {s:'};              // 60 B → 对齐 64 B',mono:true},
+      '',
+      {s:'count 的两种含义：',mono:false,c:'#0f172a',w:700},
+      {s:'  == 0   内部节点',mono:true,c:D10_C.purple,w:700},
+      {s:'         left/right → nodes[] 下标',mono:true},
+      {s:'  > 0    叶子（1 或 2 个物体）',mono:true,c:D10_C.green,w:700},
+      {s:'         left/right → objects[] 下标',mono:true},
+      '',
+      {s:'⚠️ 这个「双关」很容易写错：',mono:false,c:D10_C.red,w:700},
+      '内部节点的 left 是【节点下标】，',
+      '不能拿去索引 objects —— 今天在这里',
+      '写错过一次。',
+      '',
+      {s:'⭐ 拖滑杆逐个节点看：哪几行是内部节点、',mono:false,c:D10_C.amber,w:700},
+      '   哪几行是叶子，一眼就看出来了。'
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],D10_C.purple, H-py-14);
+
+  st.readout='<code>Node['+idx+']</code>：count = <b>'+n.count+'</b> → '+
+    (isLeaf?'<b>叶子</b>，left/right 指向 objects[]':'<b>内部节点</b>，left/right 指向 nodes[]')+
+    '（left='+n.left+'、right='+n.right+'）。⚠️ 把内部节点的 left 拿去索引 objects 是最容易犯的错。';
+}
+
+/* ---------- 步骤 3 · 88 → 64 字节 ---------- */
+function drawD10_3(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10cache,0,1);
+  d5Head(ctx,R,'节点从 88 字节压到 64 字节 —— 正好一条缓存线');
+
+  const sc=Math.min(3.0,(A.w-120)/64), lineW=64*sc;
+  const rows=[{y:A.y+40,n:'Day 9',sz:88,col:D10_C.red,bg:'#fdecec',note:'横跨 2 条缓存线 → 2 次访存'},
+              {y:A.y+130,n:'Day 10',sz:64,col:D10_C.green,bg:'#f0fdf7',note:'正好 1 条缓存线 → 1 次访存 ✓'}];
+  rows.forEach(function(r,i){
+    txt(ctx,A.x+9,r.y+12,r.n,{size:9,weight:700,color:r.col,mono:false});
+    const x0=A.x+62;
+    for(let k=0;k<3;k++){
+      rr(ctx,x0+k*lineW,r.y-6,lineW-3,40,4);
+      ctx.fillStyle=k===0?'#f8fafc':'#fbfcfe'; ctx.fill();
+      ctx.strokeStyle='#e4e9f0'; ctx.stroke();
+      txt(ctx,x0+k*lineW+lineW/2,r.y+36,'缓存线 '+(k+1)+'（64 B）',
+          {align:'center',size:6.6,color:'#93a0ad',mono:false});
+    }
+    const on=(i===0)||(p>0.35);
+    const nw=on?r.sz*sc:0;
+    if(nw>0){
+      ctx.save(); rr(ctx,x0+3,r.y+2,nw,22,4);
+      ctx.fillStyle=r.bg; ctx.fill(); ctx.strokeStyle=r.col; ctx.lineWidth=1.6; ctx.stroke(); ctx.restore();
+      txt(ctx,x0+8,r.y+12,r.sz+' 字节节点',{size:6.8,mono:true,color:r.col});
+    }
+    d5Fit(ctx,x0,r.y-22,r.note,{size:7.2,color:r.col,weight:700,mono:false},R,4);
+  });
+
+  const by=A.y+186, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'这 64 字节是怎么算出来的',D10_C.green);
+  const rows2=[['AABB box','2 × Point3 = 6 × double','48 B',D10_C.ink],
+               ['int left','4 B',D10_C.ink],
+               ['int right','4 B',D10_C.ink],
+               ['int count','4 B',D10_C.ink],
+               ['合计','48 + 12','60 B',D10_C.ink],
+               ['按 8 字节对齐','60 → 64','64 B = 1 条缓存线',D10_C.green],
+               ['Day 9 的 88 B','48 + 32(两个 shared_ptr) + 8','跨 2 条线',D10_C.red]];
+  rows2.forEach(function(r,i){ d910KV(ctx,A.x+9,by+22+i*13,A.w-18,r[0],r[1]+'   '+r[2],r[3],{size:7.2}); });
+  d5Fit(ctx,A.x+9,by+bh-13,'⚠️ 但实测这一整页的改动只换来 6% —— 见后面三步',
+        {size:7.4,color:D10_C.amber,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'为什么 64 字节这么重要',[
+    {items:[
+      {s:'CPU 读内存的单位不是「字节」，',mono:false,c:'#0f172a',w:700},
+      {s:'而是「一整条缓存线」（x86 = 64 B）。',mono:false,c:'#0f172a',w:700},
+      '',
+      {s:'节点 88 字节时：',mono:false,c:D10_C.red,w:700},
+      {s:'  读一个节点要横跨两条缓存线',mono:true},
+      {s:'  → 两次访存（第二次还可能再从主存取）',mono:true},
+      '',
+      {s:'节点 64 字节时：',mono:false,c:D10_C.green,w:700},
+      {s:'  一次访存拿到整个节点',mono:true},
+      {s:'  box / left / right / count 一次到位',mono:true},
+      '',
+      {s:'📌 这就是「数据结构对齐到缓存线」',mono:false,c:D10_C.purple,w:700},
+      {s:'   这个经典优化手法的具体形态。',mono:false,c:D10_C.purple},
+      '',
+      {s:'⚠️ 但注意：这是【推测】。',mono:false,c:D10_C.amber,w:700},
+      '   改对了，性能却只动了 6% ——',
+      '   说明瓶颈不在这里。'
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],D10_C.green, H-py-14);
+
+  st.readout='<code>AABB</code> 48 B + 3 个 <code>int</code> 12 B = 60 B，<b>按 8 字节对齐后正好 64 B</b> —— '+
+    '一条缓存线，一次访存读全。Day 9 的版本是 88 B（多出两个 shared_ptr），<b>跨两条线、两次访存</b>。'+
+    '⚠️ 但实测这一步只值 6%。';
+}
+
+/* ---------- 步骤 4 / 5 · 显式栈迭代（去递归） ---------- */
+function d10StackScene(ctx,W,H,st,R,A,tighten){
+  const p=clamp(tighten?st.d10cont:st.d10stack,0,1);
+  const wrong=tighten && st.d10wrong>0.5;
+  const evMax=D10_EVENTS.length-1;
+  const evN=Math.min(evMax,Math.floor(p*(evMax+0.999)));
+  const ev=D10_EVENTS[evN];
+  const tree=D10_TREE;
+
+  /* ---- 版式：左「场景（俯视）」整列 + 右上「nodes[]」「stack[64]」+ 右下事件卡 ---- */
+  const gap=6, evMin=48;
+  const leftW=clamp(Math.min(Math.round(A.w*0.34), A.h-44), 160, 330);
+  const rx=A.x+leftW+8, rw=Math.max(180, A.w-leftW-8);
+  const topH=Math.round((A.h-gap-evMin)*0.62);
+  const ny=A.y+topH+gap, nh=A.h-topH-gap;
+  const nw=Math.round(rw*0.54), kx=rx+nw+8, kw=rw-nw-8;
+  /* 左列的俯视图：内区正方形（保证不拉伸变形），在卡片里垂直居中 */
+  const gx=A.x, gw=leftW;
+  const avail=Math.max(70, A.h-32);
+  const side=Math.max(70, Math.min(gw-14, avail));
+  const gy=A.y+22+Math.round(Math.max(0,avail-side)/2), gh=side;
+  const ix=gx+7, iy=gy, iw=gw-14, ih=gh;
+
+  /* ---------- 场景（俯视）---------- */
+  d910Card(ctx,gx,A.y,gw,A.h,'场景（俯视）',D10_C.blue);
+  ctx.save(); rr(ctx,ix,iy,iw,ih,5); ctx.fillStyle='#fbfcfe'; ctx.fill();
+  ctx.strokeStyle='#eef2f7'; ctx.stroke(); ctx.restore();
+  const M=function(q){ return [ix+3+q[0]*(iw-6), iy+ih-3-(1-q[1])*(ih-6)]; };
+  const dropped=wrong && D10_EVENTS.slice(0,evN+1).some(function(e){ return e.a==='miss'; });
+  /* 左/右两个子树的盒子（注意：数据 y 向下增大，a=M(xmin,ymin) 是左上角、c=M(xmax,ymax) 是右下角）*/
+  [1,2].forEach(function(ni,k){
+    const b=tree.nodes[ni].box;
+    const a=M([b[0],b[1]]), c=M([b[2],b[3]]);
+    rr(ctx,a[0],a[1],Math.max(2,c[0]-a[0]),Math.max(2,c[1]-a[1]),4);
+    ctx.fillStyle=k===0?'rgba(5,150,105,.10)':'rgba(220,38,38,.10)'; ctx.fill();
+    ctx.strokeStyle=k===0?'rgba(5,150,105,.85)':'rgba(220,38,38,.7)';
+    ctx.lineWidth=1.3; ctx.stroke();
+    txt(ctx,k===0?a[0]+2:c[0]-2,a[1]-8,k===0?'左半堆 ✓命中':'右半堆 ✗没中',
+        {align:k===0?'left':'right',size:6.4,color:k===0?D10_C.green:D10_C.red,
+         weight:700,mono:false});
+  });
+  /* 物体：只把「当前弹出叶子里的那 2 个球」点亮 */
+  const leafO=function(){ const n=tree.nodes[ev.idx];
+    return (ev.a==='pop'||ev.a==='hit')&&n&&n.count>0?n:null; };
+  const cur=leafO();
+  tree.objs.forEach(function(o,i){
+    const tested=(ev.a==='hit'&&i===ev.obj)||(!!cur&&(i===cur.left||i===cur.right));
+    const lost=dropped&&i<4;
+    const c=M([o.x,o.y]);
+    ctx.beginPath(); ctx.arc(c[0],c[1],Math.max(2.2,o.r*(iw-6)),0,7);
+    ctx.fillStyle=tested?D10_C.green:(lost?'#fdecec':'rgba(37,99,235,.18)'); ctx.fill();
+    ctx.strokeStyle=tested?D10_C.green:(lost?'#f0b6b6':'rgba(37,99,235,.7)');
+    ctx.lineWidth=tested?2.2:1.2; ctx.stroke();
+  });
+  /* 射线 */
+  const A0=M([0,D10_RAY_Y]), B0=M([1,D10_RAY_Y]);
+  ctx.beginPath(); ctx.moveTo(A0[0],A0[1]); ctx.lineTo(B0[0],B0[1]);
+  ctx.strokeStyle=D10_C.blue; ctx.lineWidth=1.7; ctx.stroke();
+  txt(ctx,A0[0]+3,A0[1]-8,'光线',{size:6.6,color:D10_C.blue,weight:700,mono:false});
+
+  /* ---------- nodes[] ---------- */
+  const visited=D10_EVENTS.slice(0,evN+1).filter(function(e){ return e.idx!==undefined; })
+                   .map(function(e){ return e.idx; });
+  const seen=visited.filter(function(v,i){ return visited.indexOf(v)===i; });
+  d910Card(ctx,rx,A.y,nw,topH,'nodes[]　（连续数组）',D10_C.purple);
+  const rh=Math.min(26,(topH-40)/7);
+  tree.nodes.forEach(function(n,i){
+    const y=A.y+22+i*rh, on=visited.indexOf(i)>=0, hit=d10BoxHit(n.box);
+    rr(ctx,rx+3,y,nw-6,rh-3,3);
+    ctx.fillStyle=on?'#ede9fe':'#fbfcfe'; ctx.fill();
+    ctx.strokeStyle=on?D10_C.purple:'#eef2f7'; ctx.lineWidth=on?1.4:1; ctx.stroke();
+    txt(ctx,rx+7,y+rh/2-5.8,'['+i+'] '+(n.count?'L'+n.count:'int')+' '+n.left+'→'+n.right,
+        {size:6.4,mono:true,color:on?D10_C.purple:'#cbd5e1',weight:on?700:400});
+    txt(ctx,rx+nw-7,y+rh/2-5.8,hit?'盒中':'盒空',{align:'right',size:6.2,mono:false,
+        color:hit?D10_C.green:'#cbd5e1',weight:hit?700:400});
+  });
+
+  /* ---------- stack[64]（竖排：底在下、顶在上）---------- */
+  const sState=d10StackOf(evN);
+  d910Card(ctx,kx,A.y,kw,topH,'stack[64]　sp = '+sState.length,D10_C.amber);
+  txt(ctx,kx+6,A.y+25,'^ 后进先出：栈顶在最高的一格',{size:6.2,color:'#94a3b8',mono:false});
+  const slotN=6, cellH=Math.min(20,(topH-40)/slotN), baseY=A.y+topH-7;
+  for(let d=0;d<slotN;d++){
+    const has=d<sState.length, isTop=d===sState.length-1, y=baseY-(d+1)*cellH;
+    rr(ctx,kx+5,y,kw-10,cellH-3,3);
+    ctx.fillStyle=has?(isTop?'#fef3c7':'#fff7e6'):'#fbfcfe'; ctx.fill();
+    ctx.strokeStyle=has?(isTop?D10_C.amber:'#f0c274'):'#eef2f7';
+    ctx.lineWidth=isTop?1.7:1; ctx.stroke();
+    txt(ctx,kx+10,y+cellH/2-4.6,'['+d+']',{size:6.2,mono:true,
+        color:has?'#a16207':'#cbd5e1',weight:has?700:400});
+    if(has) txt(ctx,kx+34,y+cellH/2-4.8,'节点 '+sState[d],{size:7,mono:true,color:D10_C.amber,weight:700});
+    if(isTop) txt(ctx,kx+kw-10,y+cellH/2-4.6,'← 栈顶',{align:'right',size:6.2,
+        color:D10_C.amber,weight:700,mono:false});
+  }
+
+  /* ---------- 事件卡（右下方，宽度 = 右上两张卡的总宽）---------- */
+  const ER={x:rx,y:ny,w:rw,h:nh};
+  d910Card(ctx,rx,ny,rw,nh,('事件 '+(evN+1)+' / '+D10_EVENTS.length)+(wrong?'　⚠️ 错误写法已开启':''),
+           wrong?D10_C.red:D10_C.amber);
+  d5Fit(ctx,rx+9,ny+20,ev.note,{size:7.4,color:'#334155',weight:600,mono:false},ER,4);
+  const nHit=d10BoxHit(tree.nodes[ev.idx]?tree.nodes[ev.idx].box:[0,0,0,0]);
+  const line2=(dropped
+    ? 'return false → 丢掉整个栈 → 左半堆的 4 个球一个都没测 ✗'
+    : 'continue → 只跳过这一个节点，栈里剩下的继续处理 ✓');
+  d5Fit(ctx,rx+9,ny+35,line2,{size:7.4,weight:700,mono:false,
+        color:dropped?D10_C.red:D10_C.green},ER,4);
+  if(nh>56){
+    let cx=rx+9;
+    const chips=[];
+    if(ev.idx!==undefined){
+      chips.push(['弹出节点 ['+ev.idx+']',D10_C.purple]);
+      chips.push(['盒子 '+(nHit?'命中 ✓':'没中 ✗'),nHit?D10_C.green:'#94a3b8']);
+    } else chips.push(['压栈 · 还没试盒子','#94a3b8']);
+    chips.push(['栈深 '+sState.length,D10_C.amber]);
+    chips.push(['已访问 '+seen.length+' 个节点','#64748b']);
+    chips.forEach(function(ch){
+      const tw=txt(ctx,0,-99,ch[0],{size:6.6,mono:false})+12;
+      rr(ctx,cx,ny+nh-19,tw,14,6); ctx.fillStyle='#f8fafc'; ctx.fill();
+      ctx.strokeStyle='#e8edf4'; ctx.lineWidth=1; ctx.stroke();
+      txt(ctx,cx+6,ny+nh-15.4,ch[0],{size:6.6,color:ch[1],weight:700,mono:false});
+      cx+=tw+5;
+    });
+  }
+  return {evN:evN, ev:ev, wrong:wrong, dropped:dropped, sState:sState};
+}
+
+function drawD10_4(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  d5Head(ctx,R,'递归 → while + int stack[64]：把函数调用换成一次数组读写');
+  d10StackScene(ctx,W,H,st,R,A,false);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'显式栈迭代版',[
+    {items:[
+      {s:'int stack[64]; int sp = 0;',mono:true,c:D10_C.purple,w:700},
+      {s:'stack[sp++] = 0;        // 根节点',mono:true},
+      {s:'while (sp > 0) {',mono:true},
+      {s:'  const Node& node = nodes[stack[--sp]];',mono:true},
+      {s:'  if (!node.box.hit(...)) continue;',mono:true,c:D10_C.green,w:700},
+      {s:'  if (node.count == 0) {       // 内部节点',mono:true},
+      {s:'    stack[sp++] = node.left;',mono:true},
+      {s:'    stack[sp++] = node.right;',mono:true},
+      {s:'  } else { ... 测叶子里的物体 ... }',mono:true},
+      {s:'}',mono:true},
+      '',
+      {s:'为什么 64 个格子够用？',mono:false,c:'#0f172a',w:700},
+      '每个内部节点「弹 1 个、压 2 个」→ 净增 1，',
+      '所以栈的最大占用 ≈ 树深度 + 1',
+      {s:'  = ⌈log₂N⌉ + 1 ≈ 10',mono:true,c:D10_C.green,w:700},
+      {s:'  （能撑到 N ≈ 2⁶³）',mono:true,c:'#94a3b8'},
+      '',
+      {s:'⚠️ 但如果树退化成链表，',mono:false,c:D10_C.red,w:700},
+      '   深度 = N → 栈必须开大。'
+    ],o:{size:7.5,lh:9.9,gap:1.8}}
+  ],D10_C.purple, H-py-14);
+
+  st.readout='显式栈迭代：弹出节点 → 试盒子 → 内部节点就把两个子节点<b>压进栈</b>。'+
+    '每个内部节点「弹 1 压 2」净增 1，所以最大占用 ≈ <b>树深度 + 1 ≈ 10</b>，'+
+    '<code>int stack[64]</code> 绰绰有余。';
+}
+
+function drawD10_5(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const wrong=st.d10wrong>0.5;
+  d5Head(ctx,R,wrong?'⚠️ return false：栈里没处理的节点全部被丢掉'
+                     :'盒子没中是家常便饭 —— 必须 continue，不能 return false');
+  const r0=d10StackScene(ctx,W,H,st,R,A,true);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'这两行只差一个词，后果完全不同',[
+    {items:[
+      {s:'if (!node.box.hit(...)) continue;',mono:true,c:D10_C.green,w:700},
+      {s:'  → 只跳过【当前这一个】节点',mono:false,c:D10_C.green},
+      '    栈里剩下的节点继续处理。',
+      '',
+      {s:'if (!node.box.hit(...)) return false;',mono:true,c:D10_C.red,w:700},
+      {s:'  → 终止【整个函数】',mono:false,c:D10_C.red,w:700},
+      '    栈里还没处理的节点全部丢掉！',
+      '',
+      {s:'反例（demo 里的那条光线）：',mono:false,c:'#0f172a',w:700},
+      {s:'  光线穿过左半堆的盒子，',mono:true},
+      {s:'  但没有进入右半堆的盒子。',mono:true},
+      {s:'  LIFO 先弹出右子树 → 盒子没中 →',mono:true},
+      {s:'  若 return false：',mono:true,c:D10_C.red},
+      {s:'    左半堆的 4 个球【一个都没测】',mono:true,c:D10_C.red,w:700},
+      {s:'    → 画面凭空少掉一堆物体',mono:true,c:D10_C.red},
+      '',
+      {s:'📌 这就是"错得看不出来"的典型：',mono:false,c:D10_C.amber,w:700},
+      '   它不崩溃、不报错，只是少画几个东西。',
+      '',
+      {s:'👉 左边开关切到"错误写法"看反例。',mono:false,c:D10_C.amber,w:700}
+    ],o:{size:7.6,lh:10,gap:1.8}}
+  ],wrong?D10_C.red:D10_C.green, H-py-14);
+
+  st.readout=(r0.dropped?
+    '⚠️ 反例：<code>return false</code> 把栈里剩下的节点全丢了 —— '+
+    '左半堆的 4 个球<b>一个都没测</b>，画面会凭空少掉东西，而且不报错。':
+    '<code>continue</code> 只跳过这一个节点，栈里剩下的继续处理 ✓。'+
+    '切到「错误写法」就能看到整栈被丢弃的效果。')+
+    ' 当前事件 '+(r0.evN+1)+' / '+D10_EVENTS.length+'，栈深 '+r0.sState.length+'。';
+}
+
+/* ---------- 步骤 6 · 实测：扁平化只快了 6% ---------- */
+function drawD10_6(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10flat,0,1);
+  d5Head(ctx,R,'四个问题全改对了，性能却只动了 6%');
+
+  const rows=[['Day 9 树形 BVH',5.89,1.00,D10_C.blue,'基准'],
+              ['Day 10 扁平化',5.55,1.06,D10_C.green,'实测'],
+              ['预期（教科书说法）',2.36,2.50,D10_C.dim,'以为会这样']];
+  const bx=A.x+96, bw=A.w-150;
+  rows.forEach(function(r,i){
+    const y=A.y+30+i*30, on=p>((i+0.35)/3.4);
+    txt(ctx,A.x+9,y+2,r[0],{size:7.6,color:on?'#475569':'#cbd5e1',weight:600,mono:false});
+    d910Bar(ctx,bx,y,bw,14,on?r[1]/6:0,r[3]);
+    txt(ctx,bx+4,y+4,(on?r[1].toFixed(2)+' s':''),{size:7.2,color:'#fff',weight:700,mono:true});
+    txt(ctx,A.x+A.w-9,y+2,on?('×'+r[2].toFixed(2)):'',{size:8,color:r[3],weight:700,align:'right',mono:false});
+    if(on) txt(ctx,bx,y+17,r[4],{size:6.6,color:r[3],mono:false});
+  });
+  d5Fit(ctx,A.x+9,A.y+30+3*30+6,'换算成功率：期望 +150%，实测 +6% —— 差 25 倍',
+        {size:7.4,color:D10_C.amber,weight:700,mono:false},R,4);
+
+  const by=A.y+30+3*30+22, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'「改对了却没变快」说明什么',D10_C.amber);
+  d5Fit(ctx,A.x+9,by+22,'① 我的改动<b>确实生效了</b>（5.89 → 5.55，方向是对的）',
+        {size:7.5,color:'#334155',mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+36,'② 但收益只有 6% → <b>瓶颈根本不在你改的地方</b>',
+        {size:7.5,color:D10_C.red,weight:700,mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+52,'③ 指针跳转、虚函数、缓存未命中 —— 这四个「常识性」的猜测，全部不是主因',
+        {size:7.5,color:D10_C.amber,weight:700,mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+72,'④ 结论：瓶颈不在内存布局上 → 必须换一种测量方式（下一页：直接看汇编）',
+        {size:7.5,color:D10_C.purple,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'教科书说这是「标准优化」',[
+    {items:[
+      {s:'扁平化的四个卖点：',mono:false,c:'#0f172a',w:700},
+      {s:'  ① 连续数组 → 缓存友好',mono:true,c:D10_C.green},
+      {s:'  ② 整数下标 → 不用指针',mono:true,c:D10_C.green},
+      {s:'  ③ 88 → 64 字节 → 一条缓存线',mono:true,c:D10_C.green},
+      {s:'  ④ 去掉虚函数 → 无跳转',mono:true,c:D10_C.green},
+      '',
+      {s:'我预计：2.5 倍',mono:false,c:D10_C.blue,w:700},
+      {s:'实测：5.89 s → 5.55 s = 1.06×',mono:false,c:D10_C.red,w:700},
+      '',
+      {s:'📌 关键的心态转变：',mono:false,c:D10_C.amber,w:700},
+      '「我按教科书写对了，为什么没用？」',
+      '→ 不要怀疑教科书，也不要硬编一个理由。',
+      '→ 承认「我不知道瓶颈在哪」，然后去测量。',
+      '',
+      {s:'⭐ 优化里最危险的一句话是：',mono:false,c:D10_C.purple,w:700},
+      {s:'「我知道瓶颈在哪」。',mono:false,c:D10_C.purple,w:700},
+      '',
+      '今天这句话已经被打脸 3 次了。'
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],D10_C.amber, H-py-14);
+
+  st.readout='扁平化把四个问题全改对了，实测 <b>5.89 s → 5.55 s</b>，只有 <b>1.06×（6%）</b>，'+
+    '而预期是 2.5×。结论：<b>瓶颈不在内存布局上</b> —— 必须换一种测量方式。';
+}
+
+/* ---------- 步骤 7 · 分段计时：瓶颈找对了，原因没找到 ---------- */
+function drawD10_7(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10prof,0,1);
+  d5Head(ctx,R,'用 steady_clock 把耗时分段 —— 钱到底花在哪一段');
+
+  const rows=[['BVH 求交',5.40,78,D10_C.blue],
+              ['材质 scatter',0.38,6,D10_C.purple],
+              ['其它（含计时器开销）',1.13,16,D10_C.dim]];
+  const bx=A.x+108, bw=A.w-190;
+  rows.forEach(function(r,i){
+    const y=A.y+34+i*34, on=p>((i+0.35)/3.4);
+    txt(ctx,A.x+9,y+2,r[0],{size:7.6,color:on?'#475569':'#cbd5e1',weight:600,mono:false});
+    d910Bar(ctx,bx,y,bw,15,on?r[2]/78:0,r[3]);
+    txt(ctx,A.x+A.w-9,y+1,on?(r[1].toFixed(2)+' s　'+r[2]+'%'):'',
+        {size:7.4,color:r[3],weight:700,align:'right',mono:true});
+  });
+  d5Fit(ctx,A.x+9,A.y+34+3*34+4,'分段口径：一次渲染的总时间按「代码路径」拆成三份',
+        {size:7,color:'#94a3b8',mono:false},R,4);
+
+  const by=A.y+34+3*34+22, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'瓶颈位置找对了，但原因猜错了',D10_C.purple);
+  d5Fit(ctx,A.x+9,by+22,'遍历占 <b>78%</b> —— 确认了 BVH 求交就是瓶颈，位置没找错',
+        {size:7.5,color:'#334155',mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+36,'但扁平化<b>并没有让遍历变快</b> → 成本既不是「指针跳转」，也不是「虚函数」',
+        {size:7.5,color:D10_C.red,weight:700,mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+52,'→ 只能换一种问法：<b>编译器到底生成了什么？</b>（下一步：看汇编）',
+        {size:7.5,color:D10_C.purple,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'测量方式本身要升级',[
+    {items:[
+      {s:'第 1 层测量：看总时间',mono:false,c:'#0f172a',w:700},
+      {s:'  13.16 → 5.89 s  ✓ 知道变快了',mono:true},
+      {s:'  但不知道【为什么】变快',mono:true,c:D10_C.red},
+      '',
+      {s:'第 2 层测量：分段计时',mono:false,c:'#0f172a',w:700},
+      {s:'  steady_clock 打在每段前后',mono:true},
+      {s:'  → 知道遍历占 78%',mono:true,c:D10_C.green},
+      {s:'  → 仍不知道遍历【贵在哪】',mono:true,c:D10_C.red},
+      '',
+      {s:'第 3 层测量：看生成的机器码',mono:false,c:'#0f172a',w:700},
+      {s:'  g++ -O3 -S -masm=intel',mono:true},
+      {s:'  → 数一数指令 ∎',mono:true,c:D10_C.purple,w:700},
+      '',
+      {s:'📌 教训：',mono:false,c:D10_C.amber,w:700},
+      '当"猜原因"连续两次失败，',
+      '就该停止猜测、去看事实 ——',
+      {s:'在性能优化里，"事实"就是汇编。',mono:false,c:D10_C.purple,w:700}
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],D10_C.purple, H-py-14);
+
+  st.readout='分段计时：<b>BVH 求交 5.40 s（78%）</b>、材质 scatter 0.38 s（6%）、其它 1.13 s（16%）。'+
+    '瓶颈位置确认了 —— 但扁平化并没有让遍历变快，说明成本不是指针也不是虚函数。'+
+    '下一步只能<b>去看编译器生成了什么</b>。';
+}
+
+/* ---------- 步骤 8 · 看汇编：maxsd 居然是 0 ---------- */
+function drawD10_8(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10asm,0,1);
+  const after=p>0.5;
+  d5Head(ctx,R,after?'修复后：maxsd 24 / minsd 25，剩下的 call 全在建树路径上'
+                     :'搜汇编：call fmax 一大片，而 maxsd 是 0');
+
+  const h2=(A.h-12)/2;
+  /* 修复前 */
+  d910Card(ctx,A.x,A.y,A.w,h2,'g++ -O3 -S -masm=intel  →  搜指令名（修复前）',D10_C.red);
+  const before=[['call    fmax','#dc2626','一大片'],['call    fmin','#dc2626','一大片'],
+                ['call    fmax','#dc2626',''],['call    fmin','#dc2626',''],
+                ['...','#94a3ad',''],
+                ['maxsd : 0','#dc2626','一条 SSE max 指令都没生成'],
+                ['minsd : 1','#b45309','']];
+  before.forEach(function(l,i){
+    txt(ctx,A.x+10,A.y+24+i*13,l[0],{size:7.2,mono:true,color:l[1],weight:l[2]?700:400});
+    if(l[2]) txt(ctx,A.x+110,A.y+24+i*13,l[2],{size:6.8,color:l[1],mono:false});
+  });
+  d5Fit(ctx,A.x+10,A.y+h2-13,'std::fmax / std::fmin 被编译成了【真正的函数调用】',
+        {size:7.2,color:D10_C.red,weight:700,mono:false},R,4);
+
+  /* 修复后 */
+  d910Card(ctx,A.x,A.y+h2+12,A.w,h2,after?'修复后：把 std::fmax 换成三目运算符':'（拖滑杆揭示修复后的汇编）',
+           after?D10_C.green:'#cbd5e1');
+  if(after){
+    const after2=[['call fmax    15','#94a3ad','全在建树路径上，不在热路径'],
+                  ['call fmin    16','#94a3ad',''],
+                  ['maxsd        24','#059669','热路径上的 SSE 指令'],
+                  ['minsd        25','#059669',''],
+                  ['t_min = (t0 > t_min) ? t0 : t_min;','#7c3aed','→ maxsd'],
+                  ['t_max = (t1 < t_max) ? t1 : t_max;','#7c3aed','→ minsd']];
+    after2.forEach(function(l,i){
+      txt(ctx,A.x+10,A.y+h2+24+i*13,l[0],{size:7.2,mono:true,color:l[1],weight:l[2]?700:400});
+      if(l[2]) txt(ctx,A.x+190,A.y+h2+24+i*13,l[2],{size:6.8,color:l[1],mono:false});
+    });
+  }
+  d5Fit(ctx,A.x+10,A.y+2*h2+12-13,after?'0 / 1  →  24 / 25　热路径上的指令终于出现了 ✓'
+        :'▶ 拖滑杆看修复后的指令统计',{size:7.2,color:after?D10_C.green:'#94a3b8',weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'为什么 GCC 不敢用指令代替？',[
+    {items:[
+      {s:'std::fmax(a, b) 的标准语义：',mono:false,c:'#0f172a',w:700},
+      {s:'  只要有一个参数是 NaN → 返回【另一个】',mono:true,c:D10_C.red},
+      '',
+      {s:'x86 的 maxsd 指令语义：',mono:false,c:'#0f172a',w:700},
+      {s:'  任一操作数是 NaN → 返回【第二个操作数】',mono:true,c:D10_C.amber},
+      '',
+      {s:'⇒ 两者语义【不等价】',mono:false,c:D10_C.red,w:700},
+      {s:'⇒ GCC 不能把前者替换成后者',mono:false,c:D10_C.red,w:700},
+      {s:'⇒ 只能老老实实生成 call（函数调用）',mono:false,c:D10_C.red,w:700},
+      '',
+      {s:'📌 这里有个反直觉的地方：',mono:false,c:D10_C.purple,w:700},
+      '说"语义更丰富"的标准库函数，',
+      '反而成了性能的地雷 ——',
+      '因为它把"优化空间"给堵死了。',
+      '',
+      {s:'⭐ 换成三目运算符之后，',mono:false,c:D10_C.green,w:700},
+      '   编译器就能直接生成 maxsd / minsd。',
+      '',
+      {s:'⚠️ 但前提是 NaN 行为必须等价 ——',mono:false,c:D10_C.amber,w:700},
+      '   下一步专门验证。'
+    ],o:{size:7.7,lh:10.1,gap:1.9}}
+  ],after?D10_C.green:D10_C.red, H-py-14);
+
+  st.readout=(after?'修复后：<code>maxsd 24</code>、<code>minsd 25</code>，'+
+    '剩下的 15 / 16 次 <code>call fmax/fmin</code> 全在<b>建树路径</b>上，不在热路径。':
+    '搜汇编的结果：<code>call fmax</code> / <code>call fmin</code> 一大片，'+
+    '<code>maxsd : 0</code> —— <b>一条 SSE max 指令都没生成</b>。'+
+    '原因：std::fmax 的 NaN 语义和 maxsd 指令不等价，GCC 不敢替换。');
+}
+
+/* ---------- 步骤 9 · 代价：19 亿次函数调用 ---------- */
+function drawD10_9(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10call,0,1);
+  d5Head(ctx,R,'一次盒子测试 = 6 次函数调用 → 322M × 6 ≈ 19 亿次');
+
+  const axes=['x 轴','y 轴','z 轴'];
+  const cw=46;
+  axes.forEach(function(a,i){
+    const y=A.y+34+i*30, on=p>((i+0.35)/3.4);
+    txt(ctx,A.x+9,y+6,a,{size:7.6,color:on?D10_C.red:'#cbd5e1',weight:700});
+    ['fmax','fmin'].forEach(function(f,k){
+      const x=A.x+56+k*(cw+8);
+      ctx.save(); rr(ctx,x,y,cw,20,4);
+      ctx.fillStyle=on?'#fdecec':'#fbfcfe'; ctx.fill();
+      ctx.strokeStyle=on?'#f0b6b6':'#eef2f7'; ctx.lineWidth=on?1.4:1; ctx.stroke(); ctx.restore();
+      txt(ctx,x+cw/2,y+6,'call '+f,{align:'center',size:6.6,mono:true,color:on?D10_C.red:'#cbd5e1'});
+    });
+    txt(ctx,A.x+56+2*(cw+8)+6,y+6,on?'2 次调用':'',{size:7,color:D10_C.red,weight:700,mono:false});
+  });
+  d5Fit(ctx,A.x+9,A.y+34+3*30+2,'一次盒子测试 = 3 个轴 × 2 次（fmax + fmin）= 6 次函数调用',
+        {size:7.2,color:D10_C.red,weight:700,mono:false},R,4);
+  /* 公式条 */
+  const fy=A.y+34+3*30+18;
+  d910Card(ctx,A.x,fy,A.w,26,'','');
+  d5Fit(ctx,A.x+9,fy+7,'322,239,827 次盒测试　×　6　≈　19 亿次函数调用',
+        {size:8,color:D10_C.red,weight:700,mono:false},R,4);
+
+  const by=fy+34, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'19 亿次调用 ≈ 5.7 秒 —— 几乎就是全部渲染时间',D10_C.amber);
+  const rows=[['每次函数调用','≈ 3 ns（调用 + 访存 + 返回）',D10_C.red],
+              ['19 亿 × 3 ns','≈ 5.7 s',D10_C.red],
+              ['这一步之前的总耗时','5.55 s',D10_C.ink],
+              ['换成指令之后','19 亿条寄存器指令，几乎免费',D10_C.green],
+              ['修复后','5.55 s → 1.82 s（3.0×）',D10_C.green]];
+  rows.forEach(function(r,i){ d910KV(ctx,A.x+9,by+22+i*13,A.w-18,r[0],r[1],r[2],{size:7.5}); });
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'为什么这一项能吃掉全部时间',[
+    {items:[
+      {s:'一次盒测试的账：',mono:false,c:'#0f172a',w:700},
+      {s:'  3 个轴 × 2 次（fmax + fmin）',mono:true},
+      {s:'  = 6 次真正的函数调用',mono:true,c:D10_C.red,w:700},
+      '',
+      {s:'调用一次要做什么？',mono:false,c:'#0f172a',w:700},
+      {s:'  ① 传参（SSE 寄存器 → 栈/寄存器）',mono:true},
+      {s:'  ② 跳到库函数地址',mono:true},
+      {s:'  ③ 函数内部还要处理 NaN 分支',mono:true},
+      {s:'  ④ 返回',mono:true},
+      {s:'  ≈ 3 ns',mono:true,c:D10_C.red,w:700},
+      '',
+      {s:'次数乘起来：',mono:false,c:'#0f172a',w:700},
+      {s:'  322,239,827 × 6 ≈ 19.3 亿次',mono:true},
+      {s:'  19.3 亿 × 3 ns ≈ 5.7 s',mono:true,c:D10_C.red,w:700},
+      '',
+      {s:'⭐ 而盒子测试的"算术本身"',mono:false,c:D10_C.green,w:700},
+      {s:'   只需要 3 条 maxsd / minsd 指令 ——',mono:false,c:D10_C.green},
+      {s:'   本来应该是 1 个周期的事。',mono:false,c:D10_C.green},
+      '',
+      {s:'📌 一个函数名，值 3 倍。',mono:false,c:D10_C.purple,w:700}
+    ],o:{size:7.6,lh:10,gap:1.8}}
+  ],D10_C.amber, H-py-14);
+
+  st.readout='一次盒子测试 = <b>3 轴 × 2 次（fmax + fmin）= 6 次函数调用</b>；'+
+    '<b>322,239,827</b> 次盒测试 × 6 ≈ <b>19 亿次调用</b>，每次 ≈3 ns → <b>≈5.7 s</b> ——'+
+    '几乎就是渲染的全部时间。';
+}
+
+/* ---------- 步骤 10 · 三目运算符 + NaN 等价性 ---------- */
+function drawD10_10(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10nan,0,1);
+  d5Head(ctx,R,'换成三目运算符 —— 语义必须等价，否则「更快」可能是「更错」');
+
+  /* 两栏对照 */
+  const colW=(A.w-10)/2;
+  d910Card(ctx,A.x,A.y,colW,A.h*0.34,'❌ 慢',D10_C.red);
+  d910Card(ctx,A.x+colW+10,A.y,colW,A.h*0.34,'✅ 快',D10_C.green);
+  const slow=['t_min = std::fmax(t0, t_min);','t_max = std::fmin(t1, t_max);'];
+  const fast=['t_min = (t0 > t_min) ? t0 : t_min;','t_max = (t1 < t_max) ? t1 : t_max;'];
+  slow.forEach(function(s,i){
+    txt(ctx,A.x+9,A.y+26+i*16,s,{size:6.6,mono:true,color:D10_C.red});
+    txt(ctx,A.x+9,A.y+40+i*16,'→ call fmax / fmin',{size:6.4,mono:true,color:'#cbd5e1'});
+  });
+  fast.forEach(function(s,i){
+    txt(ctx,A.x+colW+19,A.y+26+i*16,s,{size:6.6,mono:true,color:D10_C.green});
+    txt(ctx,A.x+colW+19,A.y+40+i*16,'→ maxsd / minsd',{size:6.4,mono:true,color:D10_C.green,weight:700});
+  });
+
+  /* NaN 等价性表 */
+  const ty=A.y+A.h*0.34+12, th=A.h*0.30;
+  d910Card(ctx,A.x,ty,A.w,th,'NaN 行为等价性验证（必须做）',D10_C.purple);
+  const rows=[['t0 是 NaN','NaN > t_min → false','保留 t_min ✓（NaN 被弹开）',D10_C.green],
+              ['t1 是 NaN','NaN < t_max → false','保留 t_max ✓',D10_C.green],
+              ['t_min / t_max 自身','永远不会被赋成 NaN','所以安全',D10_C.blue]];
+  rows.forEach(function(r,i){
+    const y=ty+24+i*13.5, on=p>((i+0.35)/3.4);
+    txt(ctx,A.x+9,y,r[0],{size:7,mono:true,color:on?r[3]:'#cbd5e1',weight:700});
+    txt(ctx,A.x+96,y,r[1],{size:6.8,mono:true,color:on?'#475569':'#cbd5e1'});
+    txt(ctx,A.x+196,y,r[2],{size:6.8,color:on?r[3]:'#cbd5e1',weight:on?700:400,mono:false});
+  });
+  d5Fit(ctx,A.x+9,ty+24+3*13.5+2,'De Morgan 式的验证：换写法前，先把「边界输入」逐个过一遍',
+        {size:6.9,color:D10_C.purple,weight:700,mono:false},R,4);
+
+  const by=ty+th+12, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'结果：-37% 的时间，0 字节的画面变化',D10_C.green);
+  const rows2=[['BVH 求交','5.40 s → 1.58 s','3.4×',D10_C.green],
+               ['总耗时','5.55 s → 1.82 s','',D10_C.green],
+               ['热路径 maxsd / minsd','0 / 1 → 24 / 25','',D10_C.green],
+               ['image.png','172,127 B（一个字节都没变）','',D10_C.green]];
+  rows2.forEach(function(r,i){ d910KV(ctx,A.x+9,by+22+i*13,A.w-18,r[0],r[1]+'   '+r[2],r[3],{size:7.4}); });
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'这一改动的三行代码',[
+    {items:[
+      {s:'// ❌ 慢（Day 8 写的）',mono:true,c:D10_C.red,w:700},
+      {s:'t_min = std::fmax(t0, t_min);',mono:true},
+      {s:'t_max = std::fmin(t1, t_max);',mono:true},
+      '',
+      {s:'// ✅ 快（Day 10 改成）',mono:true,c:D10_C.green,w:700},
+      {s:'t_min = (t0 > t_min) ? t0 : t_min;',mono:true},
+      {s:'t_max = (t1 < t_max) ? t1 : t_max;',mono:true},
+      '',
+      {s:'效果：3.0 倍',mono:false,c:D10_C.green,w:700},
+      {s:'  5.55 s → 1.82 s',mono:true},
+      {s:'  maxsd / minsd  0/1 → 24/25',mono:true},
+      {s:'  image.png      172,127 B ✓',mono:true},
+      '',
+      {s:'⚠️ 这个雷是 Day 8 自己埋的：',mono:false,c:D10_C.amber,w:700},
+      '当时在日志里写「用 std::fmax/fmin 是',
+      '更好的选择，因为标准明文规定 NaN 感知，',
+      '比依赖巧合更可靠」——',
+      {s:'那句话在【正确性】上对，',mono:false,c:D10_C.red,w:700},
+      {s:'在【性能】上错得离谱。',mono:false,c:D10_C.red,w:700},
+      '',
+      {s:'📌 修正后的原则：',mono:false,c:D10_C.purple,w:700},
+      '热路径上不要用「语义更丰富」的标准库函数，',
+      '除非你验证过它变成了指令。',
+      {s:'std::clamp / std::fmin / std::abs 都有类似的坑。',mono:false,c:D10_C.purple}
+    ],o:{size:7.4,lh:9.8,gap:1.7}}
+  ],D10_C.green, H-py-14);
+
+  st.readout='换成三目后：<code>t_min = (t0 &gt; t_min) ? t0 : t_min;</code> → <b>maxsd 指令</b>。'+
+    'NaN 行为<b>等价</b>（NaN 比较恒为 false → 保留原值 = NaN 被弹开）。'+
+    '实测 BVH 求交 <b>5.40 → 1.58 s（3.4×）</b>、总耗时 <b>5.55 → 1.82 s</b>，'+
+    '<code>image.png</code> 仍 <b>172,127 B</b>。';
+}
+
+/* ---------- 步骤 11 · 完整性能历程与教训 ---------- */
+function drawD10_11(ctx,W,H,st,ph){
+  const SP=d7Split(W,H), R=SP.rect, A=d5Area(R);
+  const p=clamp(st.d10final,0,1);
+  d5Head(ctx,R,'13.16 s → 1.82 s：四步里，一半的收益来自一个函数名');
+
+  const rows=[{n:'Day 8 朴素遍历',v:13.16,m:'1.00×',c:'#94a3b8',d:'baseline'},
+              {n:'Day 9 树形 BVH',v:5.89, m:'2.23×',c:D10_C.blue, d:'少 10.6× 次数 × 贵 5.5×'},
+              {n:'Day 10a 扁平化',v:5.55, m:'2.37×',c:D10_C.purple,d:'压缩内存布局 · 只值 6%'},
+              {n:'Day 10b 三目',  v:1.82, m:'7.23×',c:D10_C.green, d:'一个函数名 · 值 3 倍'}];
+  const bx=A.x+104, bw=A.w-186;
+  rows.forEach(function(r,i){
+    const y=A.y+34+i*26, on=p>((i+0.3)/4.4);
+    txt(ctx,A.x+9,y+2,r.n,{size:7.4,color:on?'#475569':'#cbd5e1',weight:600,mono:false});
+    d910Bar(ctx,bx,y,bw,13,on?r.v/13.16:0,r.c);
+    txt(ctx,bx+4,y+3,on?r.v.toFixed(2)+' s':'',{size:6.8,color:'#fff',weight:700,mono:true});
+    if(on){
+      txt(ctx,A.x+A.w-9,y+1,r.m,{size:7.6,color:r.c,weight:700,align:'right',mono:false});
+      txt(ctx,bx,y+15,r.d,{size:6.4,color:'#94a3b8',mono:false});
+    }
+  });
+  d5Fit(ctx,A.x+9,A.y+34+4*26+2,'image.png 全程 172,127 B · 单元测试 23 / 23 · 画面一个字节都没变',
+        {size:7.2,color:D10_C.green,weight:700,mono:false},R,4);
+
+  const by=A.y+34+4*26+18, bh=A.y1-by;
+  d910Card(ctx,A.x,by,A.w,bh,'最「高级」的优化只值 6%，最「低级」的改动值 3 倍',D10_C.amber);
+  d5Fit(ctx,A.x+9,by+22,'扁平化（连续数组 + 整数下标 + 64 字节对齐 + 去掉虚函数）→ <b>1.06×</b>',
+        {size:7.4,color:D10_C.purple,weight:700,mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+36,'一个 std::fmax 换成三目运算符 → <b>3.0×</b>',
+        {size:7.4,color:D10_C.green,weight:700,mono:false},R,4);
+  d5Fit(ctx,A.x+9,by+52,'📌 性能优化的直觉非常不可靠 —— 必须测量，而且很多时候要一路测到汇编。',
+        {size:7.4,color:D10_C.amber,weight:700,mono:false},R,4);
+
+  const px=SP.px,pw=SP.pw,py=SP.top;
+  d5Panel(ctx,px,py,pw,'四个被实测推翻的假设',[
+    {items:[
+      {s:'① 地面巨球把树撑坏了？',mono:false,c:'#0f172a',w:700},
+      {s:'   预期退化成链表 → 实测深度 9，完全平衡',mono:false,c:D10_C.red},
+      '',
+      {s:'② 除法是瓶颈？',mono:false,c:'#0f172a',w:700},
+      {s:'   预计能省 6.3 s → 实测只占 2.6%',mono:false,c:D10_C.red},
+      '',
+      {s:'③ 扁平化值 2.5 倍？',mono:false,c:'#0f172a',w:700},
+      {s:'   实测 1.06×（6%）',mono:false,c:D10_C.red},
+      '',
+      {s:'④ 真凶在汇编里？',mono:false,c:'#0f172a',w:700},
+      {s:'   这次猜对了 → 3.0× ✓',mono:false,c:D10_C.green,w:700},
+      '',
+      {s:'⭐ 一句话总结：',mono:false,c:D10_C.purple,w:700},
+      '「两个写法语义等价」',
+      '≠「两个写法性能等价」。',
+      '',
+      '一个函数名，值 3 倍。',
+      '',
+      {s:'📌 而且验收标准全程只有一个：',mono:false,c:D10_C.amber,w:700},
+      {s:'image.png 172,127 B 不变 ✓',mono:true,c:D10_C.green,w:700}
+    ],o:{size:7.6,lh:10,gap:1.8}}
+  ],D10_C.green, H-py-14);
+
+  st.readout='完整历程：<b>13.16 s →（Day 9 树形 BVH 2.23×）5.89 s →（Day 10a 扁平化 1.06×）5.55 s →'+
+    '（Day 10b 三目 3.0×）1.82 s</b>，总计 <b>7.2×</b>。'+
+    '<code>image.png</code> 全程 <b>172,127 B</b> 不变、单元测试 23/23。'+
+    '四个假设被推翻三个 —— 最「低级」的改动收益最大。';
+}
+
+/* =========================================================================
+   Day 10 · 源码 / 步骤表 / 扩展卡片 + ANIM 注册（块 E）
+   ========================================================================= */
+
+const D10_FILES={
+
+'include/bvh.h · 扁平化节点':[
+ '// ── 一个结构体，两种含义 ──',
+ 'struct Node {          // 60 字节 → 按 8 对齐 = 64 字节 = 一条缓存线 ✓',
+ '    AABB box;          // 48   两个对角点 = 6 个 double',
+ '    int  left;         //  4   内部节点：左子【下标】 / 叶子：物体下标',
+ '    int  right;        //  4   内部节点：右子【下标】 / 叶子：物体下标',
+ '    int  count;        //  4   0 = 内部节点；1 或 2 = 叶子（有几个物体）',
+ '};',
+ '',
+ 'std::vector<Node> nodes;                       // 所有节点，连续排列',
+ 'std::vector<std::shared_ptr<Hittable>> objects;',
+ '',
+ '// 内部节点的 left/right 索引 nodes[]，叶子的索引 objects[]：',
+ '//   nodes[]   [0] 内部 left=1 right=2 count=0',
+ '//             [1] 内部 left=3 right=4 count=0',
+ '//             [2] 叶子 left=0 right=1 count=2  ─┐',
+ '//   objects[] [0] 球  [1] 球  [2] 球 …         ←┘',
+ '',
+ '// ⚠️ count 这个「双关」是最容易写错的地方：',
+ '//   内部节点的 left 是【节点下标】，不能拿去索引 objects！'
+],
+
+'include/bvh.h · 迭代求交':[
+ 'bool hit(const Ray& r, double t_min, double t_max,',
+ '         HitRecord& rec) const override {',
+ '    if (nodes.empty()) return false;',
+ '    bool hit_anything = false;',
+ '',
+ '    // 显式栈：树深度是 O(log N)，481 个物体最多 ~10 层，',
+ '    // 每层最多压 2 个 → 64 个格子绰绰有余。',
+ '    int stack[64];',
+ '    int sp = 0;',
+ '    stack[sp++] = 0;              // 从根节点（下标 0）开始',
+ '',
+ '    while (sp > 0) {',
+ '        const Node& node = nodes[stack[--sp]];   // ⚠️ 每次重新寻址',
+ '',
+ '        // ① 先试这个节点的盒子',
+ '        // ⚠️ 必须用 continue，不能 return false！',
+ '        //    return false 会把栈里还没处理完的节点全部丢掉 ✗',
+ '        if (!node.box.hit(r, t_min, t_max)) continue;',
+ '',
+ '        if (node.count == 0) {',
+ '            // ② 内部节点：把两个子节点推进栈',
+ '            stack[sp++] = node.left;',
+ '            stack[sp++] = node.right;',
+ '        } else {',
+ '            // ③ 叶子节点：把里面的物体挨个测一遍',
+ '            for (int k = 0; k < node.count; ++k) {',
+ '                int obj = (k == 0) ? node.left : node.right;',
+ '                if (objects[obj]->hit(r, t_min, t_max, rec)) {',
+ '                    hit_anything = true;',
+ '                    t_max = rec.t;        // ★ 收紧搜索区间',
+ '                }',
+ '            }',
+ '        }',
+ '    }',
+ '    return hit_anything;',
+ '}'
+],
+
+'include/bvh.h · 建树（下标版）':[
+ 'int build(size_t start, size_t end) {',
+ '    int index = (int)nodes.size();',
+ '    nodes.emplace_back();            // 先占一个位置（内容稍后再填）',
+ '',
+ '    // ---------- 第 1 步：算这一堆物体的总包围盒 ----------',
+ '    AABB total_box; bool first = true;',
+ '    for (size_t i = start; i < end; ++i) {',
+ '        AABB temp;',
+ '        objects[i]->bounding_box(temp);',
+ '        total_box = first ? temp : AABB::surrounding(total_box, temp);',
+ '        first = false;',
+ '    }',
+ '    nodes[index].box = total_box;',
+ '',
+ '    size_t span = end - start;',
+ '',
+ '    // ---------- 递归出口：1~2 个物体 → 叶子 ----------',
+ '    if (span <= 2) {',
+ '        nodes[index].count = (int)span;',
+ '        nodes[index].left  = (int)start;',
+ '        nodes[index].right = (span == 2) ? (int)(start + 1) : (int)start;',
+ '        return index;',
+ '    }',
+ '',
+ '    int axis = total_box.longest_axis();     // 第 2 步：选最长轴',
+ '',
+ '    std::sort(objects.begin() + start, objects.begin() + end, ...);',
+ '',
+ '    size_t mid = start + span / 2;           // 第 4 步：对半分',
+ '',
+ '    // ⚠️ 递归之后 nodes 可能已经扩容（搬过家）了，',
+ '    //    所以【绝对不能用引用或指针】记住 nodes[index]，',
+ '    //    必须每次都用 nodes[index] 重新寻址。',
+ '    int left_index  = build(start, mid);',
+ '    int right_index = build(mid,   end);',
+ '',
+ '    nodes[index].count = 0;                  // 0 = 内部节点',
+ '    nodes[index].left  = left_index;',
+ '    nodes[index].right = right_index;',
+ '    return index;',
+ '}'
+],
+
+'include/aabb.h · 热路径两行':[
+ '            // ⚠️⚠️ 这里【绝对不要】用 std::fmax / std::fmin！',
+ '            //',
+ '            //   实测（Day 10）：std::fmax / std::fmin 有特殊的 NaN 语义，',
+ '            //   GCC 不敢用 x86 的 maxsd / minsd 指令代替它们，只能生成',
+ '            //   【真正的函数调用】。一次盒子测试要调 6 次（3 轴 × 2 次），',
+ '            //   322M 次盒子测试 → 19 亿次函数调用 → 光这一项就吃掉几秒。',
+ '            //',
+ '            //   三目运算符则会被编译成 maxsd / minsd 【指令】。',
+ '            //',
+ '            //   NaN 行为在这里是【等价】的：',
+ '            //     t0 是 NaN → NaN > t_min 为 false → 保留 t_min ✓',
+ '            //     t1 是 NaN → NaN < t_max 为 false → 保留 t_max ✓',
+ '            //   （这就是 Day 8 讨论的"NaN 被弹开"，',
+ '            //     而且 t_min / t_max 自身永远不会被赋成 NaN，所以安全。）',
+ '            t_min = (t0 > t_min) ? t0 : t_min;   // 交集下界取大 → maxsd',
+ '            t_max = (t1 < t_max) ? t1 : t_max;   // 交集上界取小 → minsd'
+],
+
+'tmp/asm.txt':[
+ '# g++ -O3 -S -masm=intel src/main.cpp -o main.s',
+ '# 然后在 main.s 里搜指令名，数出现次数',
+ '',
+ '── 修复前 ────────────────────────────────',
+ 'call    fmax            ×  一大片',
+ 'call    fmin            ×  一大片',
+ 'maxsd                    0        ← 一条 SSE max 指令都没生成',
+ 'minsd                    1',
+ '',
+ '── 修复后（fmax/fmin → 三目运算符）────────',
+ 'call    fmax            15        ← 剩下的全在建树路径上',
+ 'call    fmin            16',
+ 'maxsd                   24        ← 热路径上的指令出现了 ✓',
+ 'minsd                   25'
+],
+
+'tmp/perf.txt':[
+ '[性能] 一次渲染（400 × 225 / 32 spp / 480 个球）',
+ '',
+ '  阶段                              耗时      相对 Day 8',
+ '  ────────────────────────────────────────────────────',
+ '  Day 8  朴素遍历                  13.16 s     1.00×',
+ '  Day 9  树形 BVH                   5.89 s     2.23×',
+ '  Day 10a 扁平化（连续数组 + 下标）   5.55 s     2.37×',
+ '  Day 10b 三目运算符替换             1.82 s     7.23×',
+ '',
+ '  分段（Day 10a 之后）',
+ '    BVH 求交                        5.40 s     78%',
+ '    材质 scatter                    0.38 s      6%',
+ '    其它（含计时器自身开销）          1.13 s     16%',
+ '',
+ '  image.png   172,127 B     全程不变 ✓',
+ '  单元测试    23 / 23        全程通过 ✓'
+]
+};
+
+/* ---------------- 步骤表 ---------------- */
+const D10_STEPS=[
+{
+ no:1, anim:'d10layout', chap:'① 问题', title:'节点散落在堆上，用指针互相串起来',
+ file:'include/bvh.h · 扁平化节点', hl:[[1,17]],
+ legend:[['#dc2626','散落在堆上的节点（88 B）'],['#059669','连续数组 + 缓存线刻度']],
+ text:'Day 9 的树是 <code>shared_ptr&lt;Hittable&gt; left/right</code> 串起来的：'+
+      '<b>每个节点散落在堆上不同位置</b>，用指针互相引用。四个问题：<br>'+
+      '① 两个指针 + 引用计数控制块 = 32 字节；'+
+      '② 每个节点一次 <code>virtual hit()</code>，目标在 BVHNode / Sphere 之间随机跳，'+
+      '分支预测猜不中；③ 每跳一次都可能缓存未命中；'+
+      '④ <b>节点 88 字节，比一条缓存线（64 B）还大</b> —— 读一个节点要两次访存。<br>'+
+      '⭐ 四个问题全都指向同一个方向：<b>内存布局</b>。'+
+      '于是 Day 10 的思路很自然：换成<b>连续数组 + 整数下标</b>。',
+ formula:'Day 9 的节点（88 字节）：\n'+
+          '  AABB box;                       48\n'+
+          '  shared_ptr<Hittable> left;      16（8 指针 + 8 控制块）\n'+
+          '  shared_ptr<Hittable> right;     16\n'+
+          '  （对齐后）                      88\n\n'+
+          '四个问题：\n'+
+          '  ① 32 字节的指针开销\n'+
+          '  ② 每个节点一次虚函数调用\n'+
+          '     → 目标在 BVHNode / Sphere 之间随机跳\n'+
+          '  ③ 指针跳转 → 缓存未命中\n'+
+          '  ④ 88 B > 64 B（一条缓存线）\n'+
+          '     → 读一个节点要两次访存\n\n'+
+          '⇒ 全都指向"内存布局"',
+ ctl:[{k:'d10layout',label:'逐个展开数组格子',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:2, anim:'d10dual', chap:'② 新结构', title:'一个结构体，两种含义',
+ file:'include/bvh.h · 扁平化节点', hl:[[1,16]],
+ legend:[['#7c3aed','内部节点（count==0）'],['#059669','叶子（count>0）']],
+ text:'扁平化把内部节点和叶子<b>压进同一个结构体</b>，靠 <code>count</code> 区分含义：'+
+      '<code>count == 0</code> → 内部节点，<code>left/right</code> 指向 <b><code>nodes[]</code></b>；'+
+      '<code>count &gt; 0</code> → 叶子，<code>left/right</code> 指向 <b><code>objects[]</code></b>。<br>'+
+      '⚠️ <b>这个「双关」很容易写错</b>（今天就写错了一次）：'+
+      '内部节点的 <code>left</code> 是<b>节点下标</b>，不能拿去索引 <code>objects</code>。'+
+      '这种错误不会崩溃，只会<b>随机地错</b>。<br>'+
+      '⭐ 拖滑杆逐个节点看：哪几行是内部节点、哪几行是叶子、'+
+      '箭头指向哪一个数组。',
+ formula:'struct Node {\n'+
+          '    AABB box;     // 48 B\n'+
+          '    int  left;    //  4 B\n'+
+          '    int  right;   //  4 B\n'+
+          '    int  count;   //  4 B\n'+
+          '};                // 60 B → 对齐 64 B\n\n'+
+          'count 的两种含义：\n'+
+          '  == 0  内部节点\n'+
+          '        left/right → nodes[]   的【节点下标】\n'+
+          '  == 1  叶子（1 个物体）\n'+
+          '        left == right → objects[] 的物体下标\n'+
+          '  == 2  叶子（2 个物体）\n'+
+          '        left / right → objects[] 的两个下标\n\n'+
+          '为什么能共用？\n'+
+          '  因为 Day 9 的递归出口就是「≤2 个物体」——\n'+
+          '  count 天生需要能记 1 或 2。\n\n'+
+          '⚠️ 内部节点的 left ≠ 物体下标',
+ ctl:[{k:'d10dual',label:'选中哪个节点下标？',min:0,max:7,step:1}],
+ draw:null
+},
+{
+ no:3, anim:'d10cache', chap:'② 新结构', title:'节点 88 → 64 字节：正好一条缓存线',
+ file:'include/bvh.h · 扁平化节点', hl:[[1,8]],
+ legend:[['#dc2626','88 B → 跨 2 条缓存线'],['#059669','64 B → 一次访存读全']],
+ text:'<code>AABB</code> = 2 个 <code>Point3</code> = 6 个 <code>double</code> = <b>48 字节</b>；'+
+      '加上 3 个 <code>int</code> = 12 字节，合计 60，按 8 字节对齐后 <b>64 字节</b> —— '+
+      '<b>正好一条缓存线</b>。<br>'+
+      'Day 9 的版本是 88 字节：多出来的 32 字节是两个 <code>shared_ptr</code>。'+
+      '读一个节点要横跨两条缓存线，<b>两次访存</b>。<br>'+
+      '📌 这就是「数据结构对齐到缓存线」这个经典手法的具体形态 —— '+
+      'CPU 读内存的单位不是字节，而是<b>一整条缓存线</b>。<br>'+
+      '⚠️ 但先记住：这一步<b>只值 6%</b>（见第 6 步）。',
+ formula:'算一遍（64 位机器）：\n'+
+          '  AABB box        2 × Point3 = 6 × double = 48 B\n'+
+          '  int left                                 4 B\n'+
+          '  int right                                4 B\n'+
+          '  int count                                4 B\n'+
+          '                                   合计   60 B\n'+
+          '  按 8 字节对齐（alignof(double)）     →  64 B\n\n'+
+          '为什么 64 是巧的？\n'+
+          '  x86 的缓存线 = 64 B\n'+
+          '  ⇒ 一个节点占满且只占一条线\n'+
+          '  ⇒ 一次访存把 box / left / right / count 全拿到\n\n'+
+          'Day 9 为什么是 88 B？\n'+
+          '  48 + 32（两个 shared_ptr）+ 8（对齐）\n'+
+          '  ⇒ 跨两条缓存线 → 两次访存\n\n'+
+          '⚠️ 但实测只值 6%',
+ ctl:[{k:'d10cache',label:'对照 88 B / 64 B 的访存次数',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:4, anim:'d10stack', chap:'③ 迭代', title:'求交：显式栈代替递归',
+ file:'include/bvh.h · 迭代求交', hl:[[6,21]],
+ legend:[['#7c3aed','nodes[] 连续数组'],['#b45309','stack[64] 显式栈']],
+ text:'递归改成 <code>while</code> + 一个 <code>int stack[64]</code>：'+
+      '弹出一个节点 → 试盒子 → 内部节点就把两个子节点<b>压进栈</b> → 叶子就测物体。<br>'+
+      '为什么 64 个格子够用？每个内部节点「弹 1 个、压 2 个」，<b>净增 1</b>，'+
+      '所以栈的最大占用 ≈ 树深度 + 1 = <code>⌈log₂N⌉ + 1 ≈ 10</code>，绰绰有余'+
+      '（能撑到 N ≈ 2⁶³）。<br>'+
+      '⚠️ 但如果换成「按空间位置切」而物体大量重合，树会退化成链表 → 深度 = N → '+
+      '栈必须开大。<br>'+
+      '⭐ 注意 <code>nodes[stack[--sp]]</code> —— <b>每次循环都重新寻址</b>，'+
+      '这正是绕开「vector 扩容导致引用失效」的正确写法。',
+ formula:'while (sp > 0) {\n'+
+          '    const Node& node = nodes[stack[--sp]];\n'+
+          '    if (!node.box.hit(r, t_min, t_max)) continue;\n'+
+          '    if (node.count == 0) {\n'+
+          '        stack[sp++] = node.left;\n'+
+          '        stack[sp++] = node.right;\n'+
+          '    } else {\n'+
+          '        for (int k = 0; k < node.count; ++k) { ... }\n'+
+          '    }\n'+
+          '}\n\n'+
+          '栈有多深？\n'+
+          '  每个内部节点：弹 1 压 2 → 净增 1\n'+
+          '  最大占用 ≈ 树深度 + 1 = ⌈log₂N⌉ + 1\n'+
+          '  481 个物体 → ≈ 10，64 格绰绰有余\n'+
+          '  （64 格能撑到 N ≈ 2⁶³）\n\n'+
+          '⚠️ 树退化时深度 = N → 栈必须开大\n'+
+          '⭐ 为什么不算「省了递归的调用开销」？\n'+
+          '   实测扁平化一共只值 6% —— 这就说明\n'+
+          '   函数调用的开销不是这里的主要成本。',
+ ctl:[{k:'d10stack',label:'事件流：进栈 / 出栈 / 命中',min:0,max:1,step:0.01}],
+ draw:null
+},
+{
+ no:5, anim:'d10cont', chap:'③ 迭代', title:'⚠️ 必须 continue，不能 return false',
+ file:'include/bvh.h · 迭代求交', hl:[[13,17]],
+ legend:[['#059669','continue：只跳过这一个节点'],['#dc2626','return false：丢掉整栈节点']],
+ text:'盒子没中是<b>家常便饭</b>：<code>return false</code> 会<b>终止整个函数</b>，'+
+      '把栈里还没处理的节点<b>全部丢掉</b>；<code>continue</code> 只跳过<b>当前这一个</b>节点。<br>'+
+      '反例（demo 里那条光线）：光线穿过左半堆的盒子、但没进右半堆的盒子。'+
+      'LIFO 先弹出右子树 → 盒子没中 → 若 <code>return false</code>，'+
+      '<b>左半堆的 4 个球一个都没测</b> → 画面凭空少掉一堆物体。<br>'+
+      '📌 这是「<b>错得看不出来</b>」的典型：不崩溃、不报错，只是少画几个东西。'+
+      '如果当初的验收标准不是「逐像素一致」，这个 bug 可能永远不会被发现。<br>'+
+      '👉 把左边开关切到「错误写法 return false」看反例。',
+ formula:'两行只差一个词：\n\n'+
+          '  ✅ continue\n'+
+          '     if (!box.hit(...)) continue;\n'+
+          '     → 只跳过【当前这一个】节点\n'+
+          '     → 栈里剩下的节点继续处理\n\n'+
+          '  ❌ return false\n'+
+          '     if (!box.hit(...)) return false;\n'+
+          '     → 终止【整个函数】\n'+
+          '     → 栈里所有未处理节点全部丢弃！\n\n'+
+          '反例推演：\n'+
+          '  栈 = [左子树, 右子树]（右子树在栈顶）\n'+
+          '  弹出右子树 → 盒子没中\n'+
+          '  → return false：左子树被无视 ✗\n'+
+          '  → continue：继续弹左子树 ✓\n\n'+
+          '📌 递归版没有这个问题：\n'+
+          '  递归的"栈"是函数调用栈，return 只结束\n'+
+          '  自己那一层，天然是"跳过这一个"。\n'+
+          '  换成显式栈之后，"返回"的语义变了 ——\n'+
+          '  这是写法改变带来的新陷阱。',
+ ctl:[{k:'d10cont',label:'事件流（重点看那个 miss）',min:0,max:1,step:0.01},
+      {k:'d10wrong',label:'错误写法 return false（反例开关）',min:0,max:1,step:1}],
+ draw:null
+},
+{
+ no:6, anim:'d10flat', chap:'④ 受挫', title:'实测：扁平化只快了 6%',
+ file:'tmp/perf.txt', hl:[[4,8]],
+ legend:[['#94a3b8','朴素基准'],['#7c3aed','扁平化实测'],['#cbd5e1','预期（教科书说法）']],
+ text:'教科书说扁平化是「标准优化」，我预计 2.5 倍 —— <b>实测只快了 6%</b>'+
+      '（5.89 s → 5.55 s）。<br>四个问题<b>全都改对了</b>：连续数组 ✓、整数下标 ✓、'+
+      '64 字节对齐 ✓、去掉虚函数 ✓。性能却没动。<br>'+
+      '那就说明一件事：<b>瓶颈根本不在你改的地方</b>。<br>'+
+      '⭐ 这时候最危险的想法是「再改改说不定就好了」。'+
+      '正确做法是<b>承认自己不知道瓶颈在哪</b>，然后换一种测量方式。',
+ formula:'我改的（四个卖点） vs 拿到的：\n'+
+          '  ① 连续数组       → 缓存友好      ✓ 已生效\n'+
+          '  ② 整数下标       → 不用指针      ✓ 已生效\n'+
+          '  ③ 88 → 64 字节   → 一条缓存线    ✓ 已生效\n'+
+          '  ④ 去掉虚函数     → 无跳转        ✓ 已生效\n\n'+
+          '  预期   5.89 / 2.5  = 2.36 s\n'+
+          '  实测   5.89 / 1.06 = 5.55 s\n'+
+          '  → 差了 25 倍\n\n'+
+          '结论：\n'+
+          '  改动确实生效了（方向对、收益极小）\n'+
+          '  ⇒ 成本不在这四个地方\n\n'+
+          '⭐ 优化里最危险的一句话：\n'+
+          '   「我知道瓶颈在哪」\n'+
+          '   今天这句话已经被打脸 3 次了。',
+ ctl:[{k:'d10flat',label:'5.89 → 5.55 → 预期 2.36',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:7, anim:'d10prof', chap:'④ 受挫', title:'分段计时：瓶颈位置找对了，原因没找到',
+ file:'tmp/perf.txt', hl:[[10,13]],
+ legend:[['#2563eb','BVH 求交 78%'],['#7c3aed','材质 6%'],['#94a3b8','其它 16%']],
+ text:'用 <code>std::chrono::steady_clock</code> 把耗时分段：'+
+      '<b>BVH 求交 5.40 s（78%）</b>、材质 scatter 0.38 s（6%）、'+
+      '其它 1.13 s（16%，大部分是计时器自身开销）。<br>'+
+      '遍历确实是瓶颈 —— <b>位置找对了</b>。但扁平化<b>并没有让它变快</b>，'+
+      '说明成本<b>既不是「指针跳转」，也不是「虚函数」</b>。<br>'+
+      '⭐ 测量本身也要升级：第 1 层「看总时间」→ 第 2 层「分段计时」→ '+
+      '第 3 层「看编译器生成了什么」。<b>连续两次猜原因失败，就该停止猜测去看事实。</b>',
+ formula:'测量的三个层次：\n\n'+
+          '  第 1 层  总时间\n'+
+          '     13.16 s → 5.89 s ✓ 知道变快了\n'+
+          '     但不知道"为什么"变快\n\n'+
+          '  第 2 层  分段计时\n'+
+          '     steady_clock 打在每段前后\n'+
+          '     BVH 求交 5.40 s   78%   ← 位置确认\n'+
+          '     材质 scatter 0.38 s   6%\n'+
+          '     其它（含计时器开销）1.13 s  16%\n'+
+          '     但仍不知道遍历"贵在哪"\n\n'+
+          '  第 3 层  看机器码\n'+
+          '     g++ -O3 -S -masm=intel\n'+
+          '     数指令出现次数  ← 下一步\n\n'+
+          '📌 16% 的"其它"里有一部分是计时器自己 ——\n'+
+          '   测量本身也有成本。',
+ ctl:[{k:'d10prof',label:'三段占比：78% / 6% / 16%',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:8, anim:'d10asm', chap:'⑤ 真相', title:'搜汇编：call fmax 一大片，maxsd = 0',
+ file:'tmp/asm.txt', hl:[[1,8]],
+ legend:[['#dc2626','修复前：真正的函数调用'],['#059669','修复后：SSE 指令']],
+ text:'假设被推翻了四次（树坏了？除法？扁平化？），那就别再猜了 —— '+
+      '<b>直接看编译器生成什么</b>：<br>'+
+      '<code>g++ -O3 -S -masm=intel src/main.cpp -o main.s</code>，然后<b>搜汇编文件</b>。<br>'+
+      '结果是：<code>call fmax</code>、<code>call fmin</code> 一大片，'+
+      '而 <code>maxsd : 0</code> —— <b>一条 SSE max 指令都没生成</b>。'+
+      '<code>std::fmax / std::fmin</code> 被编译成了<b>真正的函数调用</b>。<br>'+
+      '为什么？这两个函数有特殊的 <b>NaN 语义</b>（任一参数是 NaN 就返回<b>另一个</b>），'+
+      '而 x86 的 <code>maxsd / minsd</code> 语义不同（任一为 NaN 就返回第二个操作数）。'+
+      '<b>GCC 不敢用指令替代，只能老老实实调库函数。</b>',
+ formula:'命令：\n'+
+          '  g++ -O3 -S -masm=intel src/main.cpp -o main.s\n'+
+          '  → 得到一个几千行的 main.s\n'+
+          '  → 在里面搜 fmax / fmin / maxsd / minsd\n\n'+
+          '搜的结果（修复前）：\n'+
+          '  call    fmax            ×  一大片\n'+
+          '  call    fmin            ×  一大片\n'+
+          '  maxsd                    0    ← 一条都没有！\n'+
+          '  minsd                    1\n\n'+
+          '为什么 GCC 不敢替换？\n'+
+          '  std::fmax(a, b)：任一参数是 NaN → 返回【另一个】\n'+
+          '  maxsd xmm, xmm  ：任一操作数是 NaN → 返回【第二个】\n'+
+          '  ⇒ 语义不等价 ⇒ 不能替换 ⇒ 只能 call\n\n'+
+          '📌 反直觉：\n'+
+          '  「语义更丰富」的标准库函数，\n'+
+          '  反而把优化空间堵死了。',
+ ctl:[{k:'d10asm',label:'修复前 → 修复后的指令统计',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:9, anim:'d10call', chap:'⑤ 真相', title:'代价：一次盒测试 6 次调用 → 19 亿次',
+ file:'include/aabb.h · 热路径两行', hl:[[1,7]],
+ legend:[['#dc2626','函数调用（≈3 ns 一次）'],['#b45309','合计 ≈ 5.7 s']],
+ text:'一次盒子测试 = 3 个轴 × 2 次（<code>fmax</code> + <code>fmin</code>）= '+
+      '<b>6 次函数调用</b>。<br>'+
+      '<b>322,239,827 次盒子测试 × 6 ≈ 19 亿次函数调用</b>，'+
+      '按每次 ≈3 ns 算 ≈ <b>5.7 秒</b> —— 几乎就是<b>全部渲染时间</b>。<br>'+
+      '⭐ 而盒子测试的「算术本身」只需要 3 条 <code>maxsd / minsd</code> 指令，'+
+      '本来应该是 1 个周期的事。<b>6 次函数调用 ≈ 3 ns，3 条指令 ≈ 1 ns 不到。</b><br>'+
+      '📌 一个函数名，值 3 倍。',
+ formula:'一次盒测试的账：\n'+
+          '  3 个轴 × 2 次（fmax + fmin）\n'+
+          '  = 6 次【真正的函数调用】\n\n'+
+          '一次调用要做什么？\n'+
+          '  ① 传参（SSE 寄存器 → 栈）\n'+
+          '  ② 跳到库函数地址\n'+
+          '  ③ 函数内部还要处理 NaN 分支\n'+
+          '  ④ 返回\n'+
+          '  ≈ 3 ns\n\n'+
+          '乘起来：\n'+
+          '  322,239,827 × 6 ≈ 19.3 亿次\n'+
+          '  19.3 亿 × 3 ns ≈ 5.7 s\n\n'+
+          '对比：盒子算术只需要\n'+
+          '  3 条 maxsd / minsd 指令\n'+
+          '  ≈ 1 个周期 / 次\n\n'+
+          '📌 一个函数名 = 3 倍性能',
+ ctl:[{k:'d10call',label:'3 个轴 × 2 次 = 6 次调用',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:10, anim:'d10nan', chap:'⑤ 真相', title:'改写：三目运算符 → 生成指令',
+ file:'include/aabb.h · 热路径两行', hl:[[8,15]],
+ legend:[['#dc2626','std::fmax / std::fmin'],['#059669','三目 → maxsd / minsd']],
+ text:'把 <code>std::fmax</code> 换成三目运算符，编译器就能生成 '+
+      '<code>maxsd / minsd</code> <b>指令</b>了。<br>'+
+      '验证汇编：修复前 <code>maxsd 0</code>，修复后 <code>maxsd 24</code>、'+
+      '<code>minsd 25</code>，而剩下的 <code>call fmax</code> 全部在<b>建树</b>路径上，'+
+      '<b>不在热路径</b>。<br>'+
+      '⚠️ <b>关键前提：NaN 行为必须等价。</b>'+
+      '<code>t0</code> 是 NaN → <code>NaN &gt; t_min</code> 为 false → 保留 <code>t_min</code> ✓（NaN 被弹开）；'+
+      '<code>t1</code> 是 NaN → <code>NaN &lt; t_max</code> 为 false → 保留 <code>t_max</code> ✓；'+
+      '而 <code>t_min / t_max</code> 自身永远不会被赋成 NaN。<br>'+
+      '⭐ 换写法前先把「边界输入」逐个过一遍 —— 否则「更快」就可能是「更错」。',
+ formula:'// ❌ 慢\n'+
+          't_min = std::fmax(t0, t_min);   // → call fmax\n'+
+          't_max = std::fmin(t1, t_max);   // → call fmin\n\n'+
+          '// ✅ 快\n'+
+          't_min = (t0 > t_min) ? t0 : t_min;   // → maxsd\n'+
+          't_max = (t1 < t_max) ? t1 : t_max;   // → minsd\n\n'+
+          'NaN 行为等价性（必须验证）：\n'+
+          '  t0 是 NaN → NaN > t_min = false → 保留 t_min ✓\n'+
+          '  t1 是 NaN → NaN < t_max = false → 保留 t_max ✓\n'+
+          '  t_min / t_max 自身：已知永远不会是 NaN\n\n'+
+          '汇编统计：\n'+
+          '  call fmax   一大片 → 15（全在建树路径）\n'+
+          '  call fmin   一大片 → 16\n'+
+          '  maxsd           0 → 24\n'+
+          '  minsd           1 → 25\n\n'+
+          '结果：BVH 求交 5.40 → 1.58 s（3.4×）\n'+
+          '      总耗时   5.55 → 1.82 s\n'+
+          '      image.png 172,127 B（一字节没变）',
+ ctl:[{k:'d10nan',label:'NaN 等价性逐行验证',min:0,max:1,step:0.02}],
+ draw:null
+},
+{
+ no:11, anim:'d10final', chap:'⑥ 收尾', title:'13.16 s → 1.82 s：一个函数名值 3 倍',
+ file:'tmp/perf.txt', hl:[[1,16]],
+ legend:[['#94a3b8','朴素'],['#2563eb','树形 BVH'],['#7c3aed','扁平化'],['#059669','三目']],
+ text:'完整历程：<b>13.16 s</b>（Day 8 朴素）→ <b>5.89 s</b>（Day 9 树形 BVH，2.23×）→ '+
+      '<b>5.55 s</b>（Day 10a 扁平化，2.37×）→ <b>1.82 s</b>（Day 10b 三目，<b>7.2×</b>）。<br>'+
+      '<code>image.png</code> 全程 <b>172,127 B 字节级不变</b>；单元测试 <b>23 / 23</b>。<br>'+
+      '📌 <b>最「高级」的优化只值 6%，最「低级」的改动值 3 倍。</b>'+
+      '扁平化用了连续数组 + 整数下标 + 64 字节对齐 + 去掉虚函数（一整套内存布局重整），'+
+      '只换来 6%；而一个 <code>std::fmax</code> 换成三目运算符，换来 3 倍。<br>'+
+      '⭐ 性能优化的直觉非常不可靠 —— <b>必须测量，而且很多时候要一路测到汇编</b>。',
+ formula:'完整性能历程：\n'+
+          '  阶段                       耗时       相对 Day 8\n'+
+          '  ──────────────────────────────────────────────\n'+
+          '  Day 8  朴素遍历           13.16 s      1.00×\n'+
+          '  Day 9  树形 BVH            5.89 s      2.23×\n'+
+          '  Day 10a 扁平化             5.55 s      2.37×\n'+
+          '  Day 10b 三目运算符         1.82 s      7.23×\n\n'+
+          '收益拆解：\n'+
+          '  树形 BVH   省掉 7.27 s   （次数少 10.6× × 每次贵 5.5×）\n'+
+          '  扁平化     省掉 0.34 s   （一整套内存布局重整）\n'+
+          '  三目       省掉 3.73 s   （一个函数名）\n\n'+
+          '四个被推翻的假设：\n'+
+          '  ① 巨球污染树          → 实测深度 9，完全平衡\n'+
+          '  ② 除法是瓶颈          → 实测只占 2.6%\n'+
+          '  ③ 扁平化值 2.5 倍     → 实测 1.06×\n'+
+          '  ④ 真凶在汇编里        → 这次猜对了 ✓\n\n'+
+          '验收：image.png 172,127 B 不变 · 测试 23/23',
+ ctl:[{k:'d10final',label:'四步历程逐条揭示',min:0,max:1,step:0.02}],
+ draw:null
+}
+];
+
+/* ---------------- 扩展卡片 ---------------- */
+const D10_QA=[
+ ['Q1','为什么「语义更丰富」的 <code>std::fmax</code> 反而更慢？',
+  '因为它把<b>优化空间堵死了</b>。<code>std::fmax(a,b)</code> 的标准语义是'+
+  '「任一参数为 NaN 就返回另一个」，而 x86 的 <code>maxsd</code> 是'+
+  '「任一为 NaN 就返回第二个」—— <b>两者不等价</b>，所以编译器不能替换，'+
+  '只能生成<b>真正的函数调用</b>。<br>'+
+  '反过来，三目 <code>(a&gt;b)?a:b</code> 没有额外的 NaN 语义，'+
+  '编译器可以放心地编译成 <code>maxsd</code>。<br>'+
+  '⭐ 结论：<b>在热路径上，「语义更丰富」= 「更难优化」</b>。'+
+  '<code>std::clamp</code> / <code>std::fmin</code> / <code>std::abs</code> 都有类似的坑。'],
+ ['Q2','用三目运算符替换 <code>std::fmax</code>，NaN 行为真的等价吗？',
+  '<b>在这个具体位置上等价</b>，但必须逐个验证边界输入：<br>'+
+  '① <code>t0</code> 是 NaN → <code>NaN &gt; t_min</code> 为 false → 走 else → 保留 <code>t_min</code> ✓'+
+  '（和 fmax 的「返回另一个」一致）；<br>'+
+  '② <code>t1</code> 是 NaN → <code>NaN &lt; t_max</code> 为 false → 保留 <code>t_max</code> ✓；<br>'+
+  '③ <code>t_min / t_max</code> 自身：它们只在函数开头从参数接收，'+
+  '之后只被赋成 <code>t0 / t1</code>（而这两者不会因为 NaN 传播变成 NaN）—— 所以安全。<br>'+
+  '⚠️ 如果换成 <code>(t0 &lt; t_min) ? t_min : t0</code>（把顺序颠倒），'+
+  'NaN 时就会返回 <code>NaN</code> —— <b>语义就变了</b>。<br>'+
+  '⭐ 规则：<b>「更快」必须建立在「行为等价」被证明之后，不能反过来。</b>'],
+ ['Q3','扁平化改了四个问题，为什么只快了 6%？',
+  '因为那四个问题<b>本来就不是瓶颈</b>。<br>'+
+  '总耗时 5.89 s 里，真正的大头是 <b>19 亿次函数调用（≈5.7 s）</b> —— '+
+  '这件事和你用什么内存布局毫无关系：不管节点是 88 字节还是 64 字节，'+
+  '<code>call fmax</code> 该调还是调。<br>'+
+  '⭐ 这也解释了为什么「连续数组 + 整数下标」这个教科书标准优化在这里收获甚微：'+
+  '<b>它优化的是「访存」，而瓶颈在「函数调用」</b>。<br>'+
+  '📌 换个场景（比如真的被缓存拖住的计算），扁平化的收益会明显得多。'+
+  '关键是<b>先定位瓶颈，再选手段</b>。'],
+ ['Q4','<code>int stack[64]</code> 够用吗？什么情况下不够？',
+  '够用 —— 前提是树<b>平衡</b>。<br>'+
+  '每个内部节点「弹 1 个、压 2 个」，<b>净增 1</b>，所以栈的最大占用 ≈ 树深度 + 1。'+
+  '对半分建树保证深度 = <code>⌈log₂N⌉</code>，64 格能撑到 <code>N ≈ 2⁶³</code>。<br>'+
+  '⚠️ 两种情况会爆：<br>'+
+  '① 树退化成链表（深度 = N）—— 如果以后换成「按空间中点切」而物体大量重合，'+
+  '就可能出现；<br>'+
+  '② 内部节点的 <code>left/right</code> 指向自己（建树时下标填错）—— '+
+  '会无限压栈。<br>'+
+  '⭐ 工程上的稳妥做法：栈用 <code>std::vector&lt;int&gt;</code> 或加一个'+
+  '<code>assert(sp &lt; 64)</code>，让越界立刻暴露而不是静默踩内存。'],
+ ['Q5','为什么 <code>image.png</code> 必须「字节级一致」才算验收通过？',
+  '因为它同时验证了<b>三件事</b>：<br>'+
+  '① <b>加速结构没改变画面</b> —— BVH 只该让渲染变快，不该让画面变样。'+
+  '任何像素差异都说明「盒子不保守」或「遍历漏了分支」。<br>'+
+  '② <b>改动是可回退的</b> —— 有这么一个硬指标，'+
+  '才能放心地做「扁平化」这种大改动。<br>'+
+  '③ <b>t_max 收紧、「三目替换」这类优化是安全的</b> —— 它们必须「不改变胜者」，'+
+  '字节级一致就是这句话的机器可验证形式。<br>'+
+  '📌 反面教材：如果当初只看「渲染时间变短了」，'+
+  '那 <code>return false</code> 那个 bug（画面少物体）可能永远不会被发现 —— '+
+  '它<b>又不会崩溃，也几乎不影响速度</b>。<br>'+
+  '⭐ <b>性能优化的验收标准必须是「先证明没变错，再证明变快了」。</b>']
+];
+
+const D10_CPP=[
+ ['<code>std::vector</code> 扩容 → 引用 / 指针 / 迭代器全部失效',
+  '这是扁平化建树里最容易踩的坑：<code>Node&amp; ref = nodes[index];</code> 之后再'+
+  '<code>emplace_back</code>，vector 一旦扩容搬家，<code>ref</code> 就是<b>悬空引用</b>'+
+  '（写进去的是野内存，画面会随机出错）。<br>'+
+  '⭐ 正确做法：<b>每次都用 <code>nodes[index]</code> 重新寻址</b>，'+
+  '或者提前 <code>nodes.reserve(objects.size() * 2)</code>。'+
+  '（代码里两个都做了 —— 这是最好的防御。）'],
+ ['<code>reserve()</code>：既能防悬空，也省内存拷贝',
+  'N 个物体最多产生 2N 个节点，所以 <code>reserve(objects.size() * 2)</code> 一次到位。'+
+  '<br>⭐ 好处有两个：<b>①</b> 递归过程中不再触发扩容 → 引用天然安全；'+
+  '<b>②</b> 省掉 log(N) 次「重新分配 + 整体拷贝」。'],
+ ['<code>int stack[64]</code> 与「净增 1」的容量估算',
+  '把递归改成显式栈时，第一件事是<b>估算最大深度</b>：'+
+  '内部节点弹 1 压 2 → 净增 1 → 最大占用 ≈ 树深度 + 1。<br>'+
+  '⭐ 这个推导用的是「结构性质」（平衡二叉树），不是「试出来的」—— '+
+  '这才是可以写进注释里的容量依据。'],
+ ['<code>const Node&amp; node = nodes[...]</code> 与「每次重新寻址」',
+  '循环体内 <code>stack[--sp]</code> 每次取值，所以 <code>node</code> 每轮重新绑定，'+
+  '天然安全。<br>'+
+  '⚠️ 但<strong>如果</strong>把循环体改成会往 <code>nodes</code> 里追加元素，'+
+  '这个引用立刻就变成悬空引用。<br>'+
+  '⭐ 判据：<b>这个循环体会修改我引用的那个容器吗？</b>会 → 不要长期持有引用。'],
+ ['判空 + 布尔累积（<code>hit_anything</code>）',
+  '<code>bool hit_anything = false;</code> 而不是遇到命中就 <code>return true</code>：'+
+  '因为必须<b>遍历完所有候选项</b>才能确定最近的那个 <code>t</code>（后面的可能更近）。<br>'+
+  '⭐ 对照 Day 3 的「提前 return」陷阱：<b>要在「所有候选」上做选择时，'+
+  '任何提前返回都会漏掉更好的解</b>。'],
+ ['<code>alignof</code> / 结构体大小与缓存线',
+  '<code>AABB</code> 的对齐要求是 <code>alignof(double) = 8</code>，'+
+  '所以 60 字节会被补齐到 64。用 <code>sizeof(Node)</code> / <code>alignof(Node)</code> '+
+  '<b>打印出来验证</b>，比手算更可靠。<br>'+
+  '⭐ 编译器还会重排成员以减小 padding（这里没有可省的），'+
+  '但顺序对「缓存线占用」的影响要靠实测确认。'],
+ ['编译器优化：为什么三目能生成指令、函数调用不能',
+  '编译器可以把<b>内建操作</b>（比较、选择、min/max 的朴素形式）直接映射到机器指令；'+
+  '但标准库函数一旦有<b>额外的语义约定</b>（NaN 感知），就必须生成调用。'+
+  '<br>⭐ 判断方法：<code>g++ -O3 -S</code> 数指令名。'+
+  '这也是「内联 vs 调用」这个老话题在浮点语义下的具体形态。'],
+ ['「写对 ≠ 有用」：工程上先定位再动手',
+  'Day 10 的核心不是「扁平化怎么写」，而是'+
+  '「<b>怎么知道该改哪里</b>」：总时间 → 分段计时 → 汇编。<br>'+
+  '⭐ 一个可复用的检查清单：'+
+  '① 现状基线是多少？② 哪个函数占大头？③ 那个函数里生成的是什么指令？'+
+  '④ 改完之后指令变了吗？⑤ 画面变了吗（字节级）？']
+];
+
+const D10_PHEN=[
+ ['Day 10a · 节点 88 → 64 字节',
+  '一次访存读全（正好一条缓存线）。四个问题全改对，但只换来 <b>6%</b>。'],
+ ['Day 10a · 扁平化：5.89 → 5.55 s',
+  '<b>1.06×</b>。教科书说的「标准优化」，实测收益极小。'],
+ ['Day 10a · 分段：BVH 求交占 78%',
+  '5.40 s（78%）/ 材质 scatter 0.38 s（6%）/ 其它 1.13 s（16%）。瓶颈位置确认。'],
+ ['Day 10a · 汇编：<code>maxsd = 0</code>',
+  '<code>call fmax / fmin</code> 一大片，<b>一条 SSE max 指令都没生成</b>。真凶现身。'],
+ ['Day 10b · 一次盒测试 6 次调用',
+  '3 轴 × 2 次（fmax + fmin）。322,239,827 × 6 ≈ <b>19 亿次调用 ≈ 5.7 s</b>。'],
+ ['Day 10b · 三目替换：5.55 → 1.82 s',
+  '<b>3.0×</b>，其中 BVH 求交 5.40 → 1.58 s（3.4×）。'],
+ ['Day 10b · <code>maxsd / minsd</code>：0 / 1 → 24 / 25',
+  '热路径上终于出现了 SSE 指令；剩下的 <code>call fmax 15 / fmin 16</code> '+
+  '全部在<b>建树</b>路径上。'],
+ ['全程 · <code>image.png</code> 172,127 B',
+  '四步改动，画面<b>一个字节都没变</b> ✓；单元测试 23 / 23 ✓。'+
+  '总收益 <b>13.16 s → 1.82 s = 7.23×</b>。']
+];
+
+const D10_TBL=
+ '<table class="tbl">'+
+ '<thead><tr><th>阶段</th><th>改动</th><th class="num">耗时</th><th class="num">累计</th><th>收益</th></tr></thead><tbody>'+
+ '<tr><td><b>Day 8</b></td><td>朴素遍历（480 个球挨个问）</td>'+
+ '<td class="num">13.16 s</td><td class="num">1.00×</td><td class="dim">基准</td></tr>'+
+ '<tr><td><b>Day 9</b></td><td>树形 BVH（shared_ptr 递归）</td>'+
+ '<td class="num">5.89 s</td><td class="num">2.23×</td>'+
+ '<td class="dim">次数少 10.6× × 每次贵 5.5×</td></tr>'+
+ '<tr><td><b>Day 10a</b></td><td>扁平化（连续数组 + 下标 + 64 B 对齐）</td>'+
+ '<td class="num">5.55 s</td><td class="num">2.37×</td>'+
+ '<td class="lose">只值 6% 😅</td></tr>'+
+ '<tr><td><b>Day 10b</b></td><td><code>std::fmax/fmin</code> → 三目运算符</td>'+
+ '<td class="num">1.82 s</td><td class="num win">7.23×</td>'+
+ '<td class="win">3.0× —— 真正的杀手锏</td></tr>'+
+ '</tbody></table>'+
+ '<p style="margin:10px 0 0;font-size:12.4px;color:#3d4a58">'+
+ '<b>验收（全程不变）</b>：<code>image.png</code> <b>172,127 B</b> 字节级一致 · '+
+ '单元测试 <b>23 / 23</b>。<br>'+
+ '<b>⚠️ 最反直觉的一点</b>：一整套内存布局重整（连续数组 + 整数下标 + 缓存线对齐 + '+
+ '去掉虚函数）只换来 <b>6%</b>；而把一个 <code>std::fmax</code> 换成三目运算符，'+
+ '换来 <b>3 倍</b>。'+
+ '</p>';
+
+const D10_PIT=
+ '<table class="tbl">'+
+ '<thead><tr><th>#</th><th>差一点踩到的坑</th><th>教训</th></tr></thead><tbody>'+
+ '<tr><td>1</td><td><code>Node&amp; ref = nodes[index];</code> 之后又 <code>emplace_back</code></td>'+
+ '<td>vector 扩容会让 <code>ref</code> 变<b>悬空引用</b>，写进野内存 → '+
+ '画面随机出错（还不是每次都错）。'+
+ '⭐ 每次用 <code>nodes[index]</code> 重新寻址，并且提前 <code>reserve</code></td></tr>'+
+ '<tr><td>2</td><td>把内部节点的 <code>left</code> 当物体下标用</td>'+
+ '<td><code>count == 0</code> 时 <code>left/right</code> 是<b>节点下标</b>，'+
+ '拿去索引 <code>objects</code> 会读到无关的球。'+
+ '⭐ 这类「双关」错误不会崩溃，只会静默出错</td></tr>'+
+ '<tr><td>3</td><td>循环里写 <code>return false</code> 而不是 <code>continue</code></td>'+
+ '<td>丢掉栈里所有未处理节点 → 画面凭空少物体。'+
+ '⭐ 递归改成显式栈之后，「返回」的语义变了 —— 这是<b>写法改变带来的新陷阱</b></td></tr>'+
+ '<tr><td>4</td><td>以为「改对了四个问题就该快 2.5 倍」</td>'+
+ '<td>实测 <b>6%</b>。四个问题确实都改对了，但<b>它们不是瓶颈</b>。'+
+ '⭐ 「写对」和「有用」是两件事</td></tr>'+
+ '<tr><td>5</td><td>以为「除法是瓶颈」</td>'+
+ '<td>预计能省 6.3 s，实测只占 <b>2.6%</b>。'+
+ '⭐ 光看代码「猜哪行贵」的成功率非常低</td></tr>'+
+ '<tr><td>6</td><td>用 <code>std::fmax</code> 追求「语义明确」</td>'+
+ '<td>反而让编译器不敢生成 <code>maxsd</code> 指令 → <b>19 亿次函数调用</b>。'+
+ '这是 Day 8 自己埋的雷。'+
+ '⭐ <b>热路径上的「语义更丰富」是性能负债</b></td></tr>'+
+ '<tr><td>7</td><td>把「分段计时」的 16%「其它」当成真实开销</td>'+
+ '<td>那 1.13 s 里有相当一部分是<b>计时器自己</b>（每段前后各调一次 '+
+ '<code>steady_clock</code>，本身就要读时钟）。'+
+ '⭐ <b>测量本身也有成本，且会污染被测量的对象</b></td></tr>'+
+ '</tbody></table>'+
+ '<p style="margin:10px 0 0;font-size:12.4px;color:#3d4a58">'+
+ '<b>一句话总结</b>：今天最值钱的不是「扁平化怎么写」，而是那条测量路径 —— '+
+ '<b>总时间 → 分段计时 → 看汇编</b>。'+
+ '它把一个「教科书式的标准优化」（收益 6%）和一个「一个函数名的改动」（收益 3 倍）'+
+ '区分了开来。'+
+ '</p>';
+
+const D10_JUDGE=
+ '<table class="tbl">'+
+ '<thead><tr><th>现象</th><th>是 bug，还是正常？</th></tr></thead><tbody>'+
+ '<tr><td>扁平化改完，性能只快了 6%</td>'+
+ '<td><b>正常 ✓</b> —— 改动生效了，但瓶颈不在这里。往下测（分段计时 → 汇编）</td></tr>'+
+ '<tr><td>画面上随机少了一些物体，重跑又不一样</td>'+
+ '<td><b>bug（很危险）</b> —— 先怀疑 <code>Node&amp; ref</code> 悬空引用，'+
+ '再怀疑内部节点的下标指错</td></tr>'+
+ '<tr><td>画面稳定地少一整块物体</td>'+
+ '<td><b>bug</b> —— 典型的 <code>return false</code>（丢整栈）。'+
+ '查 <code>continue</code> 有没有写错</td></tr>'+
+ '<tr><td>改完变快了，但画面差了几个像素</td>'+
+ '<td><b>bug</b> —— 加速结构只该改变速度。差异通常来自随机数消耗顺序变了，'+
+ '或者某个分支被漏掉</td></tr>'+
+ '<tr><td>汇编里 <code>maxsd</code> 是 0</td>'+
+ '<td><b>问题</b> —— 说明热路径上还有标准库函数调用（<code>std::fmax</code> 一类）。'+
+ '换成三目 / 朴素的比较写法</td></tr>'+
+ '<tr><td>汇编里还有 <code>call fmax</code>，但渲染已经很快</td>'+
+ '<td><b>正常 ✓</b> —— 看它们在不在<b>热路径</b>上。建树路径上的调用无所谓'+
+ '（15 / 16 次 vs 19 亿次）</td></tr>'+
+ '<tr><td><code>sizeof(Node)</code> 打印出来是 64</td>'+
+ '<td><b>正常 ✓</b> —— 48（AABB）+ 12（3 个 int）= 60，按 8 字节对齐补到 64</td></tr>'+
+ '<tr><td>节点数 = 2N−1，但最大深度远大于 <code>log₂N</code></td>'+
+ '<td><b>bug</b> —— 树不�平衡。检查排序是否生效、是否真的对半分</td></tr>'+
+ '<tr><td>4 个物体的场景里扁平化几乎看不出差别</td>'+
+ '<td><b>正常 ✓</b> —— 小场景里什么优化都看不出来。'+
+ '优化的收益要放在足够大的 N 上比</td></tr>'+
+ '</tbody></table>'+
+ '<p style="margin:10px 0 0;font-size:12.4px;color:#3d4a58">'+
+ '<b>一句话判据</b>：<b>先证明「没改错」（画面字节级一致），再证明「变快了」（时间）；'+
+ '而「哪里该改」只能靠测量，不能靠直觉。</b>'+
+ '</p>';
+
+function extrasD10(){
+  return ''+
+  '<section class="card"><div class="card-hd"><span>Day 10 五问五答</span>'+
+  '<span class="hint">原文留给自己的思考题</span></div><div class="qa">'+qaHtmlOf(D10_QA)+'</div></section>'+
+  '<section class="card"><div class="card-hd"><span>C++ / 工程 技能点</span>'+
+  '<span class="hint">vector 扩容 · reserve · 显式栈容量 · alignof · 看汇编</span></div>'+
+  '<div class="why"><dl>'+cppHtmlOf(D10_CPP)+'</dl></div></section>'+
+  '<section class="card"><div class="card-hd"><span>实测数据（八项）</span>'+
+  '<span class="hint">88→64 B · 1.06× · 19 亿次 · 7.23×</span></div>'+
+  '<div class="why"><dl>'+cppHtmlOf(D10_PHEN)+'</dl></div></section>'+
+  '<section class="card"><div class="card-hd"><span>完整性能历程</span>'+
+  '<span class="hint">13.16 s → 1.82 s</span></div>'+D10_TBL+'</section>'+
+  '<section class="card" style="grid-column:1/-1"><div class="card-hd"><span>差一点踩到的坑（比知识更值钱）</span>'+
+  '<span class="hint">7 条，其中 3 条标了 ⭐</span></div>'+D10_PIT+'</section>'+
+  '<section class="card" style="grid-column:1/-1"><div class="card-hd"><span>怎么判断「这是 bug 还是正常」</span>'+
+  '<span class="hint">先证明没改错，再证明变快了</span></div>'+D10_JUDGE+'</section>';
+}
+
+/* =========================================================================
+   注册 11 个动画（⚠️ 必须在 D10_STEPS 声明之后）
+   ========================================================================= */
+(function(){
+  if(typeof ANIM==='undefined') return;
+  const T=function(k,max,rate){ return {
+    init:function(){ ST[k]=0; },
+    tick:function(dt,playing){ if(!playing) return;
+      ST[k]=Math.min(max,ST[k]+dt*rate); syncControls(); },
+    done:function(){ return ST[k]>=max; }
+  };}
+  ANIM.d10layout=T('d10layout',1,0.00045);
+  ANIM.d10dual  =T('d10dual',7,0.0022);
+  ANIM.d10cache =T('d10cache',1,0.00040);
+  ANIM.d10stack =T('d10stack',1,0.00035);
+  ANIM.d10cont  =T('d10cont',1,0.00032);
+  ANIM.d10flat  =T('d10flat',1,0.00040);
+  ANIM.d10prof  =T('d10prof',1,0.00040);
+  ANIM.d10asm   =T('d10asm',1,0.00045);
+  ANIM.d10call  =T('d10call',1,0.00040);
+  ANIM.d10nan   =T('d10nan',1,0.00040);
+  ANIM.d10final =T('d10final',1,0.00045);
+
+  for(let i=0;i<D10_STEPS.length;i++){
+    const f=(typeof window!=='undefined')?window['drawD10_'+(i+1)]:null;
+    if(f) D10_STEPS[i].draw=f;
+  }
+})();
+
+/* =========================================================================
    10. 多日注册表 + 切换
    ========================================================================= */
 const DAYS=[
@@ -16288,13 +19882,42 @@ const DAYS=[
        '验收方式也变了：<b>23 条单元测试全过</b>，而渲染结果与 Day 7 '+
        '<b>字节级一致</b>（172,127 B）—— 造工具不该改变画面。',
   files:D8_FILES, steps:D8_STEPS, extras:extrasD8
+ },
+ {
+  id:9, date:'2026-10-10', label:'Day 9', name:'BVH 递归建树',
+  eyebrow:'cpp-renderer · Day 9',
+  title:'把世界切成两半，再切一半', sub:'四步建树 ⇄ 一束光线穿过一棵树',
+  desc:'一个 <b>2000 × 2002 × 2000</b> 的大盒子里，只有 <b>22 × 2 × 22</b> 的地方真的有东西 —— '+
+       '<b>99.9% 是空的</b>。今天把大盒子<b>递归地切成两半</b>，每一半再切两半，'+
+       '直到剩下一两个物体：这就是 <b>BVH（包围盒层次结构）</b>。<br>'+
+       '四步算法很干净：<b>① 算总包围盒（并集）② 选最长的那条轴 ③ 沿它排序 ④ 对半分递归</b>；'+
+       '建出来的树深度正好 = <code>⌈log₂N⌉</code>。<br>'+
+       '⭐ 但今天最值钱的一个数字是 <b>2.23 倍</b>：球体求交次数少了 <b>102 倍</b>，'+
+       '渲染只快了 <b>2.23 倍</b> —— 因为每次测试从 <b>3.4 ns 贵到了 18.7 ns</b>。'+
+       '<b>「次数」和「速度」是两个维度</b>，这是明天那场大戏的引子。',
+  files:D9_FILES, steps:D9_STEPS, extras:extrasD9
+ },
+ {
+  id:10, date:'2026-10-12', label:'Day 10', name:'扁平化 · 一个函数名',
+  eyebrow:'cpp-renderer · Day 10',
+  title:'从 5.89 s 到 1.82 s', sub:'一条测量路径 ⇄ 三倍性能',
+  desc:'今天分两幕。<br>'+
+       '<b>第一幕（扁平化）</b>：把散落在堆上的节点压进<b>一个连续数组</b>，'+
+       '用整数下标代替 <code>shared_ptr</code>，节点从 <b>88 字节压到 64 字节</b>'+
+       '（正好一条缓存线），再把递归换成 <code>int stack[64]</code> 的显式栈 —— '+
+       '四个「教科书标准优化」全都做对了，实测<b>只快了 6%</b>。<br>'+
+       '<b>第二幕（真相）</b>：停止猜测，去数编译器生成的指令。'+
+       '<code>call fmax</code> 一大片，而 <code>maxsd</code> 是 <b>0</b> —— '+
+       '<code>std::fmax / std::fmin</code> 的 NaN 语义让 GCC 不敢用指令替代，'+
+       '只能生成<b>真正的函数调用</b>：一次盒测试 6 次调用 × 3.22 亿次盒测试 ≈ '+
+       '<b>19 亿次调用 ≈ 5.7 秒</b>。<br>'+
+       '⭐ 换成三目运算符：<b>5.55 s → 1.82 s（3.0×）</b>，'+
+       '而 <code>image.png</code> 仍然是 <b>172,127 B</b> —— 一个字节都没变。',
+  files:D10_FILES, steps:D10_STEPS, extras:extrasD10
  }
 ];
 /* 还没做的日子，先摆出来让学生看到路线图 */
-const ROADMAP=[
- ['Day 9','BVH 递归建树'],
- ['Day 10','接入渲染 · 提速']
-];
+const ROADMAP=[];
 let curDay=0;
 
 function buildDayTabs(){

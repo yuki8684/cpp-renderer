@@ -9,6 +9,32 @@
 
 ## 效果展示
 
+### Day 11 · 复杂度实测：BVH 的优势随规模放大
+
+![Day 11 性能曲线](gallery/day11-scaling-curve.svg)
+
+> 把场景规模从 95 个球扫到 8,095 个球，每档渲染 3 次取最小值。
+> 双对数坐标下，**直线的斜率就是复杂度指数**：
+>
+> | | 实测斜率 | 含义 |
+> |---|---|---|
+> | 朴素遍历 | **0.98** | ≈ 1 → 线性 O(N) |
+> | BVH 求交 | **0.17** | 远低于 1 → 对数 O(log N) |
+> | BVH 建树 | 1.16 | 超线性 O(N log²N) |
+>
+> **N 涨 85.2 倍：朴素涨 78 倍，BVH 只涨 2.13 倍**
+> （纯对数理论值 log₂ 12.98/6.57 = 1.98，**实测偏差 +7.6%**）。
+> 加速比单调上升：**2.5× → 6.9× → 24.3× → 93.4×**。
+>
+> ⚠️ **建树线最终与求交线相交**（N=8095 时 25.5 ms vs 24.7 ms）：
+> 建树是一次性成本，但它超线性增长。所以——
+> **只渲染一帧**时该比「建树+求交」（仍快 46×）；
+> **渲染动画多帧**时建树只付一次，该比「求交」（快 93×）。
+
+`--grid 22` 渲染的 44×44 球阵（1,936 球）：
+
+![Day 11 大场景](gallery/day11-big-scene.png)
+
 ### Day 10 · 扁平化 + 一个函数名的教训（13.16 s → 1.82 s）
 
 ![Day 8-10 性能历程](gallery/day10-performance-journey.svg)
@@ -90,21 +116,34 @@
 | 8 | **AABB 包围盒**（slab method + 单元测试体系） | ✅ |
 | 9 | **BVH 递归建树**（结果字节级不变，2.23× 加速） | ✅ |
 | 10 | **扁平化 BVH + 干掉 `std::fmax` 函数调用**（累计 **7.2×**） | ✅ |
-| 11 | 更大场景的性能曲线（让 BVH 优势真正体现） | ⏳ |
+| 11 | **复杂度实测**：双对数性能曲线（斜率 0.98 vs 0.17）+ 可重置 RNG | ✅ |
 | — | 后续：Schlick 菲涅尔、gamma 校正、多线程、实时渲染、降噪 | 📋 |
 
 ---
 
 ## 性能数据（实测）
 
+### 复杂度随规模的变化（Day 11）
+
+`120×68 · 4 spp · 每档 3 次取最小 · 不含写文件`
+
+| N | 建树 ms | 朴素 ms | BVH 求交 ms | 加速比 |
+|---:|---:|---:|---:|---:|
+| 95 | 0.089 | 29.4 | 11.6 | 2.5× |
+| 480 | 0.668 | 141.0 | 20.4 | 6.9× |
+| 1,931 | 4.016 | 559.6 | 23.0 | 24.3× |
+| 8,095 | 25.509 | 2,308.0 | 24.7 | **93.4×** |
+
+复现：`\build\raytracer.exe --bench` → `output/bench.csv` → `\tools\plot_bench.ps1`
+
+### 单场景优化历程
+
 | 场景 | 物体数 | 平均弹射层数 | 求交次数 | 纯渲染耗时 |
 |---|---|---|---|---|
 | `simple_scene` | 4 | 1.63 | 1,874 万 | **0.28 s** |
-| `random_scene` | 480 | 2.75 | **37.96 亿** | **13.03 s** |
+| `random_scene` | 480 | 2.75 | ≡37.96 亿（朴素） | **13.03 s** → **1.82 s**（BVH） |
 
 求交吞吐量 ≈ **2.9 亿次 / 秒**（单线程）
-> 🎯 **Day 9-11 目标**：用 BVH 把 `random_scene` 从 **13 s 降到 0.3 s**（约 50×）。
-> BVH 把每层弹射需要测试的物体数从 `O(N)=480` 降到 `O(log N)≈9`。
 > ⚠️ 讨论渲染性能请**直接计时 `raytracer.exe`**。
 > `tools/run.ps1` 报的"总耗时"包含 CMake 编译（≈ 2.6 s），会严重干扰判断 —— 详见
 > [devlog Day 7「原理 3」](docs/devlog.md)。
@@ -133,12 +172,13 @@ cpp-renderer/
 │   ├── metal.h            金属（镜面 + fuzz）
 │   └── dielectric.h       玻璃 / 水 / 钻石（折射 + 全反射）
 ├── src/
-│   └── main.cpp            ray_color + 场景构建 + 主循环
+│   └── main.cpp            ray_color + 场景构建 + render() + --bench 基准测试
 ├── tests/
 │   └── aabb_test.cpp       AABB 单元测试（独立可执行，1 秒反馈）
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
 │   ├── test.ps1           一键：编译 + 运行所有单元测试
+│   ├── plot_bench.ps1     读 bench.csv -> 生成双对数性能曲线 SVG
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
 ├── docs/
@@ -155,7 +195,9 @@ cpp-renderer/
 ```bash
 cmake -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./build/raytracer.exe          # Windows (MinGW)
+./build/raytracer.exe                 # Windows (MinGW)
+./build/raytracer.exe --grid 22       # 改球阵规模（half=22 → 44×44，约 1900 球）
+./build/raytracer.exe --bench         # 扫规模跑基准 -> output/bench.csv
 ```
 
 一键脚本（推荐）：
@@ -163,7 +205,8 @@ cmake --build build -j
 ```powershell
 .\tools\test.ps1                             # 单元测试（1 秒反馈）
 .\tools\run.ps1                              # 编译 + 渲染 + 转 PNG
-.\tools\publish.ps1 -Message "Day 9: BVH" -Image day09-bvh.png   # 发布到 GitHub
+.\tools\plot_bench.ps1                       # bench.csv -> 性能曲线图
+.\tools\publish.ps1 -Message "Day 11" -Image day11.png   # 发布到 GitHub
 ```
 
 输出：`output/image.ppm` → `output/image.png`
@@ -173,13 +216,18 @@ cmake --build build -j
 ## 设计要点
 
 - **组合模式**：`HittableList` 本身也是一个 `Hittable`，所以"一堆物体"和"一个物体"可以同样对待。
-  后来把线性遍历换成 `BVHNode` 时，**`main.cpp` 一行都没改** —— 设计伏笔直接兑现。
-- **不变量优先**：`BVHNode::bounding_box()` 直接返回建树时算好的盒子（缓存）。
+  后来把线性遍历换成 `BVH` 时，**`main.cpp` 一行都没改** —— 设计伏笔直接兜现。
+- **不变量优先**：`BVH::bounding_box()` 直接返回建树时算好的盒子（缓存）。
   代价是树必须**不可变**——否则盒子会对不上内容，导致 BVH “错得看不出来”。
+- **可重复性优先**：`reset_rng()` 让随机序列可重置。
+  **跨进程**渲染能字节一致（默认种子 5489）；**同进程内**连续渲染必须显式重置。
+  这是基准测试能“只换算法、不换场景”的前提。
 - **接口分离**：`Hittable` 回答"撞到了吗"，`Material` 回答"往哪弹、打几折"。
   加新材质（比如 `Isotropic`）时，`ray_color` 和求交代码完全不用动。
 - **输出参数**：`scatter(r_in, rec, attenuation, scattered)` 用引用传出两个结果，
   配合 `bool` 返回"是否散射"。
+- **可空输出用指针**：`render(..., std::ostream* out)` —— `nullptr` 表示“只算不写”。
+  引用做不到这件事，因为**引用不能为空**。
 - **递归深度限制**：玻璃的全反射会让递归无限深入（曾造成栈溢出 `0xC00000FD`），
   用 `max_depth` 作保险丝。
 

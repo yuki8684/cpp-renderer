@@ -1,5 +1,7 @@
 #include <iostream>
 #include <fstream>
+#include <string>
+#include <chrono>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -53,6 +55,128 @@ Color ray_color(const Ray& r, const Hittable& world, int depth) {
 
 
 // ============================================================
+// 计时工具
+//
+// steady_clock 是【单调递增】的：只会往前走，不会被系统校时影响。
+//   system_clock 会被 NTP 同步、夏令时跳变 → 可能测出负数！
+// ============================================================
+using Clock = std::chrono::steady_clock;
+
+double seconds_since(Clock::time_point t0) {
+    return std::chrono::duration<double>(Clock::now() - t0).count();
+}
+
+
+void render(const Hittable& world, const Camera& camera,
+                int width, int height, int samples_per_pixel, int max_depth,
+                std::ostream* out) {
+
+    // PPM 文件头 —— 只有在要写文件时才写
+    if (out) *out << "P3\n" << width << ' ' << height << "\n255\n";
+
+    for (int j = height - 1; j >= 0; --j) {
+        // 进度条只在正式渲染时打，benchmark 模式下会刷屏
+        if (out) std::cerr << "\r剩余扫描线: " << (j + 1) << ' ' << std::flush;
+
+        for (int i = 0; i < width; ++i) {
+
+            // 累积器：必须在采样循环【外面】，否则每次采样都被清零
+            Color pixel_color(0, 0, 0);
+
+            // 第 3 层循环：同一个像素射 samples_per_pixel 条光线
+            // ⚠️ 计数器叫 sample，不叫 s —— 因为下面像素坐标已经用了 s
+            for (int sample = 0; sample < samples_per_pixel; ++sample) {
+                // 在像素【内部】随机取点 —— 这就是抗锯齿的来源
+                double s = (i + random_double()) / width;
+                double t = (j + random_double()) / height;
+
+                Ray r = camera.get_ray(s, t);
+                pixel_color += ray_color(r, world, max_depth);
+            }
+
+            // 平均
+            Color color = pixel_color / double(samples_per_pixel);
+
+            // ---------- 写像素 ----------
+            int ir = static_cast<int>(255.999 * color.x());
+            int ig = static_cast<int>(255.999 * color.y());
+            int ib = static_cast<int>(255.999 * color.z());
+
+            if(out) *out << ir << ' ' << ig << ' ' << ib << '\n';
+        }
+    }
+
+}
+
+
+// ============================================================
+// 性能测试：渲染不同数量的小球，测 BVH 构建和求交的耗时
+//
+// ★ 前向声明（forward declaration）
+//   run_benchmark 用到了 random_scene，但后者定义在本文件【后面】。
+//   C++ 是单遍编译的：名字必须【先见过才能用】。
+//   这一行等于告诉编译器：“有这么个函数，参数是 int，返回 HittableList，
+//   具体定义待会儿在下面”，编译器就先放行了。
+// ============================================================
+HittableList random_scene(int half);
+
+void run_benchmark() {
+    const int Width = 120, Height = 68, spp = 4, max_depth = 50;
+    
+    Camera camera(Point3(13, 2, 3), Point3(0, 0, 0), Vec3(0, 1, 0),
+     20, 10.0, 0.1 );
+
+     const int halves[] = {5, 11, 22, 45};
+
+     std::ofstream csv("output/bench.csv");
+     csv << "n,build_ms,naive_ms,bvh_ms\n";
+
+     for(int half : halves) {
+
+        reset_rng();
+        HittableList list = random_scene(half);
+        int n = (int)list.objects.size();
+
+        //测建树耗时
+        auto tb = Clock::now();
+        BVH bvh(list);
+        double build_ms = seconds_since(tb) * 1000.0;
+
+        double best_naive = 1e18;
+        for(int rep = 0; rep < 3; ++rep) {
+            reset_rng();
+            auto t0 = Clock::now();
+            render(list, camera, Width, Height, spp, max_depth, nullptr);
+            double dt = seconds_since(t0) * 1000.0;
+            if(dt < best_naive) best_naive = dt;
+        }
+
+        double best_bvh = 1e18;
+        for(int rep = 0; rep < 3; ++rep) {
+            reset_rng();
+            auto t0 = Clock::now();
+            render(bvh, camera, Width, Height, spp, max_depth, nullptr);
+            double dt = seconds_since(t0) * 1000.0;
+            if(dt < best_bvh) best_bvh = dt;
+        }
+
+
+           csv << n << ',' << build_ms << ',' << best_naive 
+               << ',' << best_bvh << '\n';
+
+                 //屏幕：给人看
+           std::cout << "N=" << n
+                     << "  build=" << build_ms << "ms"
+                     << "  naive=" << best_naive << "ms"
+                     << "  bvh=" << best_bvh << "ms"
+                     << "  加速 " << (best_naive / best_bvh) << "x\n";
+
+
+     }
+}
+
+
+// ============================================================
 // 场景构建：把"造世界"的代码从 main 里搬出来，变成函数
 //
 // 好处：
@@ -86,7 +210,7 @@ HittableList simple_scene() {
 
 
 // ---------- 场景 B：随机小球阵（Day 7 要做的）----------
-HittableList random_scene() {
+HittableList random_scene(int half) {
     HittableList world;
 
     // ---------- 1. 地面 ----------
@@ -107,8 +231,8 @@ HittableList random_scene() {
 
     // ---------- 3. 22 × 22 随机小球阵 ----------
     //    a、b 各从 -11 到 10 → 横纵各 22 个格子，最多 484 个小球
-    for (int a = -11; a < 11; ++a) {
-        for (int b = -11; b < 11; ++b) {
+    for (int a = -half; a < half; ++a) {
+        for (int b = -half; b < half; ++b) {
 
             // TODO(你填 R1)：随机选材质
             //   用 random_double() 取一个 [0, 1) 的随机数
@@ -187,11 +311,37 @@ HittableList random_scene() {
 
 
 
-int main() {
+int main(int argc, char** argv) {
 #ifdef _WIN32
     // 让 Windows 控制台按 UTF-8 解释输出，避免中文日志变成乱码
     SetConsoleOutputCP(CP_UTF8);
 #endif
+
+    // ---------- 打印命令行参数 ----------
+
+    int half = 11; // 默认随机场景的半径
+    bool bench = false; // 是否只跑性能测试（不输出图片）
+
+
+    for(int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if(arg == "--grid" && i + 1 < argc) {
+            half = std::stoi(argv[i + 1]);
+            ++i;
+        }
+        else if(arg == "--bench") {
+            bench = true;
+        }
+       
+    }
+
+    if(bench) {
+        run_benchmark();
+        return 0;
+    }
+
+     std::cerr << "[参数] half = " << half 
+               << " → 最多" << (2 * half) * (2 * half) << "个小球\n";
 
     // ---------- 图像参数 ----------
     // ⚠️ 随机场景有 ~480 个球，比 Day 6 慢约 100 倍！
@@ -213,11 +363,9 @@ int main() {
         return 1;
     }
 
-    out << "P3\n" << image_width << ' ' << image_height << "\n255\n";
-
     // ---------- 场景：一个装着所有物体的"世界" ----------
     // 想换场景只改这一行：simple_scene() 或 random_scene()
-    HittableList world_list = random_scene();
+    HittableList world_list = random_scene(half);
     BVH          world(world_list);        // ← 扁平化 BVH（Day 10）
 
     // ---------- 验证 Sphere / HittableList 的包围盒 ----------
@@ -239,7 +387,11 @@ int main() {
                   10.0,                  // 对焦距离（随机场景里物体分布很广，取中间值）
                   0.1);                  // 光圈半径
 
+
+
+    render(world, camera, image_width, image_height, samples_per_pixel, max_depth, &out);
     // PPM 行序从上到下；渲染时习惯从下往上遍历
+    /*
     for (int j = image_height - 1; j >= 0; --j) {
         std::cerr << "\r剩余扫描线: " << (j + 1) << ' ' << std::flush;
 
@@ -269,7 +421,7 @@ int main() {
 
             out << ir << ' ' << ig << ' ' << ib << '\n';
         }
-    }
+    }*/
 
     std::cerr << "\n渲染完成 -> output/image.ppm\n";
     return 0;

@@ -14,11 +14,19 @@
 
 // ---------- 数学常量 ----------
 
+
+inline std::mt19937& rng() {
+    static std::mt19937 generator;// 伪随机数生成器（Mersenne Twister）
+    return generator;
+}
 // ---------- 随机数工具 ----------
 inline double random_double() {
     static std::uniform_real_distribution<double> distribution(0.0,1.0);
-    static std::mt19937 generator;
-    return distribution(generator);// [0,1) 区间随机数
+    return distribution(rng());// [0,1) 区间随机数
+}
+
+inline void reset_rng(unsigned seed = 5489u) {
+    rng().seed(seed);
 }
 
 //---------- [min,max) 区间随机数 ----------
