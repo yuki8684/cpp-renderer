@@ -20,6 +20,7 @@
 #include "metal.h"
 #include "dielectric.h"
 #include "bvh.h"
+#include "color.h"
 
 
 // ============================================================
@@ -66,7 +67,8 @@ double seconds_since(Clock::time_point t0) {
     return std::chrono::duration<double>(Clock::now() - t0).count();
 }
 
-
+// ============================================================
+// 渲染函数：把世界渲染成图像
 void render(const Hittable& world, const Camera& camera,
                 int width, int height, int samples_per_pixel, int max_depth,
                 std::ostream* out) {
@@ -98,9 +100,9 @@ void render(const Hittable& world, const Camera& camera,
             Color color = pixel_color / double(samples_per_pixel);
 
             // ---------- 写像素 ----------
-            int ir = static_cast<int>(255.999 * color.x());
-            int ig = static_cast<int>(255.999 * color.y());
-            int ib = static_cast<int>(255.999 * color.z());
+            int ir = to_byte(color.x());
+            int ig = to_byte(color.y());
+            int ib = to_byte(color.z());
 
             if(out) *out << ir << ' ' << ig << ' ' << ib << '\n';
         }
@@ -120,17 +122,20 @@ void render(const Hittable& world, const Camera& camera,
 // ============================================================
 HittableList random_scene(int half);
 
+// ============================================================
+// 性能测试函数
 void run_benchmark() {
     const int Width = 120, Height = 68, spp = 4, max_depth = 50;
     
     Camera camera(Point3(13, 2, 3), Point3(0, 0, 0), Vec3(0, 1, 0),
      20, 10.0, 0.1 );
 
-     const int halves[] = {5, 11, 22, 45};
+     const int halves[] = {5, 11, 22, 45};// 5, 11, 22, 45 → 25, 121, 484, 2025 个小球
 
      std::ofstream csv("output/bench.csv");
      csv << "n,build_ms,naive_ms,bvh_ms\n";
 
+     // 遍历不同的场景规模
      for(int half : halves) {
 
         reset_rng();
@@ -142,6 +147,7 @@ void run_benchmark() {
         BVH bvh(list);
         double build_ms = seconds_since(tb) * 1000.0;
 
+        // 测求交耗时：三次取最小值，避免偶然的系统干扰
         double best_naive = 1e18;
         for(int rep = 0; rep < 3; ++rep) {
             reset_rng();
@@ -151,6 +157,7 @@ void run_benchmark() {
             if(dt < best_naive) best_naive = dt;
         }
 
+        // 测 BVH 求交耗时
         double best_bvh = 1e18;
         for(int rep = 0; rep < 3; ++rep) {
             reset_rng();
@@ -322,19 +329,21 @@ int main(int argc, char** argv) {
     int half = 11; // 默认随机场景的半径
     bool bench = false; // 是否只跑性能测试（不输出图片）
 
-
+    // 解析命令行参数
     for(int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if(arg == "--grid" && i + 1 < argc) {
             half = std::stoi(argv[i + 1]);
             ++i;
         }
+        // 解析 --bench 参数
         else if(arg == "--bench") {
             bench = true;
         }
        
     }
 
+    
     if(bench) {
         run_benchmark();
         return 0;
