@@ -1,0 +1,2032 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 13 · 四边形：渲染器的第一块平面 | cpp-renderer 可视化教学</title>
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#20242e; --ink-2:#4d5464; --ink-3:#858c9c;
+  --line:#e5e2d9; --line-2:#eeebe3;
+  --accent:#2c56c9; --accent-soft:#edf1fe;
+  --warm:#bf5327; --warm-soft:#fdf3ee;
+  --green:#26744a; --violet:#7a45b5;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --serif:"Cambria Math",Cambria,"Latin Modern Math",Georgia,"Times New Roman",serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.78 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+::selection{background:#dfe6fb}
+
+/* ---------- 顶部 ---------- */
+.hero{max-width:1400px;margin:0 auto;padding:58px 40px 30px}
+.eyebrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:12.5px;color:var(--ink-3);letter-spacing:.04em}
+.eyebrow .dot{width:4px;height:4px;border-radius:50%;background:#c9c5b9}
+.eyebrow b{color:var(--accent);font-weight:600}
+h1{font-size:46px;line-height:1.16;letter-spacing:-.028em;margin:16px 0 14px;font-weight:680;max-width:19em}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{font-size:18px;line-height:1.75;color:var(--ink-2);max-width:46em;margin:0 0 26px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 26px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:9px 15px;min-width:120px}
+.stat span{display:block;font-size:11px;letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase}
+.stat b{font-size:17px;font-weight:620;letter-spacing:-.01em}
+.toc{display:flex;flex-wrap:wrap;gap:7px;padding-top:22px;border-top:1px solid var(--line)}
+.toc a{
+  font-size:12.5px;color:var(--ink-2);text-decoration:none;background:var(--panel);
+  border:1px solid var(--line);border-radius:999px;padding:4px 11px;transition:.15s;
+}
+.toc a:hover{border-color:#c9d2ef;color:var(--accent);background:var(--accent-soft)}
+
+/* ---------- 主布局 ---------- */
+.layout{max-width:1400px;margin:0 auto;padding:34px 40px 90px;display:grid;grid-template-columns:minmax(0,1fr) 540px;gap:58px;align-items:start}
+article{min-width:0}
+aside.stage-col{position:sticky;top:22px;min-width:0}
+
+/* ---------- 舞台 ---------- */
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  display:flex;flex-direction:column;max-height:calc(100vh - 26px);
+  box-shadow:0 1px 2px rgba(32,36,46,.04),0 18px 40px -22px rgba(32,36,46,.28)}
+.stage-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line-2)}
+.stage-head .t{font-size:12.5px;font-weight:600;letter-spacing:-.005em;color:var(--ink)}
+.stage-head .t small{display:block;font-weight:400;color:var(--ink-3);font-size:11px;letter-spacing:.03em;margin-top:1px}
+.stage-head .idx{font:11px var(--mono);color:var(--ink-3);white-space:nowrap;border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+.head-right{display:flex;align-items:center;gap:6px}
+.collapse{border:1px solid var(--line);background:#fff;color:var(--ink-3);border-radius:999px;padding:2px 9px;font:11px inherit;cursor:pointer}
+.collapse:hover{color:var(--accent);border-color:#c9d2ef}
+.stage.collapsed #stage-canvas,.stage.collapsed .stage-ctrl,.stage.collapsed .stage-foot{display:none}
+#mobile-stage-slot{display:none}
+#stage-canvas{display:block;width:100%;height:clamp(280px,44vh,392px);flex:0 0 auto;touch-action:none;cursor:grab}
+#stage-canvas:active{cursor:grabbing}
+.stage-ctrl{padding:12px 14px 14px;border-top:1px solid var(--line-2);min-height:0;flex:1 1 auto;overflow-y:auto}
+.ctrlpane{display:none;flex-direction:column;gap:7px}
+.ctrlpane.on{display:flex}
+.row{display:grid;grid-template-columns:26px 1fr 46px;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-2)}
+.row b{font:11.5px var(--mono);color:var(--ink);text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;background:#e0ddd3;border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);border:2px solid #fff;box-shadow:0 0 0 1px #cbd4ee;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--accent);border:2px solid #fff;cursor:pointer}
+.row2{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-3)}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ink-2);font-size:12.5px}
+.chk input{accent-color:var(--accent);margin:0}
+.hint{font-size:11.5px;color:var(--ink-3);line-height:1.5}
+.seg{display:inline-flex;flex-wrap:wrap;background:#f2f1ec;border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:4px 10px;border-radius:6px;font:12.5px inherit;color:var(--ink-2);cursor:pointer;transition:.12s}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(32,36,46,.1);font-weight:600}
+.ro{font:11px/1.62 var(--mono);color:var(--ink-2);background:#faf9f6;border:1px solid var(--line-2);border-radius:9px;padding:7px 9px;overflow-x:auto;white-space:pre}
+.ro .ok{color:var(--green);font-weight:700}
+.ro .no{color:var(--warm);font-weight:700}
+.ro .k{color:var(--ink-3)}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 11px;font:12.5px inherit;color:var(--ink-2);cursor:pointer}
+.btn:hover{border-color:#c9d2ef;color:var(--accent)}
+.stage-foot{display:flex;justify-content:space-between;align-items:center;padding:0 14px 12px;font-size:11px;color:var(--ink-3)}
+
+/* ---------- 正文排版 ---------- */
+section[data-scene]{padding-top:8px;scroll-margin-top:20px}
+.kicker{font-size:11.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);font-weight:650;margin-top:56px}
+h2{font-size:27px;line-height:1.34;letter-spacing:-.022em;margin:6px 0 10px;font-weight:660}
+h2 .h2n{font:600 13px var(--mono);color:#b6b2a6;margin-right:12px;letter-spacing:0;vertical-align:2px}
+h3{font-size:17.5px;margin:32px 0 6px;letter-spacing:-.012em;font-weight:640}
+p{margin:13px 0;color:var(--ink-2)}
+p.lead{font-size:16.5px;color:#3f4656}
+strong{color:var(--ink);font-weight:620}
+em.q{font-style:normal;background:linear-gradient(transparent 62%,#fdeac0 62%);padding:0 1px}
+ul,ol{margin:13px 0;padding-left:22px;color:var(--ink-2)}
+li{margin:6px 0}
+li::marker{color:#b9b4a6}
+a{color:var(--accent)}
+code{font:0.875em var(--mono);background:#f2f1ec;border:1px solid #e8e5db;border-radius:5px;padding:1px 5px;color:#2f3543}
+.m{font-family:var(--serif);font-style:italic;font-size:1.03em}
+.m b,.mv{font-weight:700}
+.note,.warn{border-radius:0 11px 11px 0;padding:13px 17px;margin:20px 0;font-size:14.5px;line-height:1.72}
+.note{border-left:3px solid var(--accent);background:#f4f7fe;color:#3d4557}
+.warn{border-left:3px solid var(--warm);background:var(--warm-soft);color:#5a4034}
+.note b,.warn b{color:var(--ink)}
+.note .tag,.warn .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;margin-bottom:3px}
+.note .tag{color:var(--accent)}
+.warn .tag{color:var(--warm)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin:20px 0}
+.card h4{margin:0 0 8px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);font-weight:650}
+
+/* 公式 */
+.eq{font-family:var(--serif);font-size:19px;line-height:2.1;background:#fff;border:1px solid var(--line);border-radius:12px;
+  padding:14px 20px;margin:16px 0;overflow-x:auto;color:var(--ink)}
+.eq .tagline{float:right;font:11px var(--mono);color:var(--ink-3);font-style:normal;letter-spacing:.02em}
+.eq .line{display:block;white-space:nowrap}
+.eq .line + .line{margin-top:2px}
+.frac{display:inline-flex;flex-direction:column;vertical-align:-0.62em;text-align:center;margin:0 .28em;font-size:.94em}
+.frac>span:first-child{border-bottom:1px solid currentColor;padding:0 .32em .1em;display:block}
+.frac>span:last-child{padding:.1em .32em 0;display:block}
+.sub{font-size:.72em;vertical-align:-.22em}
+
+/* 代码 */
+.codewrap{margin:18px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fbfbf9}
+.codebar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px;background:#f4f3ee;border-bottom:1px solid var(--line-2);font-size:11.5px;color:var(--ink-3)}
+.codebar .fname{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.animlink{border:1px solid #d8e0f5;background:#f7f9ff;color:var(--accent);font:11.5px inherit;padding:3px 9px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.animlink:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.codewrap pre{margin:0;overflow:auto;padding:14px 16px;font:12.5px/1.72 var(--mono);color:#2b3140;tab-size:4}
+.codewrap pre code{background:none;border:0;padding:0;font:inherit;color:inherit}
+.c-kw{color:#8a3fb5}
+.c-num{color:#0b6b7d}
+.c-str{color:#26744a}
+.c-com{color:#9096a3;font-style:italic}
+.c-fn{color:#2c56c9}
+
+/* 表格 */
+.tablewrap{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:12px;background:#fff}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+td .mm{font-family:var(--serif);font-style:italic;color:var(--ink-3);font-size:12.5px}
+th{background:#f7f6f1;font-size:11.5px;letter-spacing:.04em;color:var(--ink-3);font-weight:650;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.mono,th.mono{font-family:var(--mono);font-size:12px;color:#3a4152}
+td.c{text-align:center}
+.tbl-note{font-size:12.5px;color:var(--ink-3);margin:-8px 0 18px}
+
+/* 自检 */
+details{border:1px solid var(--line);background:var(--panel);border-radius:11px;padding:12px 16px;margin:10px 0}
+details summary{cursor:pointer;font-size:14.5px;font-weight:600;color:var(--ink);list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"Q";display:inline-flex;width:19px;height:19px;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent);font:700 11px var(--mono);border-radius:5px;margin-right:9px;vertical-align:1px}
+details[open] summary{margin-bottom:6px}
+details p{font-size:14px;margin:8px 0;color:var(--ink-2)}
+
+footer{max-width:1400px;margin:0 auto;padding:30px 40px 70px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;line-height:1.85}
+footer b{color:var(--ink-2);font-weight:600}
+footer .files{font-family:var(--mono);font-size:11.5px}
+
+.stage-slot{display:none}
+@media (max-height:700px){ .stage-foot{display:none} }
+@media (max-width:1180px){
+  .hero{padding:38px 18px 20px}
+  h1{font-size:33px}
+  .lede{font-size:16px}
+  .layout{grid-template-columns:1fr;gap:26px;padding:18px 18px 70px}
+  aside.stage-col{display:none}
+  #mobile-stage-slot{display:block;position:sticky;top:0;z-index:30;background:var(--bg);padding:8px 14px 4px;border-bottom:1px solid var(--line)}
+  #mobile-stage-slot .stage{max-height:none;margin:0}
+  .stage-ctrl{overflow:visible;max-height:none;min-height:96px}
+  h2{font-size:22px}
+  .kicker{margin-top:38px}
+  #stage-canvas{height:300px}
+  .stage{margin:18px 0 6px}
+  .stage-slot{display:block}
+  .codewrap pre{font-size:11.5px}
+  footer{padding:24px 18px 60px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="eyebrow">
+    <b>cpp-renderer</b><span class="dot"></span><span>Day 13 · 2026-10-13</span>
+    <span class="dot"></span><span>新增图元：Quad</span><span class="dot"></span><span>可视化教学</span>
+  </div>
+  <h1>四边形：渲染器的<em>第一块平面</em></h1>
+  <p class="lede">
+    前面十二天，世界里只有球。球什么都能证明，唯独盖不出一个房间。今天用 <b>3 个向量</b>描述一块平行四边形，
+    用 <b>1 次叉积</b>得到平面方程，用 <b>2 次叉积</b>反解出平面内坐标，再用 <b>2 次比较</b>判断内外 ——
+    最后还要处理一个只有平面才会踩的坑：<b>零厚度的包围盒</b>。
+  </p>
+  <div class="stats">
+    <div class="stat"><span>新增图元</span><b>1 · Quad</b></div>
+    <div class="stat"><span>待填公式</span><b>11（Q1–Q10 + P1）</b></div>
+    <div class="stat"><span>单元测试</span><b>3 组 · 25 断言</b></div>
+    <div class="stat"><span>核心陷阱</span><b>零厚度 AABB</b></div>
+  </div>
+  <nav class="toc">
+    <a href="#s1">01 为什么是平行四边形</a>
+    <a href="#s2">02 参数化</a>
+    <a href="#s3">03 法线与平面</a>
+    <a href="#s4">04 射线求交</a>
+    <a href="#s5">05 平面内坐标</a>
+    <a href="#s6">06 内部判定</a>
+    <a href="#s7">07 零厚度包围盒</a>
+    <a href="#s8">08 公式总账</a>
+    <a href="#s9">09 渲染验证</a>
+    <a href="#s10">10 自检</a>
+  </nav>
+</header>
+<div id="mobile-stage-slot"></div>
+
+<div class="layout">
+<article>
+
+<!-- ============ 01 ============ -->
+<section id="s1" data-scene="param">
+  <div class="kicker">动机 · 为什么是它</div>
+  <h2><span class="h2n">01</span>为什么第二块几何体是平行四边形</h2>
+  <p class="lead">球能证明渲染器活着，但盖不出一个房间。</p>
+  <p>
+    左墙、后墙、天花板、地板 —— 这些都不是球。Day 10 之后 BVH 已经能吞下成千上万个物体，Day 12 把玻璃、Fresnel、gamma 也修好了，
+    可 Cornell Box 迟迟没开工：缺的不是光照模型，而是一块<b>平的、有边界的、能当墙用的面</b>。
+  </p>
+  <p>三个候选方案，各有各的代价：</p>
+  <ul>
+    <li><strong>无限平面</strong>：一个法线一个常数就够，但没有边界。光会跑到"世界外面"，也做不成面光源。</li>
+    <li><strong>三角形</strong>：最通用，任何网格都能拼出来。但参数化要重心坐标，内部判定多一步，而且单看一个三角形不容易心算。</li>
+    <li><strong>平行四边形</strong>：一个角加两条边向量。边平行、共面是<b>构造出来就成立</b>的，不需要验证；判定只要两次比较。</li>
+  </ul>
+  <p>
+    真正的理由是最后一条：平行四边形是"<em class="q">用两个方向张成</em>"的最简单形状，而三角形只是把它沿对角线切一半。
+    今天写好的整套机制（平面求交、平面内坐标、内部判定、包围盒），明天换成三角形只需要改 <code>is_interior</code> 的一个函数体 ——
+    所以代码里它是 <code>virtual</code>。
+  </p>
+  <div class="note">
+    <span class="tag">本日改动</span><br>
+    <code>include/quad.h</code>（新文件）、<code>AABB::pad_to_minimums()</code>、<code>quad_scene()</code>、<code>tests/quad_test.cpp</code>。
+    TODO 共 11 处：构造函数 Q1–Q4、求交 Q5–Q9、判定 Q10、包围盒 P1。
+  </div>
+
+  <div class="card">
+    <h4>一个点 + 两个位移</h4>
+    <p style="margin:0">
+      <code>Quad(const Point3&amp; Q, const Vec3&amp; u, const Vec3&amp; v, ...)</code><br>
+      四个角是 <span class="m">Q</span>、<span class="m">Q+u</span>、<span class="m">Q+v</span>、<span class="m">Q+u+v</span>。
+      注意类型：<code>Q</code> 是<b>点</b>，<code>u / v</code> 是<b>位移</b>。C++ 里它们都是 <code>vec3</code>，
+      但语义必须分清 —— 推导里写的是"点 + 位移"，不是"点 + 点"。
+    </p>
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2" data-scene="param">
+  <div class="kicker">参数化 · 把面变成二元函数</div>
+  <h2><span class="h2n">02</span>参数化：一块面就是一个二元函数</h2>
+  <p class="lead">形状内的每一点，都能被一对数字 <span class="m">(α, β)</span> 唯一编号。</p>
+  <div class="stage-slot"></div>
+  <p>把平行四边形写成</p>
+  <div class="eq">
+    <span class="tagline">平行四边形参数方程</span>
+    <span class="line"><b>P</b>(α, β) = <b>Q</b> + α<b>u</b> + β<b>v</b> &nbsp;&nbsp;&nbsp; α, β ∈ ℝ</span>
+  </div>
+  <p>
+    α、β 取遍全体实数时，它给出的是<b>整张无限平面</b>；再加上两条不等式
+    <span class="m">0 ≤ α ≤ 1</span>、<span class="m">0 ≤ β ≤ 1</span>，才被裁成平行四边形。
+    这个分界正是求交代码的结构：<b>先解平面（无约束），再判 α、β（约束）</b>。
+  </p>
+  <p>四个角对应四组边界值，记住它们，后面所有公式都能自己验算：</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>(α, β)</th><th>位置</th><th>几何意义</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">(0, 0)</td><td class="mono">Q</td><td>起始角</td></tr>
+        <tr><td class="mono">(1, 0)</td><td class="mono">Q + u</td><td>沿 u 走到头</td></tr>
+        <tr><td class="mono">(0, 1)</td><td class="mono">Q + v</td><td>沿 v 走到头</td></tr>
+        <tr><td class="mono">(1, 1)</td><td class="mono">Q + u + v</td><td>对角</td></tr>
+        <tr><td class="mono">(0.5, 0.5)</td><td class="mono">Q + 0.5u + 0.5v</td><td>中心</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    为什么不用四个角点？四个点 = 12 个数，而且<b>未必共面、未必对边平行</b>—— 你还得额外验证。
+    三个向量 = 9 个数，共面和平行是免费的：四条边自动是 <span class="m">u, v, −u, −v</span>。
+  </p>
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    拖动 α、β 滑块（或让它自动扫描），看 <span class="m">P</span> 怎么在四个角之间滑动。
+    两条虚线是<b>分解路径</b>：先从 <span class="m">Q</span> 沿 <span class="m">u</span> 走 α 倍到达
+    <span class="m">Q+αu</span>，再沿 <span class="m">v</span> 走 β 倍到达 <span class="m">P</span>。
+    注意 u、v 不垂直时，"沿 u 走了多远"和"离某条边有多远"是两件不同的事 —— 这正是不能用直觉代替公式的原因。
+  </div>
+  <p>
+    由此产生一个必须回答的问题：给定平面上一点 <span class="m">P</span>，怎么<b>反求</b> α、β？
+    这是 §5 的全部内容，也是今天数学上最有意思的一步。
+  </p>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3" data-scene="normal">
+  <div class="kicker">法线 · 一次叉积，两个答案</div>
+  <h2><span class="h2n">03</span>法线：方向和面积同时到手</h2>
+  <p class="lead">叉积给出的不只是一个垂直方向，它的<b>长度</b>还等于这块面的面积。</p>
+  <div class="stage-slot"></div>
+  <div class="eq">
+    <span class="tagline">叉积 = 法向 + 面积</span>
+    <span class="line"><b>n</b> = <b>u</b> × <b>v</b>, &nbsp;&nbsp; |<b>n</b>| = |<b>u</b>||<b>v</b>| sin θ = 平行四边形面积</span>
+  </div>
+  <p>
+    方向由右手定则决定：<span class="m">n ⊥ u</span> 且 <span class="m">n ⊥ v</span>，也就是垂直于整张平面。
+    长度是 <span class="m">u</span>、<span class="m">v</span> 张成的平行四边形面积 —— 这不是巧合，它是 §5 里"α 等于面积比"的全部依据。
+  </p>
+  <p>
+    为什么四个角自动满足同一条平面方程？因为
+    <span class="m">n·u = (u×v)·u = det(u, v, u) = 0</span>（行列式有两列相同），同理 <span class="m">n·v = 0</span>。于是
+  </p>
+  <div class="eq">
+    <span class="tagline">平面方程（隐式）</span>
+    <span class="line"><b>n̂</b> · <b>P</b> = D, &nbsp;&nbsp; D = <b>n̂</b> · <b>Q</b></span>
+    <span class="line" style="font-size:.78em;color:#6b7280;font-style:normal">⇒ <b>n̂</b>·(Q+αu+βv) = <b>n̂</b>·Q + α·0 + β·0 = D，α、β 取什么都成立</span>
+  </div>
+  <p>
+    <span class="m">D</span> 的意义：它把一个"面"压成了一个<b>标量</b>。想知道某点在平面哪一侧，只算
+    <span class="m">n̂·P − D</span> 的符号就行（Day 14 做面光源采样时会反复用到）。而判断"在不在平面上"就是看它是否等于 0。
+  </p>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · 构造函数</span>
+      <button class="animlink" data-scene="normal">在动画里看这四行</button></div>
+    <pre><code data-code="ctor"></code></pre>
+  </div>
+
+  <p>
+    这四行只跑一次，却服务几百万条光线。算一下量级：400×225 的图、每像素 32 个采样 ≈ <b>288 万条主光线</b>，
+    每条都至少调一次 <code>hit()</code>；而场景里只有 5 个 Quad。<b>把不随光线变化的量全部前置</b>，
+    是光线追踪器的第一条性能原则 —— 后面 BVH 把盒子也缓存起来，是同一个思路的放大版。
+  </p>
+
+  <div class="warn">
+    <span class="tag">量纲检查（三秒抓出一个 bug）</span><br>
+    <b>n̂</b> 无量纲 ⇒ <span class="m">D</span> 有<b>长度</b>量纲；<span class="m">w = n/(n·n)</span> 有 <b>1/长度</b> 量纲，
+    因为它要乘上 <span class="m">p×v</span>（长度²）才能得到无量纲的 α。注意
+    <span class="m">n/(n·n) = n̂/|n|</span> —— 说明即使用单位法线，也还得再除一次 |n|，
+    <b>绝不能只写 n̂</b>，否则 α 会整体放大 |n| 倍，所有点都被判到形状外面。
+  </div>
+
+  <p>
+    还有一个退化情形：<span class="m">u ∥ v</span> 时 <span class="m">n = 0</span>，<span class="m">w</span> 会除零，
+    平面方程也失去意义（形状退化成线段）。今天的场景里不存在，但这是构造函数里应该加 <code>assert</code> 的地方 ——
+    让错误在构造时就炸，而不是在渲染到第 200 行时输出一片 NaN。
+  </p>
+</section>
+
+<!-- ============ 04 ============ -->
+<section id="s4" data-scene="ray">
+  <div class="kicker">求交 · 一个除法</div>
+  <h2><span class="h2n">04</span>射线 × 无限平面：一个除法解决</h2>
+  <p class="lead">把射线代进平面方程，未知量只有一个 <span class="m">t</span>。</p>
+  <div class="stage-slot"></div>
+  <p>射线写成 <span class="m">P(t) = O + t d</span>，平面写成 <span class="m">n̂·P = D</span>，直接代入：</p>
+  <div class="eq">
+    <span class="tagline">推导</span>
+    <span class="line"><b>n̂</b> · (<b>O</b> + t<b>d</b>) = D</span>
+    <span class="line"><b>n̂</b>·<b>O</b> + t (<b>n̂</b>·<b>d</b>) = D</span>
+    <span class="line">t = <span class="frac"><span>D − <b>n̂</b>·<b>O</b></span><span><b>n̂</b>·<b>d</b></span></span></span>
+  </div>
+  <p>
+    分母只出现在一处：<span class="m">n̂·d</span>。它有<b>两个身份</b>：
+    是否为 0 决定方程有没有解；符号决定光线是从正面还是背面穿过平面。
+    因为 <span class="m">n̂·d = |d| cos θ</span>，所以
+  </p>
+  <ul>
+    <li><span class="m">n̂·d = 0</span> ⟺ θ = 90° ⟺ 光线<b>平行</b>于平面（或整条躺在平面里，此时有无穷多解，但我们判"没打中"）。</li>
+    <li><span class="m">n̂·d &lt; 0</span> ⟺ 光线逆着法线走 ⟺ 从<b>正面</b>射入。这与 <code>set_face_normal</code> 的判据是同一个。</li>
+  </ul>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · hit() 第一步</span>
+      <button class="animlink" data-scene="ray" data-ray="parallel">看平行光线怎么被挡下</button></div>
+    <pre><code data-code="intersect"></code></pre>
+  </div>
+
+  <p>
+    三个失败模式，务必分清楚，因为它们的<b>修复方式完全不同</b>：
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>失败模式</th><th>判据</th><th>物理含义</th><th>怎么修</th></tr></thead>
+      <tbody>
+        <tr><td>平行</td><td class="mono">|n̂·d| &lt; 1e-8</td><td>永远不相交，或整条在面内</td><td>直接 return false</td></tr>
+        <tr><td>在身后</td><td class="mono">t &lt; t_min</td><td>平面在光线反方向</td><td>不用修，窗口判据已覆盖</td></tr>
+        <tr><td>超出窗口</td><td class="mono">t ≥ t_max</td><td>被更近的物体挡住了</td><td>不用修，BVH 靠它剪枝</td></tr>
+        <tr><td>在平面内、不在形状内</td><td class="mono">α,β ∉ [0,1]</td><td>打到了"无限平面"的其余部分</td><td>交给 §5、§6</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    两个细节值得停下来想。第一，<b>为什么用 <code>fabs</code></b>：光线可以从两边平行于平面，
+    <span class="m">denom = +0.0</span> 和 <span class="m">−0.0</span> 都应该被挡掉，只判 <code>denom == 0</code> 是靠不住的。
+    第二，<b>1e-8 是工程折中，不是数学</b>：理论上只有精确的 0 才平行，浮点下"几乎平行"的光线会算出巨大的 t，
+    然后自然被 <span class="m">t_max</span> 或 α、β 判掉；提前挡掉只是省一次除法、避免 <code>inf</code> 流进后续运算。
+    另外，<code>camera.get_ray</code> 的方向<b>没有归一化</b>，所以 denom 的量纲其实是 |d| —— 这个阈值并不是尺度无关的，
+    换个相机模型就要重新想。
+  </p>
+  <div class="note">
+    <span class="tag">为什么先解平面、再判形状</span><br>
+    这是"先解约束、再筛范围"的通用套路：平面求交是<b>一个除法</b>，非常便宜；形状判定是<b>两次叉积 + 四次比较</b>，
+    但完全不含除法。把便宜且必做的放前面，贵且常常不需要做的放后面 —— 与 BVH 先测盒子再测三角形是同一个哲学。
+  </div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5" data-scene="coord">
+  <div class="kicker">核心 · 两次叉积</div>
+  <h2><span class="h2n">05</span>平面内坐标：叉积把 3×2 系统变成 1×1</h2>
+  <p class="lead">已知 <span class="m">P</span> 在平面上，求 α、β 使 <span class="m">p = P−Q = αu + βv</span>。</p>
+  <div class="stage-slot"></div>
+  <p>
+    这是一个 3 个方程、2 个未知数的系统。它<b>超定</b>，按理说无解 —— 但 P 一定在平面上，
+    所以第三个方程是前两个的线性组合，是冗余的。麻烦在于：直接丢掉某个坐标，会在 u、v 某个分量为 0 时除零。
+    叉积能绕开这个陷阱。
+  </p>
+  <p><b>关键一步：把未知量"叉掉"一个。</b>两边同时右乘 <span class="m">v</span>：</p>
+  <div class="eq">
+    <span class="tagline">消去 β</span>
+    <span class="line"><b>p</b> × <b>v</b> = α(<b>u</b> × <b>v</b>) + β(<b>v</b> × <b>v</b>) = α<b>n</b></span>
+    <span class="line" style="font-size:.8em;color:#6b7280;font-style:normal">因为 v×v = 0，β 直接消失了</span>
+  </div>
+  <p>现在两边只剩一个方向 <span class="m">n</span>，点乘 <span class="m">n</span> 把它变成标量：</p>
+  <div class="eq">
+    <span class="line"><b>n</b>·(<b>p</b>×<b>v</b>) = α (<b>n</b>·<b>n</b>) &nbsp;⇒&nbsp; α = <span class="frac"><span><b>n</b>·(<b>p</b>×<b>v</b>)</span><span><b>n</b>·<b>n</b></span></span></span>
+  </div>
+  <p>
+    同理，两边右乘 <span class="m">u</span>：<span class="m">p×u = α(u×u) + β(v×u) = −βn</span>（注意 <span class="m">v×u = −n</span>），
+    于是 <span class="m">β = n·(u×p)/(n·n)</span>。把除法提前打包成
+  </p>
+  <div class="eq">
+    <span class="tagline">代码里的 w</span>
+    <span class="line"><b>w</b> = <span class="frac"><span><b>n</b></span><span><b>n</b>·<b>n</b></span></span> &nbsp;&nbsp;⇒&nbsp;&nbsp; α = <b>w</b>·(<b>p</b>×<b>v</b>), &nbsp; β = <b>w</b>·(<b>u</b>×<b>p</b>)</span>
+  </div>
+  <p>
+    注意两个叉积的<b>自变量顺序不一样</b>：α 用 <code>cross(p, v)</code>，β 用 <code>cross(u, p)</code>。
+    这不是笔误。它们其实是同一条规则 —— "<b>p 与另一条边叉乘</b>" —— 只是 <span class="m">v×u = −n</span> 多出来的负号需要靠交换顺序补回来。
+    如果写成 <code>cross(p, u)</code> 求 β，你会得到 −β，然后<b>所有点都被判到形状外</b>：画面全黑，而代码看起来"没错"。
+  </p>
+
+  <h3>α 就是一个面积比</h3>
+  <p>
+    把 <span class="m">p×v = αn</span> 两边取长度：<span class="m">|p×v| = |α| |n|</span>。
+    也就是说，<b>α 等于"p 与 v 张成的平行四边形面积"除以"u 与 v 张成的面积"</b>。
+    β 同理。整个过程没有三角函数、没有开方，只有叉积和点乘 —— 这是它比"算角度"优雅的地方。
+    动画里切换到 α / β 视图，可以看到那两块被涂色的面积，以及它们的比值。
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>手算（单测组 B）</th><th class="mono">Q=(0,0,0), u=(2,0,0), v=(1,0,2), P=(2,0,1)</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">n = u × v</td><td class="mono">(0·2−0·0, 0·1−2·2, 2·0−0·1) = (0, −4, 0)</td></tr>
+        <tr><td class="mono">w = n/(n·n)</td><td class="mono">(0,−4,0)/16 = (0, −0.25, 0)</td></tr>
+        <tr><td class="mono">p = P − Q</td><td class="mono">(2, 0, 1)</td></tr>
+        <tr><td class="mono">p × v</td><td class="mono">(0·2−1·0, 1·1−2·2, 2·0−0·1) = (0, −3, 0) → α = 0.75</td></tr>
+        <tr><td class="mono">u × p</td><td class="mono">(0·1−0·0, 0·2−2·1, 2·0−0·2) = (0, −2, 0) → β = 0.5</td></tr>
+        <tr><td class="mono">验算</td><td class="mono">Q + 0.75u + 0.5v = (1.5,0,0) + (0.5,0,1) = (2,0,1) ✓</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · hit() 第二步</span>
+      <button class="animlink" data-scene="coord" data-cview="alpha">看面积比 = α</button></div>
+    <pre><code data-code="coords"></code></pre>
+  </div>
+
+  <h3>为什么不用 Cramer 法则？</h3>
+  <p>把 (u, v) 当成 2×2 基，硬解正规方程（Gram 矩阵）也能得到完全等价的公式：</p>
+  <div class="eq">
+    <span class="line">α = <span class="frac"><span>(<b>p</b>·<b>u</b>)(<b>v</b>·<b>v</b>) − (<b>p</b>·<b>v</b>)(<b>u</b>·<b>v</b>)</span><span>(<b>u</b>·<b>u</b>)(<b>v</b>·<b>v</b>) − (<b>u</b>·<b>v</b>)²</span></span></span>
+  </div>
+  <p>
+    数学上一样对，工程上差很多：它每次求交都要做 2 次<b>除法</b>、算 5 个点积；
+    而叉积版把所有除法搬进构造函数（<code>w</code> 里），<code>hit()</code> 只剩 2 次叉积 + 2 次点乘，<b>0 次除法</b>。
+    分母 <span class="m">(u·u)(v·v) − (u·v)²</span> 正是 <span class="m">|n|²</span>，所以两种写法在 <span class="m">u∥v</span> 时同时退化 ——
+    <b>"法线不为零"和"α、β 唯一"是同一件事</b>。
+  </p>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6" data-scene="interior">
+  <div class="kicker">判定 · 四行代码</div>
+  <h2><span class="h2n">06</span>内部判定：整个 Quad 只有这里认识"形状"</h2>
+  <p class="lead">求交和坐标都是仿射的，与形状无关；只有这四行编码了"平行四边形"。</p>
+  <div class="stage-slot"></div>
+  <div class="eq">
+    <span class="tagline">is_interior</span>
+    <span class="line">0 ≤ α ≤ 1 &nbsp;&nbsp;且&nbsp;&nbsp; 0 ≤ β ≤ 1</span>
+  </div>
+  <p>
+    边界取<b>闭区间</b>（<code>&gt;=</code>、<code>&lt;=</code>）。单测明确要求角点 (0,0) 和对角 (1,1) 算命中。
+    闭区间的代价是：两块相邻的平行四边形共边时，公共边会被两个物体各命中一次 —— 三角形拼网格时要小心重复着色。
+    今天只有 5 面互不相接的墙，闭区间更符合直觉。
+  </p>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · is_interior</span>
+      <button class="animlink" data-scene="interior" data-shape="tri">看形状只改这一个函数</button></div>
+    <pre><code data-code="interior"></code></pre>
+  </div>
+
+  <p>为什么它是 <code>virtual</code>？因为明天的三角形只需要覆盖这一行：</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>形状</th><th>判定式</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>平行四边形</td><td class="mono">a ∈ [0,1] &amp;&amp; b ∈ [0,1]</td><td>今天</td></tr>
+        <tr><td>三角形</td><td class="mono">a &gt; 0 &amp;&amp; b &gt; 0 &amp;&amp; a + b &lt; 1</td><td>明天，继承 Quad，只改这里</td></tr>
+        <tr><td>内切圆盘</td><td class="mono">(a−.5)² + (b−.5)² &lt; .25</td><td>换个判定式而已</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>
+    动画左半是 (α, β) 平面，右半是同一对数字对应的三维点。<b>被涂色的区域就是"会被渲染出来"的区域</b> ——
+    形状的差别只体现在这个集合上，求交、法线、包围盒一行都不用动。
+  </p>
+  <div class="note">
+    <span class="tag">概念澄清</span><br>
+    这里的 (α, β) 是<b>仿射坐标</b>（平行四边形坐标），不是三角形的重心坐标。
+    重心坐标 (λ₁, λ₂, λ₃) 满足 λ₁+λ₂+λ₃ = 1，把 λ₃ = 1−α−β 消掉之后，才得到这里的二维版本。
+    所以三角形判定里的 <code>α + β &lt; 1</code> 不是"漏了一项"，而是<b>第三个坐标必须为正</b>。
+  </div>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7" data-scene="bbox">
+  <div class="kicker">陷阱 · 今天最重要的一节</div>
+  <h2><span class="h2n">07</span>零厚度：一个只有平面才会踩的坑</h2>
+  <p class="lead">同一份代码，不加 BVH 完全正常，加上 BVH 之后五面墙全部消失。</p>
+  <div class="stage-slot"></div>
+  <p>
+    回到 Day 8 的 slab 测试：三个轴各给一段区间 <span class="m">[t₀, t₁]</span>，取交集，
+    判据是 <code>t_min &gt;= t_max</code> 就返回 false（"擦过、退化成一点"算没打中）。
+    球从来不会出问题：三个方向都有厚度，每个轴的区间都是一段<b>有长度</b>的区间。
+  </p>
+  <p>平行四边形会。当它躺在一个坐标平面上时，包围盒在该轴的厚度是 <b>0</b>。用动画里那条射线算一遍：</p>
+  <div class="card">
+    <h4>数字推演</h4>
+    <p style="margin:0 0 6px"><code>平面 y=0</code>，<code>O=(1, 3.2, 0.2)</code>，<code>d=(0, −1, 0)</code>，
+    盒子 <code>x∈[−2,2], y∈[0,0], z∈[−1.5,1.5]</code></p>
+    <div class="eq" style="margin:8px 0;font-size:16px;line-height:1.95;background:#fbfbf8">
+      <span class="line">x 轴：inv_d = +∞ → t₀ = −∞, t₁ = +∞ &nbsp;<span style="font-style:normal;font-size:.8em;color:#858c9c">（无约束）</span></span>
+      <span class="line">y 轴：t₀ = t₁ = (0 − 3.2)/(−1) = <b>3.2</b> &nbsp;<span style="font-style:normal;font-size:.8em;color:#bf5327">（退化成一点）</span></span>
+      <span class="line">z 轴：inv_d = +∞ → t₀ = −∞, t₁ = +∞</span>
+      <span class="line">交集：t_min = max(0.01, 3.2) = 3.2，t_max = min(∞, 3.2) = 3.2 → <b>3.2 ≥ 3.2 → return false</b></span>
+    </div>
+    <p style="margin:6px 0 0">而 <code>Quad::hit</code> 明明在 <b>t = 3.2</b> 命中。矛盾只来自一句话：
+    "退化成一点算不算命中"—— 几何上算，slab 判据定义成不算。</p>
+  </div>
+  <div class="warn">
+    <span class="tag">最阴险的地方</span><br>
+    不加 BVH 的时候，这个 bug <b>完全不出现</b>：盒子根本不参与求交，五面墙照常渲染。
+    一旦打开 BVH，平面几何体<b>整个消失</b>。所以验收必须两步：
+    <code>--no-bvh</code> 和默认输出必须<b>逐像素一致</b>。如果只测一种，你得到的是一个"看起来对"的渲染器。
+  </div>
+
+  <p>修法不是改判据，而是改盒子：给它<b>撑开</b>一点点。</p>
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/aabb.h · pad_to_minimums()</span>
+      <button class="animlink" data-scene="bbox" data-pad="0">对比：不撑开会怎样</button></div>
+    <pre><code data-code="pad"></code></pre>
+  </div>
+  <p>
+    方向必须是"变大"。盒子只是保守近似：变大 → 少排除几根光线（性能影响可以忽略）→ 仍然包含全部几何体 → <b>不会漏命中</b>。
+    反过来缩小，就可能漏掉真实交点 —— 这类 bug 表现为画面边缘随机缺几条像素，极难复现。
+    这是包围盒的一条铁律：<em class="q">宁可放过，不可错杀</em>。
+  </p>
+  <p>
+    <code>delta = 1e-4</code> 的选取也有讲究。场景尺度是几个单位，1e-4 远大于双精度在这个尺度上的舍入误差（约 1e-16），
+    又远小于任何看得见的几何特征。太大（比如 0.5）会让 BVH 的盒子互相重叠、剪枝变差；太小则撑不出可用区间。
+    量纲上它和被撑开的轴同单位，所以换场景尺度时应该跟着缩放 —— 今天不需要，但值得记一笔。
+  </p>
+
+  <h3>包围盒本身怎么算</h3>
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · set_bounding_box()</span>
+      <button class="animlink" data-scene="bbox" data-pad="1">看包围盒与 slab 区间</button></div>
+    <pre><code data-code="bbox"></code></pre>
+  </div>
+  <p>
+    两个对角盒子取并。为什么两条对角线就够？AABB 对每个轴<b>独立</b>取 min/max，
+    所以 <code>AABB(Q, Q+u+v)</code> 覆盖两个对角，<code>AABB(Q+u, Q+v)</code> 覆盖另外两个；
+    而平行四边形上任何一点都是四角的凸组合，凸组合的包围盒等于顶点的包围盒 —— 四个角全覆盖，整块面就全覆盖。
+  </p>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">tests/quad_test.cpp · 组 C</span>
+      <button class="animlink" data-scene="bbox" data-pad="1">对照动画读数</button></div>
+    <pre><code data-code="test"></code></pre>
+  </div>
+  <p>
+    组 C 断言三件事：撑开后厚度<b>恰好</b> 1e-4；同一个盒子能被同一条光线命中；
+    6 条射线在"裸 Quad"和"套 BVH"下结果完全一致。第三条才是真正的验收 ——
+    前两条只是把这个一致性拆成了可定位的小步。
+  </p>
+  <div class="note">
+    <span class="tag">回看 Day 8</span><br>
+    这个行为当时其实被记录过：单元测试里有一条"厚度 0 的薄片打不中"。
+    只是球永远不会产生这种盒子，所以被搁置了五天。工程里很多"已知但无害"的记录，
+    会在引入新图元的当天变成线上事故 —— <b>这就是为什么要留下那条记录</b>。
+  </div>
+</section>
+
+<!-- ============ 08 ============ -->
+<section id="s8">
+  <div class="kicker">总账 · 复习顺序</div>
+  <h2><span class="h2n">08</span>11 个公式的总账</h2>
+  <p class="lead">每一行都应该能自己推一遍，并说清它对应的失败模式。</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>代码 → 数学</th><th>动画</th><th>单测断言</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Q1</td><td><span class="mono">n = cross(u,v)</span><br><span class="mm">n = u×v</span></td><td>§3 法线</td><td class="mono">B α、β 依赖 n</td></tr>
+        <tr><td class="mono">Q2</td><td><span class="mono">normal = unit_vector(n)</span><br><span class="mm">n̂ = n/|n|</span></td><td>§3 法线</td><td class="mono">A 翻面后法线 y=+1</td></tr>
+        <tr><td class="mono">Q3</td><td><span class="mono">D = dot(normal,Q)</span><br><span class="mm">D = n̂·Q</span></td><td>§3 平面方程</td><td class="mono">A t=5</td></tr>
+        <tr><td class="mono">Q4</td><td><span class="mono">w = n / dot(n,n)</span><br><span class="mm">w = n/(n·n)</span></td><td>§5 面积比</td><td class="mono">B α=0.75</td></tr>
+        <tr><td class="mono">Q5</td><td><span class="mono">denom = dot(normal, d)</span><br><span class="mm">n̂·d</span></td><td>§4 求交</td><td class="mono">A denom=1</td></tr>
+        <tr><td class="mono">Q6</td><td><span class="mono">fabs(denom) &lt; 1e-8</span><br><span class="mm">n̂·d ≈ 0 → 平行</span></td><td>§4 平行</td><td class="mono">A 平行 → false</td></tr>
+        <tr><td class="mono">Q7</td><td><span class="mono">t = (D − dot(normal,O)) / denom</span><br><span class="mm">t = (D−n̂·O)/(n̂·d)</span></td><td>§4 窗口</td><td class="mono">A t_max=4 / 6</td></tr>
+        <tr><td class="mono">Q8</td><td><span class="mono">α = dot(w, cross(p,v))</span><br><span class="mono">β = dot(w, cross(u,p))</span></td><td>§5 面积比</td><td class="mono">A α=1.5 / β=2 超界</td></tr>
+        <tr><td class="mono">Q9</td><td><span class="mono">is_interior(α, β)</span><br><span class="mm">0 ≤ α ≤ 1 且 0 ≤ β ≤ 1</span></td><td>§6 判定</td><td class="mono">A 角点 (0,0) 命中</td></tr>
+        <tr><td class="mono">Q10</td><td><span class="mono">a &gt;= 0 &amp;&amp; a &lt;= 1 …</span><br><span class="mm">闭区间（边界算命中）</span></td><td>§6 形状切换</td><td class="mono">A 对角 (1,1) 命中</td></tr>
+        <tr><td class="mono">P1</td><td><span class="mono">pad_to_minimums()</span><br><span class="mm">厚度 &lt; δ → 两侧各 ±δ/2</span></td><td>§7 pad 开关</td><td class="mono">C 厚度 = 1e-4</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="tbl-note">"单测断言"一列只写了最有代表性的那条；完整断言共 25 条，见 <code>tests/quad_test.cpp</code>。</p>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9" data-scene="render">
+  <div class="kicker">验证 · 五面墙</div>
+  <h2><span class="h2n">09</span>把五面墙渲染出来</h2>
+  <p class="lead">相机站在开口外面，看着一个没有前墙的盒子；没有光源，光从开口漏进来。</p>
+  <div class="stage-slot"></div>
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">src/main.cpp · quad_scene()</span>
+      <button class="animlink" data-scene="render" data-faces="5">渲染整个场景</button></div>
+    <pre><code data-code="scene"></code></pre>
+  </div>
+  <p>
+    相机在 <code>(0,0,9)</code>、<code>vfov 80°</code>、对焦距离 1.0、光圈 0 —— 针孔相机，全部清晰。
+    五面墙的<b>法线都朝内</b>（可以用 §3 的右手定则验证：左墙 <code>u=(0,0,−4), v=(0,4,0)</code> ⇒ <code>n=+x</code>），
+    所以从房间内部看，每一面都是正面。开口朝 <span class="m">+z</span>，也就是朝着相机。
+  </p>
+  <p>
+    没有光源。唯一的光来自 <code>ray_color</code> 里那段天空渐变（<span class="m">(1,1,1) → (0.5,0.7,1.0)</span>），
+    从开口漏进来；地面和白墙靠一次漫反射弹射拿到颜色。所以画面偏暗、偏冷，天花板橙色在墙角有一点点溢色 ——
+    这正是 Day 3 那套 Lambertian 在此刻的真实表现，不是 bug。
+  </p>
+  <div class="note">
+    <span class="tag">画面里为什么有缝隙</span><br>
+    五块板并不是严丝合缝的盒子：左右墙在 <code>x = ±3</code>，但只从 <code>z = 1</code> 铺到 <code>z = 5</code>；
+    后墙在 <code>z = 0</code>；地板和天花板只铺 <code>x ∈ [−2, 2]</code>。于是墙角、地板两侧都露出了天空。
+    这不是渲染错误 —— 它与仓库里的 <code>gallery/day13-quads.png</code> 逐块一致。
+    作为"验证图元"的测试场景，五块互不相接的板反而更好用：一眼就能看出每块板的边界有没有落在该在的位置。
+  </div>
+  <p>
+    下面的渲染器是 C++ 代码的<b>逐行移植</b>：同样的 <span class="m">n̂</span>、<span class="m">D</span>、<span class="m">w</span>，
+    同样的两阶段求交，同样的 <code>sqrt</code> gamma，<code>max_depth</code> 取 4 以控制浏览器开销。
+    分辨率 288×162，逐帧累积采样，噪声会随时间收敛。
+  </p>
+  <div class="note">
+    <span class="tag">三个可以亲手验证的结论</span><br>
+    ① <b>面数 1→5</b>：房间一面一面搭起来，注意每加一面，画面就少一块天空。<br>
+    ② <b>关掉内部判定</b>：画面会整幅变黑。五张无限平面把天空完全封在外面，射线在平面之间来回弹射，
+    4 次弹射预算用尽也见不到光 —— 这是 <code>is_interior</code> 的另一半职责：它不只决定"墙有多大"，
+    还决定"世界是不是封闭的"。<br>
+    ③ 与 <code>gallery/day13-quads.png</code> 对照：构图、配色应一致；差异只来自采样数与浏览器浮点细节。
+  </div>
+  <p>
+    最后提醒：这个 JS 渲染器不是要替代 C++，它只是把同一组公式搬到浏览器里，让参数可以实时改。
+    真正的验收仍然是那两条：<b>单测 25 条全过</b>，以及 <b><code>--no-bvh</code> 与默认输出逐像素一致</b>。
+  </p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10">
+  <div class="kicker">自检 · 五问</div>
+  <h2><span class="h2n">10</span>如果这五题都能答，今天就算过关</h2>
+  <p class="lead">先自己写答案，再展开对照。答不上来的，回对应小节。</p>
+
+  <details>
+    <summary>如果 <code>u=(1,0,0)</code>、<code>v=(2,0,0)</code>，会发生什么？</summary>
+    <p>两条边共线，形状退化成一条线段，<code>n = u×v = 0</code>，<code>w = n/(n·n)</code> 变成 0/0 = NaN。
+    平面方程 <code>n̂·P = D</code> 也失去意义（没有唯一法线）。修复方式是在构造函数里判断
+    <code>dot(n,n)</code> 是否接近 0 并报错，而不是让 NaN 流进渲染循环。</p>
+  </details>
+
+  <details>
+    <summary>如果把 <code>D</code> 写成 <code>dot(n, Q)</code>（未归一化），但分母仍用 <code>normal</code>，t 会错多少倍？</summary>
+    <p>错 <code>|n|</code> 倍。平面方程 <code>n·P = n·Q</code> 与 <code>n̂·P = n̂·Q</code> 描述同一张平面，
+    但分子分母必须用<b>同一个尺度</b>的法线。混用会得到 <code>t' = |n|·t</code>：
+    平面位置完全错掉，而画面可能"看起来还有个盒子"。这类错误单测一抓就现形（A 组 t=5）。</p>
+  </details>
+
+  <details>
+    <summary>为什么 α 用 <code>cross(p,v)</code>，β 却用 <code>cross(u,p)</code>？都写成 <code>cross(p,·)</code> 会怎样？</summary>
+    <p>因为 <code>p×u = −βn</code>，比 <code>p×v = αn</code> 多一个负号。两条规则其实一致（p 与另一条边叉乘），
+    只是 β 需要交换一次顺序来补符号。若都写 <code>cross(p,·)</code>，会得到 −β，于是 β∈[0,1] 的点全被判成外部，
+    渲染结果是空的 —— 代码"没有语法错误"，只有数学错误。</p>
+  </details>
+
+  <details>
+    <summary>把 <code>is_interior</code> 改成 <code>a&gt;0 &amp;&amp; b&gt;0 &amp;&amp; a+b&lt;1</code>，画出来是什么？边界上的点会怎样？</summary>
+    <p>左下角那个三角形（Q、Q+u、Q+v 围成）。斜边 <code>α+β=1</code> 上的点会被判为<b>外部</b>，
+    因为用的是严格大于/小于。两个这样的三角形拼成正方形时，对角线不会被重复命中 —— 这正好是三角形网格想要的行为。
+    但今天如果直接这么改，四边形会被切成半个，且两条直角边上的点全丢。</p>
+  </details>
+
+  <details>
+    <summary>把 <code>delta</code> 改成 0.5 会怎样？改成 0 呢？</summary>
+    <p><code>delta=0</code>：等于没修，平面在 BVH 下消失（§7 的数字推演）。
+    <code>delta=0.5</code>：不会出错，但每个平面的盒子被撑成 0.5 厚的板，BVH 节点互相重叠，
+    剪枝效率下降 —— 5 个 Quad 看不出来，上千个三角形时会明显变慢。
+    正确量级是"远大于浮点误差、远小于几何特征"，1e-4 对当前场景合适。</p>
+  </details>
+</section>
+
+</article>
+
+<aside class="stage-col" id="stage-col">
+  <div class="stage" id="stage">
+    <div class="stage-head">
+      <div class="t" id="stage-title">参数化：P = Q + αu + βv<small>拖动旋转 · 滚轮缩放 · 双击重置视角</small></div>
+      <div class="head-right">
+        <button class="collapse" id="stage-toggle" title="收起 / 展开动画">收起</button>
+        <div class="idx" id="stage-idx">1 / 7</div>
+      </div>
+    </div>
+    <canvas id="stage-canvas"></canvas>
+    <div class="stage-ctrl">
+
+      <div class="ctrlpane on" data-panel="param">
+        <label class="row"><span class="m">α</span><input id="p-alpha" type="range" min="0" max="100" value="62"><b id="p-alpha-v">0.62</b></label>
+        <label class="row"><span class="m">β</span><input id="p-beta" type="range" min="0" max="100" value="55"><b id="p-beta-v">0.55</b></label>
+        <div class="row2">
+          <label class="chk"><input id="p-auto" type="checkbox" checked>自动扫描</label>
+          <span class="hint">虚线：先 αu，再 βv</span>
+        </div>
+        <div class="ro" id="ro-param"></div>
+      </div>
+
+      <div class="ctrlpane" data-panel="normal">
+        <div class="seg" data-group="nplane">
+          <button data-val="1" class="on">显示无限平面</button>
+          <button data-val="0">只显示面片</button>
+        </div>
+        <div class="ro" id="ro-normal"></div>
+      </div>
+
+      <div class="ctrlpane" data-panel="ray">
+        <div class="seg" data-group="ray">
+          <button data-val="hit" class="on">命中</button>
+          <button data-val="parallel">平行</button>
+          <button data-val="behind">背后</button>
+          <button data-val="outside">形状外</button>
+          <button data-val="window">窗口外</button>
+        </div>
+        <div class="ro" id="ro-ray"></div>
+      </div>
+
+      <div class="ctrlpane" data-panel="coord">
+        <div class="seg" data-group="cview">
+          <button data-val="alpha" class="on">α = 面积比</button>
+          <button data-val="beta">β = 面积比</button>
+          <button data-val="decomp">分解 αu + βv</button>
+        </div>
+        <div class="ro" id="ro-coord"></div>
+      </div>
+
+      <div class="ctrlpane" data-panel="interior">
+        <div class="seg" data-group="shape">
+          <button data-val="quad" class="on">平行四边形</button>
+          <button data-val="tri">三角形</button>
+          <button data-val="disk">圆盘</button>
+        </div>
+        <div class="ro" id="ro-interior"></div>
+      </div>
+
+      <div class="ctrlpane" data-panel="bbox">
+        <div class="row2" style="justify-content:flex-start;gap:14px;flex-wrap:wrap">
+          <span class="hint">pad_to_minimums</span>
+          <div class="seg" data-group="pad">
+            <button data-val="1" class="on">开</button>
+            <button data-val="0">关</button>
+          </div>
+          <span class="hint">经过</span>
+          <div class="seg" data-group="bvh">
+            <button data-val="1" class="on">BVH</button>
+            <button data-val="0">裸列表</button>
+          </div>
+        </div>
+        <div class="ro" id="ro-bbox"></div>
+      </div>
+
+      <div class="ctrlpane" data-panel="render">
+        <div class="row2" style="justify-content:flex-start;gap:10px;flex-wrap:wrap">
+          <span class="hint">面数</span>
+          <div class="seg" data-group="faces">
+            <button data-val="1">1</button><button data-val="2">2</button><button data-val="3">3</button>
+            <button data-val="4">4</button><button data-val="5" class="on">5</button>
+          </div>
+          <span class="hint">内部判定</span>
+          <div class="seg" data-group="ri">
+            <button data-val="1" class="on">开</button><button data-val="0">关</button>
+          </div>
+        </div>
+        <div class="row2">
+          <div class="seg" data-group="spp">
+            <button data-val="8">8 spp</button>
+            <button data-val="24" class="on">24 spp</button>
+            <button data-val="64">64 spp</button>
+          </div>
+          <button class="btn" id="rd-reset">重渲染</button>
+        </div>
+        <div class="ro" id="ro-render"></div>
+      </div>
+
+    </div>
+    <div class="stage-foot">
+      <span id="stage-hint">代码 ↔ 动画：滚到哪一节，舞台就切到对应实验</span>
+      <span>light · canvas 2d</span>
+    </div>
+  </div>
+</aside>
+</div>
+
+<footer>
+  <b>本篇依据</b>：仓库 <span class="files">yuki8684/cpp-renderer</span> 的
+  <span class="files">include/quad.h</span>、<span class="files">include/aabb.h</span>、
+  <span class="files">src/main.cpp</span>（quad_scene / 相机参数）、
+  <span class="files">tests/quad_test.cpp</span>（25 条断言）。
+  <code>docs/devlog.md</code> 目前只更新到 Day 9，Day 13 的推导按代码与单测重新整理，
+  所有公式都与单测里的手算值逐一核对过。
+  <br><b>动手建议</b>：先把 quad.h 的 11 处 TODO 清空，跑 <code>tests/quad_test.cpp</code> 到 25/25；
+  再跑 <code>--quads --no-bvh</code> 与默认各一次，用逐像素对比确认包围盒没漏。
+</footer>
+
+<script>
+(function(){
+'use strict';
+/* ============================================================
+   0. 向量与工具
+   ============================================================ */
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const vlen=a=>Math.sqrt(dot(a,a));
+const unit=a=>{const l=vlen(a); return l<1e-12?[0,0,0]:mul(a,1/l);};
+const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const fmt=(v,n=2)=>{const t=Math.abs(v)<Math.pow(10,-n)/2?0:v;return t.toFixed(n);};
+function vecStr(v,n=2){return '('+v.map(x=>fmt(x,n)).join(', ')+')';}
+
+function quadGeom(Q,u,v){
+  const n=cross(u,v);
+  const nn=unit(n);
+  const D=dot(nn,Q);
+  const w=mul(n,1/Math.max(dot(n,n),1e-12));
+  return {Q,u,v,n,nn,D,w,corners:[Q,add(Q,u),add(add(Q,u),v),add(Q,v)]};
+}
+
+/* ============================================================
+   1. 画布与相机
+   ============================================================ */
+const cv=document.getElementById('stage-canvas');
+const ctx=cv.getContext('2d');
+let W=560,H=392,DPR=1;
+const cam={yaw:1.12,pitch:0.34,dist:9.4,target:[0,0,0]};
+let VP={cx:0,cy:0,fpx:600};
+const DEFAULT_ZOOM=2.3;
+
+function fit(){
+  const r=cv.getBoundingClientRect();
+  if(r.width<20||r.height<20) return;
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=r.width; H=r.height;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  setViewport(W/2,H/2,H*DEFAULT_ZOOM);
+}
+function setViewport(cx,cy,fpx){VP={cx,cy,fpx};}
+
+function basis(){
+  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  const dir=[cp*Math.cos(cam.yaw), sp, cp*Math.sin(cam.yaw)];
+  const eye=add(cam.target,mul(dir,cam.dist));
+  const fwd=unit(sub(cam.target,eye));
+  let right=unit(cross(fwd,[0,1,0]));
+  if(!isFinite(right[0])||vlen(right)<1e-6) right=[1,0,0];
+  const up=cross(right,fwd);
+  return {eye,fwd,right,up};
+}
+function project(B,p){
+  const d=sub(p,B.eye);
+  const z=dot(d,B.fwd);
+  if(z<0.06) return null;
+  return {x:VP.cx+VP.fpx*dot(d,B.right)/z, y:VP.cy-VP.fpx*dot(d,B.up)/z, z};
+}
+
+/* ============================================================
+   2. 绘图原语（全部吃三维坐标）
+   ============================================================ */
+function line3(B,a,b,o={}){
+  const A=project(B,a), C=project(B,b);
+  if(!A||!C) return;
+  ctx.save();
+  ctx.globalAlpha=o.alpha==null?1:o.alpha;
+  ctx.strokeStyle=o.color||'#2b3242';
+  ctx.lineWidth=o.w||1.5;
+  ctx.lineCap='round';
+  if(o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(C.x,C.y); ctx.stroke();
+  ctx.restore();
+}
+function poly3(B,pts,o={}){
+  const P=pts.map(p=>project(B,p));
+  if(P.some(p=>!p)) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(P[0].x,P[0].y);
+  for(let i=1;i<P.length;i++) ctx.lineTo(P[i].x,P[i].y);
+  ctx.closePath();
+  ctx.globalAlpha=o.alpha==null?1:o.alpha;
+  if(o.fill){ctx.fillStyle=o.fill;ctx.fill();}
+  if(o.stroke){ctx.strokeStyle=o.stroke;ctx.lineWidth=o.w||1.6;ctx.lineJoin='round';ctx.stroke();}
+  ctx.restore();
+}
+function dot3(B,p,o={}){
+  const S=project(B,p);
+  if(!S) return;
+  const r=o.r||4.5;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(S.x,S.y,r,0,Math.PI*2);
+  ctx.fillStyle=o.fill||'#20242e'; ctx.fill();
+  if(o.stroke!==null){ctx.strokeStyle=o.stroke||'#ffffff';ctx.lineWidth=o.sw||1.8;ctx.stroke();}
+  if(o.ring){ctx.beginPath();ctx.arc(S.x,S.y,r+6,0,Math.PI*2);ctx.strokeStyle=o.ring;ctx.lineWidth=1.2;ctx.globalAlpha=.55;ctx.stroke();}
+  ctx.restore();
+  if(o.label) label3(B,p,o.label,{dx:o.dx==null?9:o.dx,dy:o.dy==null?-9:o.dy,color:o.labelColor,size:o.size});
+}
+function label3(B,p,text,o={}){
+  const S=project(B,p);
+  if(!S) return;
+  ctx.save();
+  ctx.font=(o.weight||600)+' '+(o.size||12)+'px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillStyle=o.color||'#20242e';
+  ctx.textAlign=o.align||'left';
+  ctx.textBaseline='middle';
+  const x=S.x+(o.dx||0), y=S.y+(o.dy||0);
+  if(o.bg!==false){
+    const w=ctx.measureText(text).width;
+    ctx.globalAlpha=.82; ctx.fillStyle=o.bgc||'#ffffff';
+    const bx=o.align==='right'?x-w-4:(o.align==='center'?x-w/2-4:x-4);
+    roundRect(bx,y-9,w+8,18,5); ctx.fill();
+    ctx.globalAlpha=1; ctx.fillStyle=o.color||'#20242e';
+  }
+  ctx.fillText(text,x,y);
+  ctx.restore();
+}
+function arrow3(B,a,b,o={}){
+  const A=project(B,a), C=project(B,b);
+  if(!A||!C) return;
+  const dx=C.x-A.x, dy=C.y-A.y, L=Math.hypot(dx,dy);
+  const ux=dx/(L||1), uy=dy/(L||1);
+  const hl=o.head||9, hw=o.head?o.head*.45:4.2;
+  const tip={x:C.x-ux*hl*0.35,y:C.y-uy*hl*0.35};
+  ctx.save();
+  ctx.globalAlpha=o.alpha==null?1:o.alpha;
+  ctx.strokeStyle=o.color||'#20242e';
+  ctx.fillStyle=o.color||'#20242e';
+  ctx.lineWidth=o.w||1.8; ctx.lineCap='round';
+  if(o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(C.x,C.y);
+  ctx.lineTo(C.x-ux*hl-uy*hw, C.y-uy*hl+ux*hw);
+  ctx.lineTo(C.x-ux*hl+uy*hw, C.y-uy*hl-ux*hw);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+function hud(lines,o={}){
+  const x=o.x==null?12:o.x;
+  ctx.save();
+  ctx.font='11.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+  let w=0;
+  for(const l of lines) w=Math.max(w,ctx.measureText(typeof l==='string'?l:l.t).width);
+  const lh=16.5, pw=w+18, ph=lines.length*lh+10;
+  const y=o.y==null?(o.bottom===false?12:H-ph-12):o.y;
+  ctx.globalAlpha=.9;
+  roundRect(x,y,pw,ph,8);
+  ctx.fillStyle='#ffffff'; ctx.fill();
+  ctx.strokeStyle='#e8e5dc'; ctx.lineWidth=1; ctx.stroke();
+  ctx.globalAlpha=1;
+  lines.forEach((l,i)=>{
+    const t=typeof l==='string'?l:l.t;
+    ctx.fillStyle=(typeof l==='string'?'#4d5464':(l.c||'#4d5464'));
+    ctx.font=(l.b?'600 ':'')+'11.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+    ctx.fillText(t,x+9,y+20+i*lh);
+  });
+  ctx.restore();
+}
+function badge(text,x,y,color,bg){
+  ctx.save();
+  ctx.font='600 11.5px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  const w=ctx.measureText(text).width+16;
+  roundRect(x,y,w,22,11);
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(text,x+8,y+11.5);
+  ctx.restore();
+}
+
+/* ============================================================
+   3. 全局状态
+   ============================================================ */
+const ST={
+  alpha:.62, beta:.55, auto:true,
+  rayMode:'hit',
+  cview:'alpha',
+  shape:'quad',
+  pad:1, bvh:1,
+  nplane:1,
+  faces:5, ri:1, spp:24
+};
+let cur='param';
+let activeSection=null;
+const anim={t:0};
+
+function defaultFpx(){return H*DEFAULT_ZOOM;}
+/* ============================================================
+   4. 场景几何（与仓库里的数值对应）
+   ============================================================ */
+const G_DEMO = quadGeom([-1.55,-0.78,-0.95],[3.05,0.02,0.12],[0.82,1.45,1.02]);
+const G_FLAT = quadGeom([-2,0,1.4],[4,0,0],[0,0,-2.8]);          // 射线场景：y=0 平面
+const G_COORD= quadGeom([-1.85,0,1.7],[3.6,0,0],[1.05,0,-3.0]);  // 坐标场景：斜的
+const G_BOX  = quadGeom([-2,0,1.5],[4,0,0],[0,0,-3]);            // 包围盒场景
+const G_ROOM = quadGeom([-1.8,0,1.4],[3.4,0,0],[1.0,0,-2.8]);
+
+const P3=(g,a,b)=>add(g.Q,add(mul(g.u,a),mul(g.v,b)));
+
+/* ---------- 公共绘制 ---------- */
+function fillQuad(B,g,fill,stroke,w){
+  poly3(B,g.corners,{fill,stroke,w:w==null?1.8:w});
+}
+function gridOnQuad(B,g,n,color,alpha){
+  n=n||4;
+  for(let i=0;i<=n;i++){
+    const t=i/n;
+    line3(B,add(g.Q,mul(g.u,t)),add(add(g.Q,mul(g.u,t)),g.v),{color,w:1,alpha:alpha==null?.5:alpha});
+    line3(B,add(g.Q,mul(g.v,t)),add(add(g.Q,mul(g.v,t)),g.u),{color,w:1,alpha:alpha==null?.5:alpha});
+  }
+}
+
+/* ============================================================
+   5. 七个场景
+   ============================================================ */
+const SCENES={};
+
+/* ---------- 5.1 参数化 ---------- */
+SCENES.param={
+  title:'参数化：P = Q + αu + βv',
+  cam:{yaw:1.06,pitch:0.30,dist:7.4,target:[0,0,0]},
+  draw(B){
+    const g=G_DEMO;
+    if(ST.auto){
+      ST.alpha=0.5+0.46*Math.sin(anim.t*0.55);
+      ST.beta =0.5+0.46*Math.sin(anim.t*0.83+1.15);
+    }
+    fillQuad(B,g,'rgba(44,86,201,.075)','#2c56c9',2);
+    gridOnQuad(B,g,4,'#9fb0d8',.45);
+
+    /* u / v */
+    arrow3(B,g.Q,add(g.Q,g.u),{color:'#bf5327',w:2.1});
+    arrow3(B,g.Q,add(g.Q,g.v),{color:'#26744a',w:2.1});
+    label3(B,add(g.Q,mul(g.u,.55)),'u',{color:'#bf5327',dy:16,size:13});
+    label3(B,add(g.Q,mul(g.v,.55)),'v',{color:'#26744a',dx:-12,dy:-4,size:13});
+
+    const a=ST.alpha,b=ST.beta;
+    const PU=add(g.Q,mul(g.u,a));
+    const P=P3(g,a,b);
+
+    line3(B,g.Q,PU,{color:'#bf5327',w:1.8,dash:[5,4]});
+    line3(B,PU,P,{color:'#26744a',w:1.8,dash:[5,4]});
+    line3(B,g.Q,P,{color:'#7d8494',w:1.1,dash:[2,5],alpha:.8});
+    dot3(B,PU,{r:3.2,fill:'#bf5327',stroke:'#fff',sw:1.2});
+    dot3(B,P,{r:6,fill:'#20242e',ring:'#20242e'});
+    label3(B,P,'P',{dx:10,dy:-12,size:13});
+
+    dot3(B,g.Q,{r:5,fill:'#20242e'});
+    label3(B,g.Q,'Q',{dx:-6,dy:16,size:13});
+    dot3(B,g.corners[1],{r:3.6,fill:'#fff',stroke:'#2c56c9',sw:1.6});
+    dot3(B,g.corners[3],{r:3.6,fill:'#fff',stroke:'#2c56c9',sw:1.6});
+    dot3(B,g.corners[2],{r:3.6,fill:'#fff',stroke:'#2c56c9',sw:1.6});
+
+
+    /* 同步滑块 */
+    const pa=document.getElementById('p-alpha'), pb=document.getElementById('p-beta');
+    if(ST.auto){pa.value=Math.round(a*100);pb.value=Math.round(b*100);}
+    document.getElementById('p-alpha-v').textContent=fmt(a);
+    document.getElementById('p-beta-v').textContent=fmt(b);
+
+    setRO('ro-param',
+      '<span class="k">α,β ∈ [0,1]</span>  →  在形状内\n'+
+      'P = '+vecStr(P)+'\n'+
+      'α·u = '+vecStr(mul(g.u,a))+'   β·v = '+vecStr(mul(g.v,b)));
+  }
+};
+
+/* ---------- 5.2 法线 / 平面 ---------- */
+SCENES.normal={
+  title:'法线：n = u × v，|n| 就是面积',
+  cam:{yaw:1.22,pitch:0.40,dist:9.2,target:[0,0,0]},
+  draw(B){
+    const g=G_DEMO;
+    const ext=(s,t)=>add(g.Q,add(mul(g.u,s),mul(g.v,t)));
+    if(+ST.nplane){
+      poly3(B,[ext(-.45,-.45),ext(1.45,-.45),ext(1.45,1.45),ext(-.45,1.45)],
+        {fill:'rgba(140,150,170,.06)',stroke:'#cfd4df',w:1,alpha:1});
+      for(let i=-.45;i<=1.4501;i+=.2375){
+        line3(B,ext(i,-.45),ext(i,1.45),{color:'#dfe2ea',w:1,alpha:.7});
+        line3(B,ext(-.45,i),ext(1.45,i),{color:'#dfe2ea',w:1,alpha:.7});
+      }
+    }
+    fillQuad(B,g,'rgba(44,86,201,.10)','#2c56c9',2);
+    arrow3(B,g.Q,add(g.Q,g.u),{color:'#bf5327',w:2});
+    arrow3(B,g.Q,add(g.Q,g.v),{color:'#26744a',w:2});
+    label3(B,add(g.Q,mul(g.u,.55)),'u',{color:'#bf5327',dy:16,size:13});
+    label3(B,add(g.Q,mul(g.v,.52)),'v',{color:'#26744a',dx:-12,dy:-2,size:13});
+
+    const c=add(g.Q,add(mul(g.u,.5),mul(g.v,.5)));
+    arrow3(B,c,add(c,mul(g.nn,1.9)),{color:'#7a45b5',w:2.3,head:10});
+    label3(B,add(c,mul(g.nn,1.9)),'n̂',{color:'#7a45b5',dx:6,dy:-10,size:13});
+    /* v×u 的反向提示 */
+    line3(B,c,add(c,mul(g.nn,-1.0)),{color:'#b9a6d6',w:1.4,dash:[4,4]});
+    label3(B,add(c,mul(g.nn,-1.0)),'v×u',{color:'#9a86bb',dx:-30,dy:8,size:11});
+
+    /* 面积标注 */
+    label3(B,P3(g,.32,.78),'|n| = 面积',{color:'#2c56c9',size:11.5,dx:-16,dy:0});
+
+    setRO('ro-normal',
+      'n·u = '+fmt(dot(g.n,g.u),4)+'   n·v = '+fmt(dot(g.n,g.v),4)+'\n'+
+      'n·n = '+fmt(dot(g.n,g.n),3)+'   |n| = '+fmt(vlen(g.n),3)+'（面积）\n'+
+      'w = n/(n·n) = '+vecStr(g.w,4)+'\n'+
+      '平面 ('+fmt(g.nn[0],2)+')x + ('+fmt(g.nn[1],2)+')y + ('+fmt(g.nn[2],2)+')z = '+fmt(g.D,2));
+  }
+};
+
+/* ---------- 5.3 射线求交 ---------- */
+SCENES.ray={
+  title:'射线 × 平面：t = (D − n̂·O) / (n̂·d)',
+  cam:{yaw:0.72,pitch:0.26,dist:10.4,target:[0.15,1.15,0.55]},
+  draw(B){
+    const g=G_FLAT;
+    const O=[1.6,3.2,3.2];
+    const M={
+      hit:      {target:[0.4,0,0.3],  tmax:Infinity},
+      parallel: {dir:unit([-1,0,-1]), tmax:Infinity},
+      behind:   {target:[0.4,6.4,0.3],tmax:Infinity},
+      outside:  {target:[2.6,0,1.2],  tmax:Infinity},
+      window:   {target:[0.4,0,0.3],  tmax:0.82}
+    }[ST.rayMode];
+    const d=M.dir?M.dir:sub(M.target,O);
+    const denom=dot(g.nn,d);
+    const DmO=g.D-dot(g.nn,O);
+    const parallel=Math.abs(denom)<1e-8;
+    const t=parallel?Infinity:DmO/denom;
+
+    /* 无限平面（比形状大很多） */
+    const ext=(s,q)=>add(g.Q,add(mul(g.u,s),mul(g.v,q)));
+    poly3(B,[ext(-.55,-.55),ext(1.55,-.55),ext(1.55,1.55),ext(-.55,1.55)],
+      {fill:'rgba(140,150,170,.055)',stroke:'#d7dae2',w:1});
+    fillQuad(B,g,'rgba(44,86,201,.09)','#2c56c9',2);
+    gridOnQuad(B,g,4,'#9fb0d8',.35);
+
+    /* 光线 */
+    const far=parallel?7:Math.max(t,0)+1.6;
+    const E=add(O,mul(d,far));
+    line3(B,O,E,{color:'#bf5327',w:1.6,dash:[7,5],alpha:.85});
+    /* t 窗口 */
+    if(ST.rayMode==='window'&&!parallel){
+      line3(B,add(O,mul(d,0.02)),add(O,mul(d,M.tmax)),{color:'#26744a',w:5,alpha:.28});
+      label3(B,add(O,mul(d,M.tmax*.5)),'t_max = 0.82',{color:'#26744a',size:11,dx:6,dy:-14});
+    }
+    /* 脉冲 */
+    if(!parallel&&isFinite(t)&&t>0){
+      const ph=(anim.t*0.55)%1;
+      dot3(B,add(O,mul(d,ph*t)),{r:3.4,fill:'#bf5327',stroke:null,alpha:1});
+    }else if(parallel){
+      const ph=(anim.t*0.35)%1;
+      dot3(B,add(O,mul(d,ph*6)),{r:3.4,fill:'#bf5327',stroke:null});
+    }
+
+    const hitOK=!parallel&&t>0.01&&t<M.tmax;
+    const P=hitOK?add(O,mul(d,t)):null;
+    let alpha=null,beta=null,inside=false;
+    if(P){
+      const p=sub(P,g.Q);
+      alpha=dot(g.w,cross(p,g.v));
+      beta =dot(g.w,cross(g.u,p));
+      inside=alpha>=0&&alpha<=1&&beta>=0&&beta<=1;
+    }
+    if(P){
+      dot3(B,P,{r:6,fill:inside?'#26744a':'#bf5327'});
+      label3(B,P,'t = '+fmt(t,3),{dx:10,dy:-13,size:12});
+      /* 法线 */
+      arrow3(B,P,add(P,mul(g.nn,.9)),{color:'#7a45b5',w:1.6,head:7});
+    }
+    dot3(B,O,{r:5,fill:'#20242e'});
+    label3(B,O,'O',{dx:8,dy:-11,size:13});
+    if(ST.rayMode==='outside'){
+      line3(B,g.Q,add(g.Q,mul(g.u,alpha)),{color:'#bf5327',w:1.2,dash:[3,4],alpha:.7});
+      label3(B,P3(g,Math.min(alpha,1.45),Math.max(beta,0)),'α = '+fmt(alpha)+' > 1',{color:'#bf5327',size:11,dx:6,dy:16});
+    }
+
+    const verdict = parallel?'平行 → return false'
+      : (!isFinite(t)?'无交点':'t ≤ t_min 或 t ≥ t_max → false')
+      ;
+    let vtxt;
+    if(parallel) vtxt='denom ≈ 0 → 平行，false';
+    else if(t<=0.01) vtxt='t = '+fmt(t,3)+' ≤ t_min → 背后，false';
+    else if(t>=M.tmax) vtxt='t = '+fmt(t,3)+' ≥ t_max → 窗口外，false';
+    else if(!inside) vtxt='平面命中，但 (α,β) 超界 → false';
+    else vtxt='命中 t = '+fmt(t,3)+'（α='+fmt(alpha)+', β='+fmt(beta)+'）';
+
+
+    setRO('ro-ray',
+      'denom  '+fmt(denom,4)+(parallel?'   ← |denom| < 1e-8':'')+'\n'+
+      't      '+(parallel?'—  (无解)':fmt(t,4))+'\n'+
+      'α,β    '+(P?fmt(alpha,3)+', '+fmt(beta,3):'—')+'\n'+
+      '判定   '+(inside&&hitOK?'<span class="ok">命中</span>':'<span class="no">未命中</span>')+
+      (ST.rayMode==='window'?'   （t_max 被压到 0.82）':''));
+  }
+};
+
+/* ---------- 5.4 平面内坐标 ---------- */
+SCENES.coord={
+  title:'平面内坐标：α = w·(p×v)，β = w·(u×p)',
+  cam:{yaw:1.30,pitch:0.66,dist:12.6,target:[0.15,0,0.35]},
+  draw(B){
+    const g=G_COORD;
+    const a=0.5+0.34*Math.sin(anim.t*0.45+0.6);
+    const b=0.5+0.30*Math.sin(anim.t*0.62+2.1);
+    const p3=P3(g,a,b), p=sub(p3,g.Q);
+    fillQuad(B,g,'rgba(44,86,201,.06)','#2c56c9',2);
+    gridOnQuad(B,g,4,'#a9b7d8',.4);
+    arrow3(B,g.Q,add(g.Q,g.u),{color:'#c8b6a8',w:1.4,head:7});
+    arrow3(B,g.Q,add(g.Q,g.v),{color:'#b6c9b9',w:1.4,head:7});
+
+    if(ST.cview!=='beta'){
+      /* p 与 v 张成的平行四边形 */
+      const A=g.Q, Bp=p3, Cp=add(p3,g.v), Dp=add(g.Q,g.v);
+      poly3(B,[A,Bp,Cp,Dp],{fill:'rgba(191,83,39,.16)',stroke:'#bf5327',w:1.5});
+      label3(B,lerp(Bp,Cp,.5),'p×v 面积',{color:'#bf5327',size:11,dx:-10,dy:-4});
+      arrow3(B,g.Q,p3,{color:'#20242e',w:2,head:8});
+      label3(B,lerp(g.Q,p3,.55),'p',{size:12.5,dx:6,dy:-6});
+    }
+    if(ST.cview!=='alpha'){
+      const A=g.Q, Bp=add(g.Q,g.u), Cp=add(g.Q,add(g.u,p)), Dp=p3;
+      poly3(B,[A,Bp,Cp,Dp],{fill:'rgba(38,116,74,.15)',stroke:'#26744a',w:1.5});
+      label3(B,lerp(Bp,Cp,.5),'u×p 面积',{color:'#26744a',size:11,dx:-8,dy:6});
+    }
+    if(ST.cview==='decomp'){
+      const PU=add(g.Q,mul(g.u,a));
+      line3(B,g.Q,PU,{color:'#bf5327',w:2.4,dash:[6,4]});
+      line3(B,PU,p3,{color:'#26744a',w:2.4,dash:[6,4]});
+      label3(B,lerp(g.Q,PU,.5),'α·u',{color:'#bf5327',size:11.5,dy:14});
+      label3(B,lerp(PU,p3,.5),'β·v',{color:'#26744a',size:11.5,dx:8});
+    }
+
+    dot3(B,p3,{r:6,fill:'#20242e',ring:'#20242e'});
+    label3(B,p3,'P',{dx:13,dy:-15,size:13});
+    dot3(B,g.Q,{r:4.5,fill:'#20242e'});
+    label3(B,g.Q,'Q',{dx:-6,dy:15,size:12});
+
+    const crossPV=cross(p,g.v), crossUP=cross(g.u,p);
+
+    setRO('ro-coord',
+      'p×v  = '+vecStr(crossPV)+'\n'+
+      'w·(p×v) = '+fmt(a,4)+'  = |p×v| / |n|\n'+
+      'u×p  = '+vecStr(crossUP)+'\n'+
+      'w·(u×p) = '+fmt(b,4)+'  = |u×p| / |n|\n'+
+      '验算 Q + αu + βv = '+vecStr(P3(g,a,b)));
+  }
+};
+
+/* ---------- 5.5 内部判定 ---------- */
+function inShape(a,b,shape){
+  if(shape==='quad') return a>=0&&a<=1&&b>=0&&b<=1;
+  if(shape==='tri')  return a>0&&b>0&&a+b<1;
+  if(shape==='disk') return (a-0.5)*(a-0.5)+(b-0.5)*(b-0.5)<0.25;
+  return false;
+}
+const trail=[];
+SCENES.interior={
+  title:'内部判定：0 ≤ α ≤ 1 且 0 ≤ β ≤ 1',
+  cam:{yaw:1.34,pitch:0.58,dist:7.8,target:[0.1,0,0]},
+  draw(B){
+    const g=G_ROOM;
+    const a=0.5+0.62*Math.sin(anim.t*0.47);
+    const b=0.5+0.62*Math.sin(anim.t*0.66+1.25);
+    const ok=inShape(a,b,ST.shape);
+    trail.push([a,b,ok]);
+    if(trail.length>110) trail.shift();
+
+    /* ---- 左：(α,β) 平面 ---- */
+    const side=Math.max(148,Math.min(W*0.42,H-92));
+    const ox=34, oy=Math.max(22,(H-side)/2-10);
+    const SX=x=>ox+x*side, SY=y=>oy+(1-y)*side;
+
+    ctx.save();
+    ctx.fillStyle='#fbfaf6'; ctx.strokeStyle='#e5e2d9'; ctx.lineWidth=1;
+    roundRect(ox-18,oy-14,side+34,side+28,10); ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    for(let i=0;i<=4;i++){
+      const t=i/4;
+      line2(SX(t),SY(0),SX(t),SY(1),'#eae7de',1);
+      line2(SX(0),SY(t),SX(1),SY(t),'#eae7de',1);
+    }
+    ctx.save();
+    ctx.fillStyle='rgba(44,86,201,.12)';
+    if(ST.shape==='quad') ctx.fillRect(SX(0),SY(1),side,side);
+    if(ST.shape==='tri'){
+      ctx.beginPath();ctx.moveTo(SX(0),SY(0));ctx.lineTo(SX(1),SY(0));ctx.lineTo(SX(0),SY(1));ctx.closePath();ctx.fill();
+    }
+    if(ST.shape==='disk'){
+      ctx.beginPath();ctx.arc(SX(.5),SY(.5),side*.5,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+
+    line2(SX(0),SY(0),SX(1.06),SY(0),'#5d6577',1.4);
+    line2(SX(0),SY(0),SX(0),SY(1.06),'#5d6577',1.4);
+    ctx.save();
+    ctx.strokeStyle='#2c56c9';ctx.lineWidth=1.2;ctx.globalAlpha=.55;
+    ctx.strokeRect(SX(0),SY(1),side,side);
+    ctx.restore();
+
+    ctx.save();
+    ctx.font='10.5px ui-monospace,Menlo,Consolas,monospace';
+    ctx.fillStyle='#858c9c';ctx.textAlign='center';
+    ctx.fillText('0',SX(0),SY(0)+14); ctx.fillText('1',SX(1),SY(0)+14);
+    ctx.textAlign='right';
+    ctx.fillText('0',SX(0)-6,SY(0)+4); ctx.fillText('1',SX(0)-6,SY(1)+4);
+    ctx.restore();
+
+    ctx.save();
+    ctx.font='italic 13px Cambria,Georgia,serif';ctx.fillStyle='#4d5464';
+    ctx.textAlign='center';
+    ctx.fillText('α',SX(.5),SY(0)+30);
+    ctx.save();
+    ctx.translate(SX(0)-24,SY(.5));ctx.rotate(-Math.PI/2);
+    ctx.fillText('β',0,0);
+    ctx.restore();
+    ctx.restore();
+
+    /* 轨迹 */
+    ctx.save();
+    ctx.beginPath();ctx.rect(SX(0)-1,SY(1)-1,side+2,side+2);ctx.clip();
+    for(let i=0;i<trail.length;i++){
+      const tp=trail[i], k=i/trail.length;
+      ctx.globalAlpha=k*.45;
+      ctx.fillStyle=tp[2]?'#26744a':'#bf5327';
+      ctx.beginPath();ctx.arc(SX(tp[0]),SY(tp[1]),1.7,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();ctx.arc(SX(a),SY(b),5.5,0,Math.PI*2);
+    ctx.fillStyle=ok?'#26744a':'#bf5327';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    ctx.restore();
+
+    ctx.save();
+    ctx.font='600 11px ui-monospace,Menlo,Consolas,monospace';
+    ctx.textAlign='left';
+    ctx.fillStyle=ok?'#26744a':'#bf5327';
+    ctx.fillText('('+fmt(a)+', '+fmt(b)+')  '+(ok?'inside':'outside'),ox-4,oy+side+34);
+    ctx.restore();
+
+    /* ---- 右：同一对 (α,β) 的三维位置 ---- */
+    const cx=ox+side+34+(W-(ox+side+34))/2;
+    setViewport(cx,H*0.52,side*1.9);
+    const B2=basis();
+    poly3(B2,g.corners,{fill:'rgba(44,86,201,.10)','stroke':'#2c56c9',w:1.8});
+    if(ST.shape==='tri')  poly3(B2,[g.Q,g.corners[1],g.corners[3]],{fill:'rgba(44,86,201,.16)',stroke:'#2c56c9',w:1.4});
+    if(ST.shape==='disk'){
+      const pts=[];
+      for(let i=0;i<40;i++){
+        const th=i/40*Math.PI*2;
+        pts.push(P3(g,.5+.5*Math.cos(th),.5+.5*Math.sin(th)));
+      }
+      poly3(B2,pts,{fill:'rgba(44,86,201,.16)',stroke:'#2c56c9',w:1.4});
+    }
+    const p3=P3(g,a,b);
+    dot3(B2,p3,{r:5.5,fill:ok?'#26744a':'#bf5327',ring:ok?'#26744a':'#bf5327'});
+    label3(B2,p3,'P',{dx:9,dy:-11,size:12});
+    dot3(B2,g.Q,{r:3.5,fill:'#20242e',stroke:null});
+    ctx.save();
+    ctx.font='11px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillStyle='#9aa1af';ctx.textAlign='center';
+    ctx.fillText('同一对 (α,β) 的落点',cx,H-12);
+    ctx.restore();
+    setViewport(W/2,H/2,H*DEFAULT_ZOOM);
+
+    const label={quad:'0≤α≤1 && 0≤β≤1',tri:'α>0 && β>0 && α+β<1',disk:'(α−.5)²+(β−.5)²<.25'}[ST.shape];
+    setRO('ro-interior',
+      '(α, β) = ('+fmt(a)+', '+fmt(b)+')\n'+
+      '判定式  '+label+'\n'+
+      'is_interior → '+(ok?'<span class="ok">true</span>':'<span class="no">false</span>')+'\n'+
+      '形状只改这一个函数，其余全部复用');
+  }
+};
+function line2(x1,y1,x2,y2,color,w,alpha){
+  ctx.save();
+  ctx.strokeStyle=color;ctx.lineWidth=w;ctx.globalAlpha=alpha==null?1:alpha;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- 5.6 零厚度包围盒 ---------- */
+function slabRows(O,d,box){
+  const rows=[]; let tmin=-Infinity, tmax=Infinity;
+  for(let i=0;i<3;i++){
+    const inv=1/d[i];
+    let t0=(box.min[i]-O[i])*inv, t1=(box.max[i]-O[i])*inv;
+    if(inv<0){const s=t0;t0=t1;t1=s;}
+    tmin=Math.max(tmin,t0); tmax=Math.min(tmax,t1);
+    rows.push([t0,t1]);
+  }
+  return {rows,tmin,tmax,hit:tmin<tmax};
+}
+SCENES.bbox={
+  title:'零厚度包围盒：slab 区间退化成一点',
+  cam:{yaw:1.14,pitch:0.12,dist:8.6,target:[0.3,0.8,0.1]},
+  draw(B){
+    const g=G_BOX;
+    const O=[1,3.2,0.2], d=[0,-1,0];
+    const pad=+ST.pad?1e-4:0;
+    const box={min:[-2,-pad/2,-1.5],max:[2,pad/2,1.5]};
+    const res=slabRows(O,d,box);
+    const vis=+ST.pad?0.26:0;
+
+    /* ---------- 三维：面片、盒子、光线 ---------- */
+    setViewport(W*0.44,H*0.33,Math.min(H*1.1,W*0.66));
+    const B3=basis();
+    poly3(B3,[[-2.9,-0.42,-1.8],[2.9,-0.42,-1.8],[2.9,-0.42,2.0],[-2.9,-0.42,2.0]],
+      {fill:'rgba(150,158,172,.07)',stroke:'#e2dfd6',w:1});
+    fillQuad(B3,g,'rgba(44,86,201,.22)','#2c56c9',2);
+    gridOnQuad(B3,g,4,'#8fa2cc',.5);
+
+    const cc=[];
+    for(let i=0;i<2;i++)for(let j=0;j<2;j++)for(let k=0;k<2;k++)
+      cc.push([i?box.max[0]:box.min[0], j?vis:-vis, k?box.max[2]:box.min[2]]);
+    const ix=(i,j,k)=>i*4+j*2+k;
+    const edges=[];
+    for(let i=0;i<2;i++)for(let j=0;j<2;j++)for(let k=0;k<2;k++){
+      if(i===0) edges.push([ix(i,j,k),ix(1,j,k)]);
+      if(j===0) edges.push([ix(i,j,k),ix(i,1,k)]);
+      if(k===0) edges.push([ix(i,j,k),ix(i,j,1)]);
+    }
+    for(const e of edges) line3(B3,cc[e[0]],cc[e[1]],{color:'#7a45b5',w:1.2,alpha:.55});
+    if(+ST.pad){
+      poly3(B3,[cc[ix(0,1,0)],cc[ix(0,1,1)],cc[ix(1,1,1)],cc[ix(1,1,0)]],{fill:'rgba(122,69,181,.10)'});
+      poly3(B3,[cc[ix(0,0,0)],cc[ix(0,0,1)],cc[ix(1,0,1)],cc[ix(1,0,0)]],{fill:'rgba(122,69,181,.10)'});
+    }
+
+    line3(B3,[1,2.95,0.2],[1,-0.95,0.2],{color:'#bf5327',w:1.6,dash:[6,4],alpha:.9});
+    dot3(B3,O,{r:4,fill:'#20242e',stroke:null});
+    label3(B3,O,'O',{dx:9,dy:11,size:11});
+    dot3(B3,[1,0,0.2],{r:5,fill:res.hit?'#26744a':'#bf5327'});
+    label3(B3,[1,0,0.2],'t = 3.2',{dx:9,dy:13,size:10.5});
+
+    badge(+ST.bvh?(res.hit?'BVH：命中':'BVH：跳过（未命中）'):'裸列表：命中（盒子不参与）',
+          12,10,res.hit?'#26744a':'#bf5327',res.hit?'#eef7f1':'#fdf1ec');
+    ctx.save();
+    ctx.font='10.5px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillStyle='#9aa1af';
+    ctx.fillText('盒子厚度已放大，真实厚度 '+fmt(pad,5),12,H*0.49);
+    ctx.restore();
+
+    /* ---------- t 轴 ---------- */
+    const AX={x0:58,x1:W-16};
+    const TA=2.95, TB=3.45;
+    const TX=v=>AX.x0+(v-TA)/(TB-TA)*(AX.x1-AX.x0);
+    const base=H*0.56;
+
+    ctx.save();
+    ctx.font='10.5px ui-monospace,Menlo,Consolas,monospace';
+    ctx.fillStyle='#858c9c';ctx.textAlign='left';
+    ctx.fillText('t 轴',10,base+3);
+    ctx.textAlign='right';
+    ctx.fillStyle=res.hit?'#26744a':'#bf5327';
+    ctx.fillText(res.hit?'交集非空 → 窄相求交':'t_min ≥ t_max → return false',AX.x1,base+3);
+    ctx.restore();
+
+    /* t=3.2 参考线 */
+    line2(TX(3.2),base+8,TX(3.2),base+86,'#e0c9bd',1);
+    labelT('3.2',TX(3.2),base+99,'#bf5327');
+
+    const rows=[['x',res.rows[0]],['y',res.rows[1]],['z',res.rows[2]]];
+    rows.forEach((r,i)=>{
+      const y=base+20+i*18;
+      ctx.save();
+      ctx.font='10.5px ui-monospace,Menlo,Consolas,monospace';
+      ctx.fillStyle='#4d5464';ctx.textAlign='right';
+      ctx.fillText(r[0],44,y+3.5);
+      ctx.restore();
+      line2(AX.x0,y,AX.x1,y,'#f0ede4',1);
+
+      const a=r[1][0], b=r[1][1];
+      if(a===b){
+        ctx.save();
+        ctx.fillStyle='#bf5327';
+        ctx.beginPath();ctx.arc(TX(clamp(a,TA,TB)),y,4,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle='#fff';ctx.lineWidth=1.4;ctx.stroke();
+        ctx.restore();
+        ctx.save();
+        ctx.font='9.5px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+        ctx.fillStyle='#bf5327';ctx.textAlign='left';
+        ctx.fillText('退化成一点',TX(clamp(a,TA,TB))+8,y+3);
+        ctx.restore();
+      }else{
+        const aa=Math.max(a,TA), bb=Math.min(b,TB);
+        if(bb>aa) line2(TX(aa),y,TX(bb),y,'#7a45b5',5,.55);
+        if(a===-Infinity) arrowEnd(AX.x0,y,'left');
+        if(b===Infinity) arrowEnd(AX.x1,y,'right');
+      }
+    });
+
+    const yj=base+80;
+    ctx.save();
+    ctx.font='11px ui-monospace,Menlo,Consolas,monospace';
+    ctx.fillStyle='#4d5464';ctx.textAlign='right';ctx.fillText('∩',44,yj+3.5);
+    ctx.restore();
+    line2(AX.x0,yj,AX.x1,yj,'#f0ede4',1);
+    if(res.hit){
+      line2(TX(Math.max(res.tmin,TA)),yj,TX(Math.min(res.tmax,TB)),yj,'#26744a',6,.7);
+    }else{
+      ctx.save();
+      ctx.strokeStyle='#bf5327';ctx.lineWidth=2;
+      const x=TX(clamp(res.tmin,TA,TB));
+      ctx.beginPath();ctx.moveTo(x-4,yj-4);ctx.lineTo(x+4,yj+4);ctx.moveTo(x+4,yj-4);ctx.lineTo(x-4,yj+4);ctx.stroke();
+      ctx.restore();
+    }
+
+    [3.0,3.1,3.2,3.3,3.4].forEach(v=>{
+      line2(TX(v),base+8,TX(v),base+84,'#e5e2d9',1,.7);
+      if(v!==3.2) labelT(v.toFixed(1),TX(v),base+99);
+    });
+    setViewport(W/2,H/2,H*DEFAULT_ZOOM);
+
+    setRO('ro-bbox',
+      't_y  '+(pad===0?'[3.200, 3.200] ← 退化成一点':'['+fmt(res.rows[1][0],5)+', '+fmt(res.rows[1][1],5)+']')+'\n'+
+      't_min '+fmt(res.tmin,5)+'   t_max '+fmt(res.tmax,5)+'\n'+
+      'AABB::hit → '+(res.hit?'<span class="ok">true</span>':'<span class="no">false</span>')+
+      '   Quad::hit → <span class="ok">命中</span>\n'+
+      (res.hit?'':'<span class="k">裸列表不测盒子，所以画面仍然正常</span>'));
+  }
+};
+function arrowEnd(x,y,dir){
+  ctx.save();
+  ctx.strokeStyle='#b9b2a4';ctx.lineWidth=1.2;
+  ctx.beginPath();
+  ctx.moveTo(x,y-3);ctx.lineTo(x+(dir==='left'?-5:5),y);ctx.lineTo(x,y+3);
+  ctx.stroke();
+  ctx.restore();
+}
+function labelT(text,x,y,color){
+  ctx.save();
+  ctx.font='10.5px ui-monospace,Menlo,Consolas,monospace';
+  ctx.fillStyle=color||'#9aa1af';ctx.textAlign='center';
+  ctx.fillText(text,x,y);ctx.restore();
+}
+/* ============================================================
+   6. quad_scene 的实时渲染（C++ 代码的逐行移植）
+   ============================================================ */
+const RQ=[
+  {Q:[-3,-2,5],u:[0,0,-4],v:[0,4,0],col:[0.65,0.05,0.05]}, // 左墙
+  {Q:[-2,-2,0],u:[4,0,0], v:[0,4,0],col:[0.12,0.45,0.15]}, // 后墙
+  {Q:[ 3,-2,1],u:[0,0,4], v:[0,4,0],col:[0.20,0.20,1.00]}, // 右墙
+  {Q:[-2, 3,1],u:[4,0,0], v:[0,0,4],col:[1.00,0.50,0.00]}, // 天花板
+  {Q:[-2,-3,5],u:[4,0,0], v:[0,0,-4],col:[0.73,0.73,0.73]} // 地板
+].map(q=>Object.assign({},q,quadGeom(q.Q,q.u,q.v)));
+
+const RCAM=(()=>{
+  const lookfrom=[0,0,9], vup=[0,1,0];
+  const w=unit(sub(lookfrom,[0,0,0]));
+  const u=unit(cross(vup,w));
+  const vv=cross(w,u);
+  const vh=2*Math.tan(80*Math.PI/360)*1.0;
+  const vw=(16/9)*vh;
+  const ll=add(add(add(lookfrom,mul(u,-vw/2)),mul(vv,-vh/2)),mul(w,-1.0));
+  return {origin:lookfrom,ll,h:mul(u,vw),v:mul(vv,vh)};
+})();
+
+const RW=288,RH=162;
+const acc=new Float32Array(RW*RH*3);
+const cnt=new Int32Array(RW*RH);
+const off=document.createElement('canvas'); off.width=RW; off.height=RH;
+const octx=off.getContext('2d');
+let img=octx.createImageData(RW,RH);
+let cursor=0, complete=false, lastBlit=0;
+let ACTIVE=RQ;
+
+function resetRender(){
+  acc.fill(0); cnt.fill(0); cursor=0; complete=false;
+  ACTIVE=RQ.slice(0,ST.faces);
+  img=octx.createImageData(RW,RH);
+  for(let i=0;i<RW*RH;i++){
+    img.data[i*4]=246; img.data[i*4+1]=245; img.data[i*4+2]=241; img.data[i*4+3]=255;
+  }
+}
+function randUnit(){
+  const z=1-2*Math.random();
+  const r=Math.sqrt(Math.max(0,1-z*z));
+  const phi=2*Math.PI*Math.random();
+  return [r*Math.cos(phi), r*Math.sin(phi), z];
+}
+function trace(o,d,depth){
+  if(depth<=0) return [0,0,0];
+  let best=null, bt=Infinity;
+  for(let qi=0;qi<ACTIVE.length;qi++){
+    const q=ACTIVE[qi];
+    const denom=dot(q.nn,d);
+    if(Math.abs(denom)<1e-8) continue;
+    const t=(q.D-dot(q.nn,o))/denom;
+    if(t<=0.01||t>=bt) continue;
+    const p=[o[0]+d[0]*t,o[1]+d[1]*t,o[2]+d[2]*t];
+    if(+ST.ri){
+      const pp=sub(p,q.Q);
+      const a=dot(q.w,cross(pp,q.v));
+      const b=dot(q.w,cross(q.u,pp));
+      if(!(a>=0&&a<=1&&b>=0&&b<=1)) continue;
+    }
+    const n=dot(d,q.nn)<0?q.nn:mul(q.nn,-1);
+    best={p,n,col:q.col}; bt=t;
+  }
+  if(!best){
+    const u=unit(d);
+    const t=0.5*(u[1]+1);
+    return [(1-t)+t*0.5,(1-t)+t*0.7,(1-t)+t*1.0];
+  }
+  let dir=add(best.n,randUnit());
+  if(vlen(dir)<1e-6) dir=best.n;
+  const c=trace(best.p,dir,depth-1);
+  return [best.col[0]*c[0],best.col[1]*c[1],best.col[2]*c[2]];
+}
+function renderPixel(pi){
+  const i=pi%RW, row=(pi/RW)|0;
+  const jj=RH-1-row;
+  const s=(i+Math.random())/RW;
+  const t=(jj+Math.random())/RH;
+  const d=sub(add(add(RCAM.ll,mul(RCAM.h,s)),mul(RCAM.v,t)),RCAM.origin);
+  const c=trace(RCAM.origin,d,4);
+  const k=pi*3;
+  acc[k]+=c[0]; acc[k+1]+=c[1]; acc[k+2]+=c[2];
+  cnt[pi]++;
+}
+function stepRender(budget){
+  const t0=performance.now();
+  while(performance.now()-t0<budget){
+    if(complete) return;
+    if(cursor===0 && cnt[0]>=ST.spp){complete=true;return;}
+    renderPixel(cursor);
+    cursor++;
+    if(cursor>=RW*RH){
+      cursor=0;
+      if(cnt[0]>=ST.spp) complete=true;
+    }
+  }
+}
+function blit(force){
+  const now=performance.now();
+  if(!force&&now-lastBlit<90) return;
+  lastBlit=now;
+  const d=img.data;
+  for(let i=0;i<RW*RH;i++){
+    const n=cnt[i];
+    const k=i*3, o=i*4;
+    if(!n){d[o]=246;d[o+1]=245;d[o+2]=241;d[o+3]=255;continue;}
+    for(let c=0;c<3;c++){
+      const v=Math.min(0.999,Math.sqrt(Math.max(0,acc[k+c]/n)));
+      d[o+c]=(v*255.999)|0;
+    }
+    d[o+3]=255;
+  }
+  octx.putImageData(img,0,0);
+  const aw=W-22, ah=H-74;
+  const sc=Math.min(aw/RW,ah/RH);
+  const dw=RW*sc, dh=RH*sc, dx=(W-dw)/2, dy=(H-74-dh)/2+8;
+  ctx.save();
+  ctx.fillStyle='#f6f5f1';
+  ctx.fillRect(dx-1,dy-1,dw+2,dh+2);
+  ctx.imageSmoothingEnabled=true;
+  ctx.drawImage(off,dx,dy,dw,dh);
+  ctx.strokeStyle='#e5e2d9';ctx.lineWidth=1;ctx.strokeRect(dx-.5,dy-.5,dw+1,dh+1);
+  if(!+ST.ri) badge('is_interior = off',dx+8,dy+8,'#bf5327','rgba(253,241,236,.94)');
+  ctx.font='10.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+  ctx.fillStyle='#9aa1af';ctx.textAlign='center';
+  ctx.fillText(RW+' × '+RH+'   ·   '+((cnt[0]||0))+' / '+ST.spp+' spp   ·   '+ST.faces+' / 5 面   ·   '+(complete?'已收敛':'累积中'),
+               W/2, H-14);
+  ctx.restore();
+}
+SCENES.render={
+  title:'quad_scene：五面墙，相机 (0,0,9)',
+  draw(){ stepRender(10); blit(true); }
+};
+/* ============================================================
+   7. 代码切片（与仓库文件逐行对应）
+   ============================================================ */
+const CODES={
+ctor:`Quad(const Point3& Q, const Vec3& u, const Vec3& v,
+     std::shared_ptr<Material> mat)
+    : Q(Q), u(u), v(v), mat(mat) {
+
+    Vec3   n = cross(u, v);        // Q1 未归一化的法线
+    normal   = unit_vector(n);     // Q2 单位法线（HitRecord 要求）
+    D        = dot(normal, Q);     // Q3 平面常数：normal·P = D
+    w        = n / dot(n, n);      // Q4 ⚠️ 分母是 n·n，不是 |n|
+
+    set_bounding_box();
+}`,
+intersect:`bool hit(const Ray& r, double t_min, double t_max,
+         HitRecord& rec) const override {
+
+    // ---------- 第 1 步：射线 × 无限平面 ----------
+    double denom = dot(normal, r.direction());          // Q5
+
+    // ⚠️ 要取绝对值：光线也可以朝平面的反方向平行
+    if (std::fabs(denom) < 1e-8) return false;          // Q6
+
+    double t = (D - dot(normal, r.origin())) / denom;   // Q7
+    if (t <= t_min || t >= t_max) return false;
+
+    // ---------- 第 2 步：交点落在平行四边形里面吗？ ----------
+    Point3 intersection = r.at(t);`,
+coords:`    Vec3   p     = intersection - Q;
+    double alpha = dot(w, cross(p, v));   // Q8 ⚠️ cross(p, v)
+    double beta  = dot(w, cross(u, p));   // Q8 ⚠️ cross(u, p)
+
+    if (!is_interior(alpha, beta)) return false;   // Q9
+
+    // ---------- 第 3 步：命中，填记录单 ----------
+    rec.t   = t;
+    rec.p   = intersection;
+    rec.mat = mat;
+    rec.set_face_normal(r, normal);   // 翻到朝向光线的一侧
+    return true;`,
+interior:`virtual bool is_interior(double a, double b) const {
+    return a >= 0.0 && a <= 1.0 && b >= 0.0 && b <= 1.0;
+}
+
+// 明天的三角形只覆盖这一行：
+//   return a > 0.0 && b > 0.0 && a + b < 1.0;
+// 求交、法线、包围盒全部复用 —— 这就是它被写成 virtual 的原因。`,
+pad:`void pad_to_minimums() {
+    const double delta = 0.0001;
+    for (int i = 0; i < 3; ++i) {
+        if (maximum[i] - minimum[i] < delta) {
+            minimum[i] -= delta / 2.0;
+            maximum[i] += delta / 2.0;
+        }
+    }
+}`,
+bbox:`void set_bounding_box() {
+    // 四个角：Q, Q+u, Q+v, Q+u+v
+    // 包围盒 = 两个对角点各形成的盒子之并
+    AABB diagonal1(Q, Q + u + v);
+    AABB diagonal2(Q + u, Q + v);
+    bbox = AABB::surrounding(diagonal1, diagonal2);
+}`,
+scene:`// 左墙
+world.add(std::make_shared<Quad>(Point3(-3, -2, 5),
+                                 Vec3(0, 0, -4), Vec3(0, 4, 0), red));
+// 后墙
+world.add(std::make_shared<Quad>(Point3(-2, -2, 0),
+                                 Vec3(4, 0, 0),  Vec3(0, 4, 0), green));
+// 右墙
+world.add(std::make_shared<Quad>(Point3( 3, -2, 1),
+                                 Vec3(0, 0, 4),  Vec3(0, 4, 0), blue));
+// 天花板
+world.add(std::make_shared<Quad>(Point3(-2, 3, 1),
+                                 Vec3(4, 0, 0),  Vec3(0, 0, 4), orange));
+// 地板
+world.add(std::make_shared<Quad>(Point3(-2, -3, 5),
+                                 Vec3(4, 0, 0),  Vec3(0, 0, -4), white));`,
+test:`AABB box;
+check("C 能算出包围盒", qs.bounding_box(box), true);
+
+// 完全躺在 y=0 平面上 → 原始厚度 0，撑开后应为 0.0001
+check_near("C 包围盒 y 厚度被撑开到 0.0001",
+           box.maximum.y() - box.minimum.y(), 0.0001, 1e-9);
+
+// 撑开后的盒子必须【能被打中】—— 否则 BVH 会错误跳过它
+check("C 包围盒可被光线命中",
+      box.hit(Ray(Point3(2, 5, 1), Vec3(0, -1, 0)),
+              0.001, infinity), true);
+
+// 同一批射线，裸 Quad 与套了 BVH 必须给出完全一致的结果
+check("C 裸 Quad 与 BVH 结果一致（6 条射线）", agree == total, true);`
+};
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function highlightCpp(src){
+  const re=/(\/\/[^\n]*)|("(?:[^"\\]|\\.)*")|(\b\d+\.?\d*(?:[eE][-+]?\d+)?\b)|(\b(?:bool|double|float|int|void|class|struct|public|private|protected|virtual|override|const|return|if|else|for|while|auto|static|inline|using|namespace|std|true|false|nullptr|shared_ptr|make_shared|new|delete)\b)|(\b[A-Za-z_]\w*(?=\())/g;
+  let out='', last=0, m;
+  while((m=re.exec(src))){
+    out+=esc(src.slice(last,m.index));
+    const t=m[0];
+    let cls='';
+    if(m[1]) cls='c-com';
+    else if(m[2]) cls='c-str';
+    else if(m[3]) cls='c-num';
+    else if(m[4]) cls='c-kw';
+    else if(m[5]) cls='c-fn';
+    out+='<span class="'+cls+'">'+esc(t)+'</span>';
+    last=m.index+t.length;
+  }
+  return out+esc(src.slice(last));
+}
+document.querySelectorAll('pre code[data-code]').forEach(el=>{
+  const src=CODES[el.dataset.code];
+  if(src) el.innerHTML=highlightCpp(src);
+});
+
+/* ============================================================
+   8. DOM 小工具与绑定
+   ============================================================ */
+function setRO(id,html){
+  const el=document.getElementById(id);
+  if(!el) return;
+  if(el.__h!==html){el.innerHTML=html.replace(/\n/g,'<br>');el.__h=html;}
+}
+function syncSeg(group,val){
+  const seg=document.querySelector('.seg[data-group="'+group+'"]');
+  if(!seg) return;
+  seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.val===String(val)));
+}
+const KEYMAP={nplane:'nplane',ray:'rayMode',cview:'cview',shape:'shape',pad:'pad',bvh:'bvh',faces:'faces',ri:'ri',spp:'spp'};
+const NUMGRP={pad:1,bvh:1,faces:1,ri:1,spp:1,nplane:1};
+
+document.querySelectorAll('.seg').forEach(seg=>{
+  seg.addEventListener('click',e=>{
+    const b=e.target.closest('button');
+    if(!b) return;
+    const g=seg.dataset.group, raw=b.dataset.val;
+    seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    ST[KEYMAP[g]||g]=NUMGRP[g]?+raw:raw;
+    if(g==='faces'||g==='ri'||g==='spp') resetRender();
+  });
+});
+
+const pa=document.getElementById('p-alpha'), pb=document.getElementById('p-beta');
+pa.addEventListener('input',()=>{ST.alpha=+pa.value/100;ST.auto=false;document.getElementById('p-auto').checked=false;});
+pb.addEventListener('input',()=>{ST.beta=+pb.value/100;ST.auto=false;document.getElementById('p-auto').checked=false;});
+document.getElementById('p-auto').addEventListener('change',e=>{ST.auto=e.target.checked;});
+document.getElementById('rd-reset').addEventListener('click',()=>resetRender());
+
+document.querySelectorAll('.animlink').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const sc=b.dataset.scene;
+    if(b.dataset.ray){ST.rayMode=b.dataset.ray;syncSeg('ray',b.dataset.ray);}
+    if(b.dataset.shape){ST.shape=b.dataset.shape;syncSeg('shape',b.dataset.shape);}
+    if(b.dataset.cview){ST.cview=b.dataset.cview;syncSeg('cview',b.dataset.cview);}
+    if(b.dataset.pad!=null){ST.pad=+b.dataset.pad;syncSeg('pad',b.dataset.pad);}
+    if(b.dataset.faces){ST.faces=+b.dataset.faces;syncSeg('faces',b.dataset.faces);resetRender();}
+    activeSection=b.closest('section[data-scene]');
+    setScene(sc,true);
+  });
+});
+
+/* ============================================================
+   9. 场景切换 / 舞台搬家
+   ============================================================ */
+const ORDER=['param','normal','ray','coord','interior','bbox','render'];
+const SUB='<small>拖动旋转 · 滚轮缩放 · 双击重置视角</small>';
+
+function setScene(name,force){
+  if(!SCENES[name]) return;
+  if(cur===name&&!force){placeStage();return;}
+  cur=name;
+  const S=SCENES[name];
+  if(S.cam){
+    cam.yaw=S.cam.yaw;cam.pitch=S.cam.pitch;cam.dist=S.cam.dist;
+    cam.target=S.cam.target.slice();
+  }
+  document.querySelectorAll('.ctrlpane').forEach(p=>p.classList.toggle('on',p.dataset.panel===name));
+  document.getElementById('stage-title').innerHTML=S.title+SUB;
+  document.getElementById('stage-idx').textContent=(ORDER.indexOf(name)+1)+' / '+ORDER.length;
+  if(name==='render') resetRender();
+  if(name!=='interior') trail.length=0;
+  placeStage();
+  fit();
+}
+function placeStage(){
+  const stage=document.getElementById('stage');
+  const targetId=window.innerWidth<1180?'mobile-stage-slot':'stage-col';
+  const target=document.getElementById(targetId);
+  if(target&&stage.parentElement!==target) target.appendChild(stage);
+  requestAnimationFrame(fit);
+}
+
+function updateActive(){
+  const line=window.innerHeight*0.30;
+  let best=null, bestD=Infinity;
+  document.querySelectorAll('section[data-scene]').forEach(sec=>{
+    const r=sec.getBoundingClientRect();
+    let d;
+    if(r.top<=line&&r.bottom>=line) d=0;
+    else d=Math.min(Math.abs(r.top-line),Math.abs(r.bottom-line));
+    if(d<bestD){bestD=d;best=sec;}
+  });
+  if(best&&best!==activeSection){
+    activeSection=best;
+    setScene(best.dataset.scene);
+  }
+}
+let scrollTick=false;
+window.addEventListener('scroll',()=>{
+  if(scrollTick) return;
+  scrollTick=true;
+  requestAnimationFrame(()=>{scrollTick=false;updateActive();});
+},{passive:true});
+activeSection=document.querySelector('section[data-scene]');
+
+document.getElementById('stage-toggle').addEventListener('click',e=>{
+  const st=document.getElementById('stage');
+  st.classList.toggle('collapsed');
+  const on=st.classList.contains('collapsed');
+  e.currentTarget.textContent=on?'展开':'收起';
+  requestAnimationFrame(fit);
+});
+
+/* ============================================================
+   10. 交互与主循环
+   ============================================================ */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  drag={x:e.clientX,y:e.clientY};
+  try{cv.setPointerCapture(e.pointerId);}catch(_){}
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  cam.yaw+=(e.clientX-drag.x)*0.0085;
+  cam.pitch=clamp(cam.pitch-(e.clientY-drag.y)*0.0062,-1.32,1.32);
+  drag={x:e.clientX,y:e.clientY};
+});
+['pointerup','pointercancel','pointerleave'].forEach(ev=>cv.addEventListener(ev,()=>{drag=null;}));
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  cam.dist=clamp(cam.dist*Math.exp(e.deltaY*0.0012),3.2,26);
+},{passive:false});
+cv.addEventListener('dblclick',()=>{
+  const S=SCENES[cur];
+  if(S&&S.cam){
+    cam.yaw=S.cam.yaw;cam.pitch=S.cam.pitch;cam.dist=S.cam.dist;
+    cam.target=S.cam.target.slice();
+  }
+});
+
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);
+  last=now;
+  anim.t+=dt;
+  if(!document.hidden){
+    ctx.clearRect(0,0,W,H);
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#ffffff');
+    bg.addColorStop(1,'#f3f2ed');
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,W,H);
+    setViewport(W/2,H/2,defaultFpx());
+    const S=SCENES[cur];
+    if(S) S.draw(basis(),anim.t);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* 渲染场景的控制台读数 */
+SCENES.render.draw=function(){
+  stepRender(10);
+  blit(true);
+  setRO('ro-render',
+    '相机 (0,0,9)   vfov 80°\n'+
+    'lower_left = '+vecStr(RCAM.ll)+'\n'+
+    'rt 分辨率  '+RW+'×'+RH+'\n'+
+    'spp  '+((cnt[0]||0))+' / '+ST.spp+'   面数 '+ST.faces+'/5\n'+
+    (complete?'<span class="ok">已收敛</span>':'<span class="k">累积中…</span>'));
+};
+
+/* 启动 */
+fit();
+setScene('param',true);
+updateActive();
+requestAnimationFrame(frame);
+window.addEventListener('resize',()=>{fit();placeStage();updateActive();});
+new ResizeObserver(()=>fit()).observe(cv);
+})();
+</script>
+</body>
+</html>
