@@ -21,6 +21,7 @@
 #include "dielectric.h"
 #include "bvh.h"
 #include "color.h"
+#include "quad.h"
 
 
 // ============================================================
@@ -317,6 +318,39 @@ HittableList random_scene(int half) {
 }
 
 
+// ---------- 场景 C：四边形（Day 13）----------
+// 5 个彩色平行四边形摆成一个"开放的盒子"。
+// 用途：
+//   1. 验证第二个几何图元能正确渲染
+//   2. ★ 验证【零厚度包围盒】的 padding —— 加不加 BVH 必须逐像素一致
+HittableList quad_scene() {
+    HittableList world;
+
+    auto red    = std::make_shared<Lambertian>(Color(0.65, 0.05, 0.05));
+    auto green  = std::make_shared<Lambertian>(Color(0.12, 0.45, 0.15));
+    auto blue   = std::make_shared<Lambertian>(Color(0.20, 0.20, 1.00));
+    auto white  = std::make_shared<Lambertian>(Color(0.73, 0.73, 0.73));
+    auto orange = std::make_shared<Lambertian>(Color(1.00, 0.50, 0.00));
+
+    // 左墙
+    world.add(std::make_shared<Quad>(Point3(-3, -2, 5),
+                                     Vec3(0, 0, -4), Vec3(0, 4, 0), red));
+    // 后墙
+    world.add(std::make_shared<Quad>(Point3(-2, -2, 0),
+                                     Vec3(4, 0, 0), Vec3(0, 4, 0), green));
+    // 右墙
+    world.add(std::make_shared<Quad>(Point3(3, -2, 1),
+                                     Vec3(0, 0, 4), Vec3(0, 4, 0), blue));
+    // 天花板
+    world.add(std::make_shared<Quad>(Point3(-2, 3, 1),
+                                     Vec3(4, 0, 0), Vec3(0, 0, 4), orange));
+    // 地板
+    world.add(std::make_shared<Quad>(Point3(-2, -3, 5),
+                                     Vec3(4, 0, 0), Vec3(0, 0, -4), white));
+
+    return world;
+}
+
 
 int main(int argc, char** argv) {
 #ifdef _WIN32
@@ -328,6 +362,9 @@ int main(int argc, char** argv) {
 
     int half = 11; // 默认随机场景的半径
     bool bench = false; // 是否只跑性能测试（不输出图片）
+    bool use_quads = false; // 用四边形场景（Day 13）
+    bool use_bvh = true;    // 是否用 BVH（--no-bvh 关闭，用于两步验收）
+    int  samples_per_pixel = 32;   // 每像素采样数（--spp 覆盖）
 
     // 解析命令行参数
     for(int i = 1; i < argc; ++i) {
@@ -340,9 +377,18 @@ int main(int argc, char** argv) {
         else if(arg == "--bench") {
             bench = true;
         }
+        else if(arg == "--quads") {
+            use_quads = true;
+        }
+        else if(arg == "--no-bvh") {
+            use_bvh = false;
+        }
+        else if(arg == "--spp" && i + 1 < argc) {
+            samples_per_pixel = std::stoi(argv[i + 1]);
+            ++i;
+        }
        
     }
-
     
     if(bench) {
         run_benchmark();
@@ -360,7 +406,7 @@ int main(int argc, char** argv) {
     const int image_height = 225;
     
     // 每个像素采样次数（越大越平滑，但越慢）
-    const int samples_per_pixel = 32;
+    // —— 由 --spp 覆盖，默认 32
 
     // 一条光线最多弹射多少次（防止递归无限深入 → 栈溢出）
     const int max_depth = 50;
@@ -373,14 +419,24 @@ int main(int argc, char** argv) {
     }
 
     // ---------- 场景：一个装着所有物体的"世界" ----------
-    // 想换场景只改这一行：simple_scene() 或 random_scene()
-    HittableList world_list = random_scene(half);
-    BVH          world(world_list);        // ← 扁平化 BVH（Day 10）
+    // 想换场景只改这一行：simple_scene() / random_scene() / quad_scene()
+    HittableList world_list = use_quads ? quad_scene() : random_scene(half);
 
-    // ---------- 验证 Sphere / HittableList 的包围盒 ----------
+    // ⚠️ BVH 的构造函数是【按值传参】，它拿到的是 world_list 的副本，
+    //    所以建完树之后 world_list 仍然完整可用 —— 这正是"两步验收"的前提。
+    BVH world(world_list);                 // ← 扁平化 BVH（Day 10）
+
+    // ★ 两步验收开关：
+    //   --no-bvh  直接用线性表遍历（无加速结构）
+    //   默认      用 BVH
+    //   两者必须渲染出【逐像素相同】的画面 —— 否则加速结构就是错了。
+    const Hittable& scene = use_bvh ? static_cast<const Hittable&>(world)
+                                    : static_cast<const Hittable&>(world_list);
+
+    // ---------- 验证包围盒 ----------
     {
         AABB world_box;
-        if (world.bounding_box(world_box)) {
+        if (scene.bounding_box(world_box)) {
             std::cerr << "[AABB] 整个世界的包围盒\n"
                       << "   最小角 = " << world_box.minimum << '\n'
                       << "   最大角 = " << world_box.maximum << "\n\n";
@@ -389,16 +445,18 @@ int main(int argc, char** argv) {
         }
     }
 
-    Camera camera(Point3(13, 2, 3),      // 站远一点、高一点
-                  Point3(0, 0, 0),       // 看向原点
-                  Vec3(0, 1, 0),         // 世界上方向
-                  20,                    // 垂直视野角 20°（长焦）
-                  10.0,                  // 对焦距离（随机场景里物体分布很广，取中间值）
-                  0.1);                  // 光圈半径
+    Camera camera = use_quads
+        ? Camera(Point3(0, 0, 9), Point3(0, 0, 0), Vec3(0, 1, 0), 80, 1.0, 0.0)
+        : Camera(Point3(13, 2, 3),      // 站远一点、高一点
+                 Point3(0, 0, 0),       // 看向原点
+                 Vec3(0, 1, 0),         // 世界上方向
+                 20,                    // 垂直视野角 20°（长焦）
+                 10.0,                  // 对焦距离（随机场景里物体分布很广，取中间值）
+                 0.1);                  // 光圈半径
 
 
 
-    render(world, camera, image_width, image_height, samples_per_pixel, max_depth, &out);
+    render(scene, camera, image_width, image_height, samples_per_pixel, max_depth, &out);
     // PPM 行序从上到下；渲染时习惯从下往上遍历
     /*
     for (int j = image_height - 1; j >= 0; --j) {
