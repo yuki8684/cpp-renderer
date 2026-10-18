@@ -1,0 +1,2273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Day 14 · 三角形：整个类只有两个空 | cpp-renderer 可视化教学</title>
+<style>
+:root{
+  --bg:#f6f5f1; --panel:#ffffff; --ink:#20242e; --ink-2:#4d5464; --ink-3:#858c9c;
+  --line:#e5e2d9; --line-2:#eeebe3;
+  --accent:#2c56c9; --accent-soft:#edf1fe;
+  --warm:#bf5327; --warm-soft:#fdf3ee;
+  --green:#26744a; --violet:#7a45b5; --teal:#0b6b7d;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --serif:"Cambria Math",Cambria,"Latin Modern Math",Georgia,"Times New Roman",serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.78 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+::selection{background:#dfe6fb}
+
+/* ---------- 顶部 ---------- */
+.hero{max-width:1400px;margin:0 auto;padding:58px 40px 30px}
+.eyebrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:12.5px;color:var(--ink-3);letter-spacing:.04em}
+.eyebrow .dot{width:4px;height:4px;border-radius:50%;background:#c9c5b9}
+.eyebrow b{color:var(--accent);font-weight:600}
+h1{font-size:45px;line-height:1.16;letter-spacing:-.028em;margin:16px 0 14px;font-weight:680;max-width:20em}
+h1 em{font-style:normal;color:var(--accent)}
+.lede{font-size:18px;line-height:1.75;color:var(--ink-2);max-width:46em;margin:0 0 26px}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 26px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:9px 15px;min-width:120px}
+.stat span{display:block;font-size:11px;letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase}
+.stat b{font-size:17px;font-weight:620;letter-spacing:-.01em}
+.toc{display:flex;flex-wrap:wrap;gap:7px;padding-top:22px;border-top:1px solid var(--line)}
+.toc a{
+  font-size:12.5px;color:var(--ink-2);text-decoration:none;background:var(--panel);
+  border:1px solid var(--line);border-radius:999px;padding:4px 11px;transition:.15s;
+}
+.toc a:hover{border-color:#c9d2ef;color:var(--accent);background:var(--accent-soft)}
+
+/* ---------- 主布局 ---------- */
+.layout{max-width:1400px;margin:0 auto;padding:34px 40px 90px;display:grid;grid-template-columns:minmax(0,1fr) 540px;gap:58px;align-items:start}
+article{min-width:0}
+aside.stage-col{position:sticky;top:22px;min-width:0}
+
+/* ---------- 舞台 ---------- */
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  display:flex;flex-direction:column;max-height:calc(100vh - 26px);
+  box-shadow:0 1px 2px rgba(32,36,46,.04),0 18px 40px -22px rgba(32,36,46,.28)}
+.stage-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line-2)}
+.stage-head .t{font-size:12.5px;font-weight:600;letter-spacing:-.005em;color:var(--ink)}
+.stage-head .t small{display:block;font-weight:400;color:var(--ink-3);font-size:11px;letter-spacing:.03em;margin-top:1px}
+.stage-head .idx{font:11px var(--mono);color:var(--ink-3);white-space:nowrap;border:1px solid var(--line);border-radius:999px;padding:2px 8px}
+.head-right{display:flex;align-items:center;gap:6px}
+.collapse{border:1px solid var(--line);background:#fff;color:var(--ink-3);border-radius:999px;padding:2px 9px;font:11px inherit;cursor:pointer}
+.collapse:hover{color:var(--accent);border-color:#c9d2ef}
+.stage.collapsed #stage-canvas,.stage.collapsed .stage-ctrl,.stage.collapsed .stage-foot{display:none}
+#mobile-stage-slot{display:none}
+#stage-canvas{display:block;width:100%;height:clamp(300px,46vh,404px);flex:0 0 auto;touch-action:none;cursor:grab}
+#stage-canvas:active{cursor:grabbing}
+.stage-ctrl{padding:12px 14px 14px;border-top:1px solid var(--line-2);min-height:0;flex:1 1 auto;overflow-y:auto}
+.ctrlpane{display:none;flex-direction:column;gap:8px}
+.ctrlpane.on{display:flex}
+.row{display:grid;grid-template-columns:64px 1fr 52px;align-items:center;gap:10px;font-size:12.5px;color:var(--ink-2)}
+.row b{font:11.5px var(--mono);color:var(--ink);text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:4px;background:#e0ddd3;border-radius:2px;outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--accent);border:2px solid #fff;box-shadow:0 0 0 1px #cbd4ee;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--accent);border:2px solid #fff;cursor:pointer}
+.row2{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--ink-3);flex-wrap:wrap}
+.chk{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ink-2);font-size:12.5px}
+.chk input{accent-color:var(--accent);margin:0}
+.hint{font-size:11.5px;color:var(--ink-3);line-height:1.5}
+.seg{display:inline-flex;flex-wrap:wrap;background:#f2f1ec;border-radius:9px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;padding:4px 10px;border-radius:6px;font:12.5px inherit;color:var(--ink-2);cursor:pointer;transition:.12s;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(32,36,46,.1);font-weight:600}
+.ro{font:11px/1.66 var(--mono);color:var(--ink-2);background:#faf9f6;border:1px solid var(--line-2);border-radius:9px;padding:7px 9px;overflow-x:auto;white-space:pre}
+.ro .ok{color:var(--green);font-weight:700}
+.ro .no{color:var(--warm);font-weight:700}
+.ro .k{color:var(--ink-3)}
+.ro .hl2{color:var(--accent);font-weight:700}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 11px;font:12.5px inherit;color:var(--ink-2);cursor:pointer}
+.btn:hover{border-color:#c9d2ef;color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#24479f;color:#fff}
+.stage-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:0 14px 12px;font-size:11px;color:var(--ink-3)}
+
+/* ---------- 正文排版 ---------- */
+section[data-scene]{padding-top:8px;scroll-margin-top:20px}
+.kicker{font-size:11.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);font-weight:650;margin-top:56px}
+h2{font-size:27px;line-height:1.34;letter-spacing:-.022em;margin:6px 0 10px;font-weight:660}
+h2 .h2n{font:600 13px var(--mono);color:#b6b2a6;margin-right:12px;letter-spacing:0;vertical-align:2px}
+h3{font-size:17.5px;margin:32px 0 6px;letter-spacing:-.012em;font-weight:640}
+p{margin:13px 0;color:var(--ink-2)}
+p.lead{font-size:16.5px;color:#3f4656}
+strong{color:var(--ink);font-weight:620}
+em.q{font-style:normal;background:linear-gradient(transparent 62%,#fdeac0 62%);padding:0 1px}
+ul,ol{margin:13px 0;padding-left:22px;color:var(--ink-2)}
+li{margin:6px 0}
+li::marker{color:#b9b4a6}
+a{color:var(--accent)}
+code{font:0.875em var(--mono);background:#f2f1ec;border:1px solid #e8e5db;border-radius:5px;padding:1px 5px;color:#2f3543}
+.m{font-family:var(--serif);font-style:italic;font-size:1.03em}
+.m b,.mv{font-weight:700}
+.note,.warn{border-radius:0 11px 11px 0;padding:13px 17px;margin:20px 0;font-size:14.5px;line-height:1.72}
+.note{border-left:3px solid var(--accent);background:#f4f7fe;color:#3d4557}
+.warn{border-left:3px solid var(--warm);background:var(--warm-soft);color:#5a4034}
+.note b,.warn b{color:var(--ink)}
+.note .tag,.warn .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;margin-bottom:3px}
+.note .tag{color:var(--accent)}
+.warn .tag{color:var(--warm)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px;margin:20px 0}
+.card h4{margin:0 0 8px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3);font-weight:650}
+
+/* 公式 */
+.eq{font-family:var(--serif);font-size:19px;line-height:2.1;background:#fff;border:1px solid var(--line);border-radius:12px;
+  padding:14px 20px;margin:16px 0;overflow-x:auto;color:var(--ink)}
+.eq .tagline{float:right;font:11px var(--mono);color:var(--ink-3);font-style:normal;letter-spacing:.02em}
+.eq .line{display:block;white-space:nowrap}
+.eq .line + .line{margin-top:2px}
+.eq .why{display:block;font:11.5px/1.6 var(--mono);color:#6b7280;font-style:normal;margin:2px 0 6px}
+.frac{display:inline-flex;flex-direction:column;vertical-align:-0.62em;text-align:center;margin:0 .28em;font-size:.94em}
+.frac>span:first-child{border-bottom:1px solid currentColor;padding:0 .32em .1em;display:block}
+.frac>span:last-child{padding:.1em .32em 0;display:block}
+.sub{font-size:.72em;vertical-align:-.22em}
+
+/* 代码 */
+.codewrap{margin:18px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fbfbf9}
+.codebar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px;background:#f4f3ee;border-bottom:1px solid var(--line-2);font-size:11.5px;color:var(--ink-3)}
+.codebar .fname{font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.animlink{border:1px solid #d8e0f5;background:#f7f9ff;color:var(--accent);font:11.5px inherit;padding:3px 9px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.animlink:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+.codewrap pre{margin:0;overflow:auto;padding:14px 16px;font:12.5px/1.72 var(--mono);color:#2b3140;tab-size:4}
+.codewrap pre code{background:none;border:0;padding:0;font:inherit;color:inherit}
+.c-kw{color:#8a3fb5}
+.c-num{color:#0b6b7d}
+.c-str{color:#26744a}
+.c-com{color:#9096a3;font-style:italic}
+.c-fn{color:#2c56c9}
+.cl{display:block;border-left:3px solid transparent;padding-left:8px;margin-left:-11px;transition:background .18s}
+.cl.hl{background:#fff5d6;border-left-color:#e0a92c}
+
+/* 表格 */
+.tablewrap{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:12px;background:#fff}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{background:#f7f6f1;font-size:11.5px;letter-spacing:.04em;color:var(--ink-3);font-weight:650;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.mono,th.mono{font-family:var(--mono);font-size:12px;color:#3a4152}
+td.c{text-align:center}
+.tbl-note{font-size:12.5px;color:var(--ink-3);margin:-8px 0 18px}
+
+/* vtable 图 */
+.vt{display:grid;grid-template-columns:minmax(0,1fr) 34px minmax(0,1.25fr);gap:8px;align-items:center;margin:18px 0;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.vbox{border:1px solid #d8d5cb;border-radius:10px;padding:9px 11px;background:#fcfcfa;font-size:12.5px;line-height:1.55;color:var(--ink-2)}
+.vbox b{display:block;font:600 12px var(--mono);color:var(--ink);margin-bottom:3px}
+.vbox .sm{font-size:11.5px;color:var(--ink-3)}
+.vbox.act{border-color:#b9c8ee;background:var(--accent-soft)}
+.vbox.dead{opacity:.55}
+.varrow{text-align:center;color:#b0aca0;font-size:18px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--ink-3);margin:10px 0 0}
+.ch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:1px}
+
+/* 自检 */
+details{border:1px solid var(--line);background:var(--panel);border-radius:11px;padding:12px 16px;margin:10px 0}
+details summary{cursor:pointer;font-size:14.5px;font-weight:600;color:var(--ink);list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:"Q";display:inline-flex;width:19px;height:19px;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent);font:700 11px var(--mono);border-radius:5px;margin-right:9px;vertical-align:1px}
+details[open] summary{margin-bottom:6px}
+details p{font-size:14px;margin:8px 0;color:var(--ink-2)}
+
+footer{max-width:1400px;margin:0 auto;padding:30px 40px 70px;border-top:1px solid var(--line);color:var(--ink-3);font-size:12.5px;line-height:1.85}
+footer b{color:var(--ink-2);font-weight:600}
+footer .files{font-family:var(--mono);font-size:11.5px}
+
+.stage-slot{display:none}
+@media (max-height:760px){ .stage-foot{display:none} }
+@media (max-width:1180px){
+  .hero{padding:38px 18px 20px}
+  h1{font-size:31px}
+  .lede{font-size:16px}
+  .layout{grid-template-columns:1fr;gap:26px;padding:18px 18px 70px}
+  aside.stage-col{display:none}
+  #mobile-stage-slot{display:block;position:sticky;top:0;z-index:30;background:var(--bg);padding:8px 14px 4px;border-bottom:1px solid var(--line)}
+  #mobile-stage-slot .stage{max-height:none;margin:0}
+  .stage-ctrl{overflow:visible;max-height:none;min-height:96px}
+  h2{font-size:22px}
+  .kicker{margin-top:38px}
+  #stage-canvas{height:300px}
+  .stage{margin:18px 0 6px}
+  #mobile-stage-slot{display:block}
+  .codewrap pre{font-size:11.5px}
+  footer{padding:24px 18px 60px}
+  .vt{grid-template-columns:1fr}
+  .varrow{transform:rotate(90deg)}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="eyebrow">
+    <b>cpp-renderer</b><span class="dot"></span><span>Day 14 · 2026-10-18</span>
+    <span class="dot"></span><span>新增图元：Triangle</span><span class="dot"></span><span>可视化教学</span>
+  </div>
+  <h1>三角形：<em>整个类只有两个空</em>，而且都是 Quad 已经写过的</h1>
+  <p class="lede">
+    球和四边形是两种"特殊形状"。今天拿到的是<em class="q">任意形状的最小单位</em>。
+    真正要讲的数学不是"怎么再做一次求交"，而是<b>为什么可以不做</b> —— 一次虚函数调用如何把
+    一份求交代码变成两种图元；以及一个三角形如何用两个数字 (α, β) 被完整地编号。
+    最后是今天最贵的两课：<b>NaN 会让所有 if 失效</b>，<b>epsilon 必须和同量纲的量比较</b>。
+  </p>
+  <div class="stats">
+    <div class="stat"><span>新增代码</span><b>2 个函数体</b></div>
+    <div class="stat"><span>单元测试</span><b>5 组 · 32 断言</b></div>
+    <div class="stat"><span>两步验收</span><b>字节完全相同</b></div>
+    <div class="stat"><span>核心陷阱</span><b>NaN 与 epsilon 量纲</b></div>
+  </div>
+  <nav class="toc">
+    <a href="#s1">01 为什么只认三角形</a>
+    <a href="#s2">02 只重写一个虚函数</a>
+    <a href="#s3">03 重心坐标</a>
+    <a href="#s4">04 求交一行没改</a>
+    <a href="#s5">05 幽灵角</a>
+    <a href="#s6">06 退化与 NaN</a>
+    <a href="#s7">07 字节完全相同</a>
+    <a href="#s8">08 假绿的解剖</a>
+    <a href="#s9">09 闭集</a>
+    <a href="#s10">10 速查与自检</a>
+  </nav>
+</header>
+
+<div id="mobile-stage-slot"></div>
+
+<div class="layout">
+<article>
+
+<!-- ============ 01 ============ -->
+<section id="s1" data-scene="why">
+  <div class="kicker">动机 · 分水岭</div>
+  <h2><span class="h2n">01</span>为什么全世界的模型只存三角形</h2>
+  <p class="lead">立方体明明用 6 个四边形拼更省事，可 OBJ、FBX、glTF 里一个四边形都找不到。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>三条理由，最后一条是硬约束：</p>
+  <ol>
+    <li><b>三点永远共面。</b>任意 4 个空间点凑"四边形"，可能不共面 —— 像一张被扭过的纸。"这个面朝哪"就没有唯一答案。</li>
+    <li><b>任意多边形都能切成三角形。</b>五边形、带洞的形状，都有现成算法（耳切法、单调剖分）。反过来不成立：三角形切不出别的。</li>
+    <li><b>硬件只认三角形。</b>GPU 图元装配单元只接受点 / 线 / 三角形。你提交四边形，是驱动在背后替你拆。</li>
+  </ol>
+
+  <h3>把"共面"算清楚</h3>
+  <p>取三点 <span class="m">A</span>、<span class="m">B</span>、<span class="m">C</span>，记 <span class="m">u = B − A</span>、<span class="m">v = C − A</span>、<span class="m">n = u × v</span>。若 <span class="m">n ≠ 0</span>（三点不共线），那么过这三点的平面唯一：</p>
+  <div class="eq">
+    <span class="tagline">三点定平面</span>
+    <span class="line">{ <b>P</b> : <b>n</b> · (<b>P</b> − <b>A</b>) = 0 }</span>
+  </div>
+  <p>第四个点 <span class="m">D</span> 在这个平面上，当且仅当一个标量等式成立：</p>
+  <div class="eq">
+    <span class="tagline">共面判据</span>
+    <span class="line"><b>n</b> · (<b>D</b> − <b>A</b>) = 0 &nbsp;&nbsp;⟺&nbsp;&nbsp; det(<b>u</b>, <b>v</b>, <b>D</b> − <b>A</b>) = 0</span>
+    <span class="why">（混合积 = 三向量张成的平行六面体体积，体积为零就是共面）</span>
+  </div>
+  <p>这是一个可以随便不成立的等式。一旦不成立，四边形就有<b>两条互不相容的对角线</b>：沿 <span class="m">b–c</span> 拆，得到两个法线 <span class="m">n₁, n₂</span>；沿 <span class="m">a–d</span> 拆（<span class="m">d</span> 是第 4 个点），得到另外两个 <span class="m">n₃, n₄</span>。四个法线一般互不相同 —— 于是"这个面的法线是多少"的答案，变成了<b>你的实现细节</b>。而三角形连"选哪条对角线"这个问题都不存在。</p>
+
+  <div class="warn">
+    <span class="tag">设计判断</span><br>
+    形状的属性不该依赖于"我选择怎么拆"。三角形没有这个问题：它的法线是<b>被三个顶点唯一决定</b>的。
+    所以整个图形学把"面"这个概念的<b>唯一真身</b>定为三角形，四边形只是建模时的手感。
+  </div>
+
+  <p>拖动右侧滑块，把第 4 个点抬离平面，看两条对角线拆出来的法线怎么<b>劈叉</b>。滑块归零时它们重新重合 —— 那一刻四个点共面，四边形才是一个"平面图形"。</p>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    <span class="ch" style="background:#2c56c9"></span>蓝色是<b>拆法 ①</b>（对角线 <span class="m">b–c</span>）的两个三角形法线；
+    <span class="ch" style="background:#7a45b5"></span>紫色是<b>拆法 ②</b>（对角线 <span class="m">a–d</span>）。
+    同一种颜色的两条法线<b>之间的夹角</b>，就是"这个面朝哪"的不确定度。
+  </div>
+</section>
+
+<!-- ============ 02 ============ -->
+<section id="s2" data-scene="inherit">
+  <div class="kicker">继承 · 多态</div>
+  <h2><span class="h2n">02</span>整个 Triangle 类：一个构造函数 + 一个虚函数</h2>
+  <p class="lead">不重写 <code>hit()</code>、不重写 <code>bounding_box()</code>、不重算平面参数。只覆盖一处。</p>
+
+  <div class="stage-slot"></div>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/triangle.h · 全文（去掉注释）</span>
+      <button class="animlink" data-scene="inherit" data-mode="tri">在动画里看这两个空</button></div>
+<pre><code id="code-tri"><span class="cl" data-l="1"><span class="c-kw">class</span> Triangle : <span class="c-kw">public</span> Quad {</span><span class="cl" data-l="2"><span class="c-kw">public</span>:</span><span class="cl" data-l="3">    <span class="c-fn">Triangle</span>(<span class="c-kw">const</span> Point3&amp; a, <span class="c-kw">const</span> Point3&amp; b, <span class="c-kw">const</span> Point3&amp; c,</span><span class="cl" data-l="4">             std::shared_ptr&lt;Material&gt; mat)</span><span class="cl" data-l="5">        : <span class="c-fn">Quad</span>(a, b - a, c - a, mat) { }   <span class="c-com">// ← 空 1：两条边向量</span></span><span class="cl" data-l="6"></span><span class="cl" data-l="7">    <span class="c-kw">bool</span> <span class="c-fn">is_interior</span>(<span class="c-kw">double</span> alpha, <span class="c-kw">double</span> beta) <span class="c-kw">const override</span> {</span><span class="cl" data-l="8">        <span class="c-kw">return</span> alpha &gt;= <span class="c-num">0</span> &amp;&amp; beta &gt;= <span class="c-num">0</span> &amp;&amp; alpha + beta &lt;= <span class="c-num">1</span>;  <span class="c-com">// ← 空 2</span></span><span class="cl" data-l="9">    }</span><span class="cl" data-l="10">};</span></code></pre>
+  </div>
+
+  <h3>空 1：<code>b - a</code> 是向量，<code>b</code> 是位置</h3>
+  <p><code>Quad</code> 的构造签名是 <code>Quad(Q, u, v, mat)</code>，其中 <code>u</code>、<code>v</code> 是<b>边向量</b>，不是顶点。三角形给的是三个顶点，所以必须做一次减法：<b>位置 − 位置 = 向量</b>。</p>
+  <p>为什么不能直接把 <code>b</code>、<code>c</code> 塞进去？因为 <code>b</code> 表示的是"从原点指向 b 的向量"，只有当 <span class="m">a</span> 恰好落在原点时，<span class="m">b = b − a</span> 才偶然成立。这个 bug 极其阴险：顶点在原点的那条测试会通过，看起来"没问题"（§8 有完整解剖）。</p>
+
+  <h3>空 2：<code>virtual</code> 是怎么找到子类的</h3>
+  <p><code>Quad::hit()</code> 里那句 <code>if (!is_interior(alpha, beta)) return false;</code> 调用的是基类里声明为 <code>virtual</code> 的函数。通过指针调用虚函数时，编译器不写死地址，而是<b>查对象里的 vptr → 查 vtable</b>，找到的永远是<b>对象真实类型</b>的版本：</p>
+
+  <div class="vt" id="vt-diagram">
+    <div class="vbox" id="vt-a">
+      <b>Quad::hit(r, t_min, t_max, rec)</b>
+      <span class="sm">平面求交 → 算 α, β → 调 is_interior</span>
+    </div>
+    <div class="varrow">▶</div>
+    <div class="vbox act" id="vt-b">
+      <b id="vt-b-title">Triangle::is_interior(a, b)</b>
+      <span class="sm" id="vt-b-body">return a &gt;= 0 &amp;&amp; b &gt;= 0 &amp;&amp; a + b &lt;= 1;</span>
+    </div>
+  </div>
+
+  <p><b>同一份求交代码</b>，配 <code>Quad::is_interior</code> 就是四边形，配 <code>Triangle::is_interior</code> 就是三角形。这就是多态的全部内容 —— 不是语法糖，它把"几何体的差异"压缩成了一个 <code>bool</code>。</p>
+
+  <h3>判定区域：一块方块被一条直线切掉一半</h3>
+  <p>把 (α, β) 看成一张二维坐标纸。四边形要的是整个单位方块 <span class="m">0 ≤ α ≤ 1, 0 ≤ β ≤ 1</span>；三角形要的是方块里被直线</p>
+  <div class="eq">
+    <span class="tagline">一条直线切掉一半</span>
+    <span class="line">α + β = 1 &nbsp;⇒&nbsp; α ≥ 0, β ≥ 0, α + β ≤ 1</span>
+  </div>
+  <p>切出来的那块三角区域。几何上，这条直线对应的正是<b>平行四边形从 Q 出发的那条对角线</b>。右上角被切掉的那半块，就是 §5 里"不存在的第四个角"所在的区域。</p>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    切换 <b>Quad</b> / <b>Triangle</b>，同一个 (α, β) 点会在"内部"与"外部"之间翻转。
+    <span class="ch" style="background:#bf5327"></span>偏红的那块是 <span class="m">α + β &gt; 1</span> 的<b>被切掉区域</b>：
+    它属于四边形，不属于三角形。
+  </div>
+</section>
+
+<!-- ============ 03 ============ -->
+<section id="s3" data-scene="bary">
+  <div class="kicker">重心坐标 · 两个数字编号一个面</div>
+  <h2><span class="h2n">03</span>α、β 的真正名字：重心坐标</h2>
+  <p class="lead">三角形内每一点，都能被三个<b>加起来等于 1</b> 的权重唯一表示。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>把 <code>Quad</code> 的参数化原样搬过来，代入 <span class="m">Q = a</span>、<span class="m">u = b − a</span>、<span class="m">v = c − a</span>：</p>
+  <div class="eq">
+    <span class="tagline">重心坐标</span>
+    <span class="line"><b>P</b> = <b>a</b> + α(<b>b</b> − <b>a</b>) + β(<b>c</b> − <b>a</b>)</span>
+    <span class="line">&nbsp;&nbsp;= (1 − α − β)·<b>v</b><sub class="sub">0</sub> + α·<b>v</b><sub class="sub">1</sub> + β·<b>v</b><sub class="sub">2</sub></span>
+    <span class="why">其中 v0 = a, v1 = b, v2 = c</span>
+  </div>
+  <p>三个顶点的权重分别是</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>顶点</th><th>权重</th><th>在三角形上的位置</th><th>对面小三角形</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">v0 = a</td><td class="mono">w0 = 1 − α − β</td><td>α = β = 0 时 w0 = 1</td><td class="mono">(b, P, c)</td></tr>
+        <tr><td class="mono">v1 = b</td><td class="mono">w1 = α</td><td>α = 1 时 w1 = 1</td><td class="mono">(a, P, c)</td></tr>
+        <tr><td class="mono">v2 = c</td><td class="mono">w2 = β</td><td>β = 1 时 w2 = 1</td><td class="mono">(a, b, P)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p><b>为什么"在三角形内"就等价于三个权重非负？</b>因为 <span class="m">w0 + w1 + w2 = 1</span> 恒成立。点在三角形里 ⟺ 它是三个顶点的<b>凸组合</b> ⟺ 三个权重都 ≥ 0。把 <span class="m">w0 = 1 − α − β ≥ 0</span> 移项，就得到代码里那一行：<code>alpha &gt;= 0 &amp;&amp; beta &gt;= 0 &amp;&amp; alpha + beta &lt;= 1</code>。</p>
+
+  <p>顺便回答一个常见的困惑：三角形有 3 个顶点，为什么只有 2 个数？因为第三个权重被"和为 1"<b>约束掉了</b>。3 个权重 − 1 个约束 = 2 个自由度，正好对应平面上的 2 个坐标。</p>
+
+  <h3>α 是一个面积比</h3>
+  <p>从 §5 的叉积公式出发（Day 13 已推过）：</p>
+  <div class="eq">
+    <span class="tagline">叉积消元</span>
+    <span class="line"><b>p</b> = <b>P</b> − <b>a</b> = α<b>u</b> + β<b>v</b></span>
+    <span class="line"><b>p</b> × <b>v</b> = α(<b>u</b> × <b>v</b>) + β(<b>v</b> × <b>v</b>) = α<b>n</b></span>
+    <span class="line">|<b>p</b> × <b>v</b>| = α |<b>n</b>|</span>
+    <span class="why">因为 |p×v| = 2·面积(a,P,c)，|n| = 2·面积(a,b,c)，2 约掉</span>
+  </div>
+  <div class="eq">
+    <span class="tagline">重心坐标 = 面积比</span>
+    <span class="line">α = <span class="frac"><span>面积(a, <b>P</b>, c)</span><span>面积(a, b, c)</span></span>
+      &nbsp;&nbsp; β = <span class="frac"><span>面积(a, b, <b>P</b>)</span><span>面积(a, b, c)</span></span></span>
+  </div>
+  <p>权重 = <b>对面那块小三角形占总面积的比例</b>。P 越靠近 b，b 对面的那块（a,P,c）越大，α 越大 —— 权重 1 落在 b 上，物理直觉完全一致。</p>
+
+  <h3>为什么这个视角重要：插值</h3>
+  <p>顶点上除了位置，还能挂任何属性。三角形内任意点的属性，用<b>同一组权重</b>插值：</p>
+  <div class="eq">
+    <span class="tagline">重心插值（后面几十天都在用它）</span>
+    <span class="line">attr(<b>P</b>) = w<sub class="sub">0</sub>·attr(<b>v</b><sub class="sub">0</sub>) + w<sub class="sub">1</sub>·attr(<b>v</b><sub class="sub">1</sub>) + w<sub class="sub">2</sub>·attr(<b>v</b><sub class="sub">2</sub>)</span>
+  </div>
+  <ul>
+    <li>顶点<b>法线</b> → 光滑着色：800 个三角形的小球看起来像完美的球，而不是多面体</li>
+    <li>顶点 <b>UV</b> → 贴图坐标，纹理跟着三角形一起变形</li>
+    <li>顶点<b>颜色</b> → 渐变（Gouraud 着色）</li>
+    <li>顶点<b>位移</b> → 骨骼动画、形变动画</li>
+  </ul>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    拖动 α、β。三块彩色区域是<b>三个子三角形</b>，它们的面积占比<b>就是</b>三个权重的数值。
+    虚线的折角是分解路径：先沿 <b>u</b> 走 α，再沿 <b>v</b> 走 β。
+  </div>
+</section>
+<!-- ============ 04 ============ -->
+<section id="s4" data-scene="ray">
+  <div class="kicker">求交 · 一行都没改</div>
+  <h2><span class="h2n">04</span>射线打到三角形：代码和四边形<b>是同一份</b></h2>
+  <p class="lead">它没有"三角形的求交算法"。它只有 Quad 的求交算法，加一个 <code>false</code>。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>回放一下 <code>Quad::hit()</code> 的三步。每一步一步都还在，唯一的分叉出现在最后一步：</p>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · hit()（Triangle 完整继承它）</span>
+      <button class="animlink" data-scene="ray" data-ray="hit">在动画里逐步高亮</button></div>
+<pre><code id="code-hit"><span class="cl" data-l="1"><span class="c-com">// ---------- 第 1 步：射线 × 无限平面 ----------</span></span><span class="cl" data-l="2"><span class="c-kw">double</span> denom = <span class="c-fn">dot</span>(normal, r.<span class="c-fn">direction</span>());</span><span class="cl" data-l="3"><span class="c-kw">if</span> (std::<span class="c-fn">fabs</span>(denom) &lt; <span class="c-num">1e-8</span>) <span class="c-kw">return false</span>;</span><span class="cl" data-l="4"><span class="c-kw">double</span> t = (D - <span class="c-fn">dot</span>(normal, r.<span class="c-fn">origin</span>())) / denom;</span><span class="cl" data-l="5"><span class="c-kw">if</span> (t &lt;= t_min || t &gt;= t_max) <span class="c-kw">return false</span>;</span><span class="cl" data-l="6"></span><span class="cl" data-l="7"><span class="c-com">// ---------- 第 2 步：交点落在平面内的哪里？ ----------</span></span><span class="cl" data-l="8">Point3 intersection = r.<span class="c-fn">at</span>(t);</span><span class="cl" data-l="9">Vec3   p = intersection - Q;</span><span class="cl" data-l="10"><span class="c-kw">double</span> alpha = <span class="c-fn">dot</span>(w, <span class="c-fn">cross</span>(p, v));</span><span class="cl" data-l="11"><span class="c-kw">double</span> beta  = <span class="c-fn">dot</span>(w, <span class="c-fn">cross</span>(u, p));</span><span class="cl" data-l="12"></span><span class="cl" data-l="13"><span class="c-com">// ---------- 第 3 步：内部判定 ← 唯一的分叉 ----------</span></span><span class="cl" data-l="14"><span class="c-kw">if</span> (!<span class="c-fn">is_interior</span>(alpha, beta)) <span class="c-kw">return false</span>;</span><span class="cl" data-l="15"></span><span class="cl" data-l="16">rec.t = t; rec.p = intersection; rec.mat = mat;</span><span class="cl" data-l="17">rec.<span class="c-fn">set_face_normal</span>(r, normal);</span><span class="cl" data-l="18"><span class="c-kw">return true</span>;</span></code></pre>
+  </div>
+
+  <h3>第 1 步：把射线代进平面方程</h3>
+  <div class="eq">
+    <span class="tagline">一个除法</span>
+    <span class="line"><b>n̂</b> · (<b>O</b> + t<b>d</b>) = D</span>
+    <span class="line">t = <span class="frac"><span>D − <b>n̂</b> · <b>O</b></span><span><b>n̂</b> · <b>d</b></span></span></span>
+    <span class="why">分母 n̂·d = |d| cos θ：为 0 就平行；为负就是从正面射入</span>
+  </div>
+  <p>注意这一步<b>完全不关心形状</b>。平面是无限的，三角形和四边形共享同一个无限平面。</p>
+
+  <h3>第 2 步：叉积消元求 α、β</h3>
+  <p><span class="m">p = P − Q = αu + βv</span>，两边右乘 <span class="m">v</span> 消掉 β，再点乘 <span class="m">w = n/(n·n)</span>：</p>
+  <div class="eq">
+    <span class="tagline">Day 13 已推，Triangle 直接继承</span>
+    <span class="line">α = <b>w</b> · (<b>p</b> × <b>v</b>), &nbsp;&nbsp; β = <b>w</b> · (<b>u</b> × <b>p</b>)</span>
+    <span class="why">两个叉积的自变量顺序不同 —— 因为 v×u = −n，负号靠交换顺序补回来</span>
+  </div>
+
+  <h3>第 3 步：唯一的分叉</h3>
+  <p>到这里，代码已经<b>知道了交点的重心坐标</b>。剩下的事只有一件：这个 (α, β) 算不算"在形状里"。四边形问"在不在方块里"，三角形问"在不在直线 α+β=1 的哪一侧"。</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>交点情况</th><th>判据</th><th>谁处理</th></tr></thead>
+      <tbody>
+        <tr><td>射线平行于平面</td><td class="mono">|n̂·d| &lt; 1e-8</td><td>第 1 步，return false</td></tr>
+        <tr><td>平面在射线身后</td><td class="mono">t ≤ t_min</td><td>第 1 步的窗口判据</td></tr>
+        <tr><td>被更近的物体挡住</td><td class="mono">t ≥ t_max</td><td>第 1 步的窗口判据（BVH 也靠它剪枝）</td></tr>
+        <tr><td>落在无限平面上，但不在形状里</td><td class="mono">α+β &gt; 1 等</td><td><b>第 3 步，is_interior</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="tbl-note">前三种错法对三角形和四边形<b>完全一样</b>，所以当然不需要重写。</p>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    拖动落点，或切到"打偏 / 平行"。<b>打偏</b>时射线明明打中了平面、也解出了 t，却在第 3 步被拒 ——
+    这正是"平面"与"图元"的区别：<b>图元 = 平面 ∩ 形状</b>。
+  </div>
+</section>
+
+<!-- ============ 05 ============ -->
+<section id="s5" data-scene="bbox">
+  <div class="kicker">加速结构 · 一个诚实的妥协</div>
+  <h2><span class="h2n">05</span>三角形的包围盒，比三角形本身大一倍</h2>
+  <p class="lead">这是继承带来的第一个"退化但不坏"的行为。</p>
+
+  <div class="stage-slot"></div>
+
+  <p><code>Quad</code> 的包围盒用<b>两个对角点</b>扫出一个盒子：<span class="m">Q</span> 与 <span class="m">Q+u+v</span> 一个，<span class="m">Q+u</span> 与 <span class="m">Q+v</span> 另一个，取并集。三角形继承构造函数，<span class="m">u = b−a</span>、<span class="m">v = c−a</span>，于是：</p>
+  <div class="eq">
+    <span class="tagline">幽灵角</span>
+    <span class="line"><b>Q</b> + <b>u</b> + <b>v</b> = <b>a</b> + (<b>b</b> − <b>a</b>) + (<b>c</b> − <b>a</b>) = <b>b</b> + <b>c</b> − <b>a</b></span>
+    <span class="why">这个点不在三角形上。它是平行四边形被切掉的那半个角的顶点。</span>
+  </div>
+  <p>所以 <code>Triangle</code> 的包围盒 = 它所在<b>平行四边形</b>的包围盒。平行四边形的面积是三角形的两倍（被对角线平分），包围盒自然也跟着偏大。</p>
+
+  <h3>为什么这不算错</h3>
+  <div class="eq">
+    <span class="tagline">Day 13 的铁律，今天继续用</span>
+    <span class="line">包围盒宁可<b>偏大</b>，绝不能<b>偏小</b>。</span>
+    <span class="why">偏大 → 多进几个叶子节点，慢一点点；偏小 → 漏掉命中，画面直接错。</span>
+  </div>
+  <p>包围盒的唯一职责是<b>剪枝</b>：盒子不相交就一定不命中。它从不参与"是否命中"的最终判断，所以偏大只是"剪得不够狠"，绝不会误伤。</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>方案</th><th>图元数</th><th>包围盒</th><th>200 spp 渲染</th></tr></thead>
+      <tbody>
+        <tr><td>6 个 Quad / 立方体</td><td class="mono">18</td><td>零厚度（padding 到 1e-4）</td><td class="mono">2.93 s</td></tr>
+        <tr><td>12 个 Triangle / 立方体</td><td class="mono">36</td><td>等于平行四边形，<b>大一倍</b></td><td class="mono">4.48 s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="tbl-note">三个立方体 + 地面。慢 53%，两个原因叠加：<b>图元数翻倍</b>（每个面要测两次）+ <b>包围盒更大</b>（剪枝更松）。</p>
+
+  <p>但这是几十个图元的玩具场景。真实模型是几十万三角形 —— 那时候"四边形省一半图元"的收益，远远比不上"三角形能表示任意形状"的能力。</p>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    打开"射线扫描"：那些<b>进了盒子却没打中三角形</b>的射线，就是幽灵角造成的白跑一趟。
+    把它们标成红色 ×，数一数代价有多大。
+  </div>
+</section>
+
+<!-- ============ 06 ============ -->
+<section id="s6" data-scene="degen">
+  <div class="kicker">陷阱 · 最贵的一课</div>
+  <h2><span class="h2n">06</span>退化三角形：NaN 能让<b>所有 if 全部失效</b></h2>
+  <p class="lead">真实 OBJ 文件里到处是面积为零的三角形 —— 重合顶点、共线三点。建模软件导出时留下的。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>如果 <span class="m">u ∥ v</span>（或其中一条是零向量），叉积是零向量，接着整条链子塌掉：</p>
+  <div class="eq">
+    <span class="tagline">0/0</span>
+    <span class="line"><b>n</b> = <b>u</b> × <b>v</b> = <b>0</b> &nbsp;⇒&nbsp; n̂ = <b>n</b>/|<b>n</b>| = 0/0 = <b>NaN</b></span>
+    <span class="line">D = n̂ · <b>Q</b> = NaN &nbsp;&nbsp;&nbsp; <b>w</b> = <b>n</b>/(<b>n</b>·<b>n</b>) = NaN</span>
+  </div>
+
+  <h3>NaN 的两道防线，一道都拦不住</h3>
+  <p>看 <code>hit()</code> 里那两个<b>本该救命</b>的判断：</p>
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">NaN 穿透示意 · IEEE 754</span></div>
+<pre><code><span class="cl">denom = <span class="c-fn">dot</span>(n̂, d);          <span class="c-com">// NaN</span></span><span class="cl"><span class="c-kw">if</span> (|<span class="c-fn">fabs</span>(denom) &lt; <span class="c-num">1e-8</span>) <span class="c-kw">return false</span>;   <span class="c-com">// fabs(NaN) &lt; 1e-8 → false，拦不住</span></span><span class="cl">t = (D - <span class="c-fn">dot</span>(n̂, O)) / denom;  <span class="c-com">// NaN</span></span><span class="cl"><span class="c-kw">if</span> (t &lt;= t_min || t &gt;= t_max) <span class="c-kw">return false</span>; <span class="c-com">// NaN ≤ x 是 false，NaN ≥ x 也是 false → 拦不住</span></span><span class="cl"><span class="c-fn">is_interior</span>(NaN, NaN)          <span class="c-com">// NaN ≥ 0 是 false → 侥幸在这里被拦住</span></span></code></pre>
+  </div>
+  <p>IEEE 754 规定：<b>任何涉及 NaN 的比较都返回 false</b>（只有 <code>!=</code> 返回 true）。所以 <code>NaN &lt; 1e-8</code> 是 false，<code>NaN &lt;= t_min</code> 是 false。<b>所有"把坏值挡在门外"的检查，遇到 NaN 会集体失效。</b></p>
+
+  <div class="warn">
+    <span class="tag">结论</span><br>
+    唯一的办法是<b>在产生 NaN 之前就拦住它</b>。所以退化保护必须放在<b>构造函数</b>里，
+    用一个 <code>degenerate</code> 标志，让 <code>hit()</code> 第一步就 <code>return false</code>。
+    靠下游的 if 兜底是运气，不是设计。
+  </div>
+
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">include/quad.h · 构造函数里的退化保护</span>
+      <button class="animlink" data-scene="degen">在动画里看这条判据</button></div>
+<pre><code id="code-degen"><span class="cl" data-l="1">Vec3 n = <span class="c-fn">cross</span>(u, v);</span><span class="cl" data-l="2"></span><span class="cl" data-l="3"><span class="c-kw">double</span> len2 = <span class="c-fn">dot</span>(n, n);   <span class="c-com">// = |u|²|v|² sin²θ   （长度⁴）</span></span><span class="cl" data-l="4"><span class="c-kw">double</span> uu   = <span class="c-fn">dot</span>(u, u);</span><span class="cl" data-l="5"><span class="c-kw">double</span> vv   = <span class="c-fn">dot</span>(v, v);</span><span class="cl" data-l="6"></span><span class="cl" data-l="7"><span class="c-kw">if</span> (len2 &lt;= <span class="c-num">0.0</span> || len2 &lt; <span class="c-num">1e-12</span> * uu * vv) {   <span class="c-com">// ← 与尺度无关</span></span><span class="cl" data-l="8">    degenerate = <span class="c-kw">true</span>;</span><span class="cl" data-l="9">    normal = Vec3(<span class="c-num">0</span>, <span class="c-num">1</span>, <span class="c-num">0</span>);   <span class="c-com">// 给个合法值，反正 hit() 会直接 return</span></span><span class="cl" data-l="10">    D = <span class="c-num">0.0</span>;  w = Vec3(<span class="c-num">0</span>, <span class="c-num">0</span>, <span class="c-num">0</span>);</span><span class="cl" data-l="11">    bbox = <span class="c-fn">AABB</span>(Q, Q);       <span class="c-com">// 退化成一个点，pad 会撑开</span></span><span class="cl" data-l="12">    <span class="c-kw">return</span>;</span><span class="cl" data-l="13">}</span><span class="cl" data-l="14"></span><span class="cl" data-l="15">normal = <span class="c-fn">unit_vector</span>(n);  D = <span class="c-fn">dot</span>(normal, Q);  w = n / len2;</span></code></pre>
+  </div>
+
+  <h3>那个 <code>1e-12 * uu * vv</code> 是怎么来的</h3>
+  <p>第一版写的是 <code>if (len2 &lt; 1e-8)</code>，被测试 C 组当场抓出来。因为量纲不对：</p>
+  <div class="eq">
+    <span class="tagline">量纲分析 = 三秒抓 bug</span>
+    <span class="line">|<b>n</b>| = |<b>u</b>||<b>v</b>| sin θ &nbsp;⇒&nbsp; len2 = |<b>u</b>|²|<b>v</b>|² sin²θ</span>
+    <span class="line">len2 / (uu · vv) = sin²θ &nbsp;&nbsp;<span class="why" style="display:inline">← 只与夹角有关，与大小无关</span></span>
+  </div>
+  <p><code>len2</code> 是<b>长度的四次方</b>。两条垂直边、边长都是 <span class="m">e</span> 时 <span class="m">len2 = e⁴</span>。于是 <code>len2 &lt; 1e-8</code> 等价于 <b>e &lt; 0.01</b>：</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>边长 e</th><th class="mono">len2 = e⁴</th><th>错误判据 <span class="mono">len2 &lt; 1e-8</span></th><th>后果</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">2 （立方体）</td><td class="mono">16</td><td>正常</td><td class="c">✅</td></tr>
+        <tr><td class="mono">0.02 （5 万面）</td><td class="mono">1.6e-7</td><td>正常</td><td class="c">✅ 侥幸</td></tr>
+        <tr><td class="mono">0.01</td><td class="mono">1e-8</td><td>临界</td><td class="c">⚠️</td></tr>
+        <tr><td class="mono">0.005 （20 万面）</td><td class="mono">6.25e-10</td><td><b>判为退化</b></td><td class="c">❌ 整个模型静默消失</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="tbl-note">不崩溃、不报错、不 NaN，物体只是"没了"。这是最难查的一类 bug。</p>
+
+  <p>正确判据把裸常数换成了<b>同量纲的量</b> <span class="m">uu·vv</span>（也是长度⁴）：</p>
+  <div class="eq">
+    <span class="tagline">尺度不变</span>
+    <span class="line">len2 &lt; 1e-12 · uu · vv &nbsp;⟺&nbsp; sin²θ &lt; 1e-12 &nbsp;⟺&nbsp; θ &lt; 10⁻⁶ rad</span>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>三角形</th><th class="mono">uu·vv</th><th class="mono">len2</th><th>判定</th></tr></thead>
+      <tbody>
+        <tr><td>边长 1e-3 直角</td><td class="mono">1e-12</td><td class="mono">1e-12</td><td>正常 ✅（1e-12 &lt; 1e-24 不成立）</td></tr>
+        <tr><td>夹角 1e-9 的细针</td><td class="mono">≈ 1</td><td class="mono">1e-18</td><td>退化 ✅</td></tr>
+        <tr><td>共线三点</td><td class="mono">≈ 4</td><td class="mono">0</td><td>退化 ✅（<span class="mono">0 ≤ 0</span>）</td></tr>
+        <tr><td>有一条零边</td><td class="mono">0</td><td class="mono">0</td><td>退化 ✅（<span class="mono">0 ≤ 0</span>）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="warn">
+    <span class="tag">铁律</span><br>
+    <b>epsilon 必须和同量纲的量比较。</b>判 <code>len2</code>（长度⁴）要用 <code>uu·vv</code>（也是长度⁴），
+    不能拿裸常数。写 <code>if (x &lt; 1e-8)</code> 之前，先问一句：<b>x 的单位是什么？</b>
+  </div>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    拖"塌陷"把 c 压到 ab 连线上，看 <span class="m">|n|</span> 箭头缩短、<span class="m">sin²θ</span> 掉到 0。
+    再拖"尺度 e"从 1 到 0.005：正确判据一直说"正常"，错误判据在 e &lt; 0.01 时突然翻脸。
+  </div>
+</section>
+
+<!-- ============ 07 ============ -->
+<section id="s7" data-scene="mesh">
+  <div class="kicker">验收 · 定量实验</div>
+  <h2><span class="h2n">07</span>6 个四边形 vs 12 个三角形：<b>字节完全相同</b></h2>
+  <p class="lead">今天真正的验收不是"看起来一样"，是 <code>Get-FileHash</code> 一样。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>新加了一个调试开关：</p>
+  <div class="codewrap">
+    <div class="codebar"><span class="fname">src/main.cpp · --normal 的实现（4 行）</span></div>
+<pre><code><span class="cl"><span class="c-kw">if</span> (g_normal_shading) {</span><span class="cl">    <span class="c-kw">return</span> <span class="c-num">0.5</span> * <span class="c-fn">Color</span>(rec.normal.<span class="c-fn">x</span>() + <span class="c-num">1.0</span>,</span><span class="cl">                       rec.normal.<span class="c-fn">y</span>() + <span class="c-num">1.0</span>,</span><span class="cl">                       rec.normal.<span class="c-fn">z</span>() + <span class="c-num">1.0</span>);</span><span class="cl">}   <span class="c-com">// 不弹射、不消费随机数、直接返回</span></span></code></pre>
+  </div>
+
+  <h3>为什么必须先把"随机"从实验里踢出去</h3>
+  <p>普通渲染有漫反射弹射。两张图的差别不是"几何算错了"，而是<b>随机</b>：第二个三角形的法线是
+    <span class="m">cross(v, v−u)</span> 算的，和 <span class="m">cross(u, v)</span> 在最后几位不等；
+    只要<b>一个</b>采样点恰好落在两个三角形共享的边上、在一套算术里算"命中"、另一套算"未命中"，
+    这个像素的随机序列就整条错位 —— 它变成了另一个像素。</p>
+
+  <div class="eq">
+    <span class="tagline">两种输出的"分辨力"</span>
+    <span class="line">法线模式：像素 = f(n̂)，再量化到 8 bit &nbsp;⇒&nbsp; 10⁻¹⁶ 的差异被量化<b>吸收</b></span>
+    <span class="line">蒙特卡洛：像素 = f(几何 × 随机序列) &nbsp;⇒&nbsp; 噪声 σ ≈ 10/255，比几何差异大一个数量级</span>
+  </div>
+  <p>噪声比你要找的差异还大，逐像素比对就<b>失去了分辨力</b>。这时候"比对失败"不能说明几何错了 ——
+    更糟的是，<b>"比对成功"也不能说明几何对了</b>。一套对任何改动都报"相同"的实验，等于没有实验。</p>
+
+  <div class="note">
+    <span class="tag">方法论</span><br>
+    <b>想验证几何，就要先把"随机"这个变量从实验里踢出去。</b><br>
+    这和 Day 13 的"两步验收"是同一个思路：先关掉加速结构（变量：BVH），再关掉蒙特卡洛（变量：随机）。
+    图上一样不算数，<b>字节一样</b>才算数。
+  </div>
+
+  <h3>但"相同"也可能是方法太钝</h3>
+  <p>这里要补一刀，否则"字节相同"毫无说服力：如果这个比对<b>对任何改动都报相同</b>，那它证明不了任何东西。所以今天顺手做了敏感性实验 ——
+    <b>把立方体的一个顶点挪动 2%</b>，看法线图会不会红。会红，说明这套比对<b>有分辨力</b>；在它有分辨力的前提下，"两种拆法字节相同"才是个结论。</p>
+
+  <p>下面的面板在浏览器里实时重算：同一份求交代码跑两遍，一遍用 6 个 Quad、一遍用 12 个 Triangle，然后比对整幅图像的字节。</p>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    ① 法线模式下两边的 <b>hash 相同</b>，像素差异 0。<br>
+    ② 勾上"挪 2%"，同一个 hash 立刻裂开 —— 这是<b>实验有效</b>的证据。<br>
+    ③ 切到普通渲染，噪声把一切淹没，比对失去意义。
+  </div>
+</section>
+<!-- ============ 08 ============ -->
+<section id="s8" data-scene="tests">
+  <div class="kicker">测试 · 假绿</div>
+  <h2><span class="h2n">08</span>13 条测试变红，剩下 3 条才是<b>假绿</b></h2>
+  <p class="lead">bug 明明还在，为什么那 3 条能过？这一段是整份 devlog 里最值得反复读的。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>Bug 是空 1 写错：把顶点当成了边向量。</p>
+  <div class="eq">
+    <span class="tagline">两种写法</span>
+    <span class="line">正确： <span class="c-fn" style="font-family:var(--mono);font-style:normal">Quad(a, b − a, c − a, mat)</span></span>
+    <span class="line">错误： <span class="c-fn" style="font-family:var(--mono);font-style:normal">Quad(a, b, c, mat)</span></span>
+  </div>
+  <p>测试用的三角形恰好是 <span class="m">a=(1,0,0)</span>、<span class="m">b=(1,1,0)</span>、<span class="m">c=(0,1,0)</span>。错误写法得到</p>
+  <div class="eq">
+    <span class="tagline">恰好同向</span>
+    <span class="line"><b>u′</b> = <b>b</b> = (1,1,0), &nbsp; <b>v′</b> = <b>c</b> = (0,1,0)</span>
+    <span class="line"><b>n′</b> = <b>u′</b> × <b>v′</b> = (0, 0, 1) &nbsp;&nbsp;←&nbsp; 和正确法线<b>一模一样</b></span>
+    <span class="why">所以平面没错（还是 z = 0），错的只是平面内的形状</span>
+  </div>
+  <p>因为 <span class="m">n′ = (0,0,1)</span>，<span class="m">w′ = (0,0,1)</span>，只有叉积的 z 分量有效 —— 那就是 2D 叉积：</p>
+  <div class="eq">
+    <span class="tagline">错误的 α′、β′</span>
+    <span class="line">α′ = p<sub class="sub">x</sub> · v′<sub class="sub">y</sub> − p<sub class="sub">y</sub> · v′<sub class="sub">x</sub> = p<sub class="sub">x</sub></span>
+    <span class="line">β′ = u′<sub class="sub">x</sub> · p<sub class="sub">y</sub> − u′<sub class="sub">y</sub> · p<sub class="sub">x</sub> = p<sub class="sub">y</sub> − p<sub class="sub">x</sub></span>
+    <span class="why">其中 p = P − a</span>
+  </div>
+
+  <p>把 7 个测试点代进去，结果和实测<b>一字不差</b>：</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>测试点 P</th><th class="mono">p = P − a</th><th class="mono">α′</th><th class="mono">β′</th><th>这一行为什么</th><th>实测</th></tr></thead>
+      <tbody id="tbody-fake">
+        <tr><td>顶点 a (1,0,0)</td><td class="mono">(0, 0)</td><td class="mono">0</td><td class="mono">0</td><td>p = 0，怎么参数化都过</td><td class="c">PASS <span style="color:#bf5327">假绿</span></td></tr>
+        <tr><td>边 ab 中点 (1,0.5,0)</td><td class="mono">(0, 0.5)</td><td class="mono">0</td><td class="mono">0.5</td><td>p 与 v′ = c 共线，α′ 恒为 0</td><td class="c">PASS <span style="color:#bf5327">假绿</span></td></tr>
+        <tr><td>顶点 b (1,1,0)</td><td class="mono">(0, 1)</td><td class="mono">0</td><td class="mono">1</td><td>p = v′，正好压在 α+β=1 上</td><td class="c">PASS <span style="color:#bf5327">假绿</span></td></tr>
+        <tr><td>顶点 c (0,1,0)</td><td class="mono">(−1, 1)</td><td class="mono">−1</td><td class="mono">2</td><td>α′ &lt; 0</td><td class="c">FAIL</td></tr>
+        <tr><td>重心 (2/3,2/3,0)</td><td class="mono">(−1/3, 2/3)</td><td class="mono">−1/3</td><td class="mono">1</td><td>α′ &lt; 0</td><td class="c">FAIL</td></tr>
+        <tr><td>边 ac 中点 (0.5,0.5,0)</td><td class="mono">(−0.5, 0.5)</td><td class="mono">−0.5</td><td class="mono">1</td><td>α′ &lt; 0</td><td class="c">FAIL</td></tr>
+        <tr><td>边 bc 中点 (0.5,1,0)</td><td class="mono">(−0.5, 1)</td><td class="mono">−0.5</td><td class="mono">1.5</td><td>α′ &lt; 0</td><td class="c">FAIL</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><b>三绿四红</b>。三个假绿的共同点：它们全都落在<b>错误平行四边形与正确三角形的交集里</b>。错误形状的角恰好是 a，而 a + v′ = b，所以 a 和 ab 中点都躺在它的边上。而重心 (2/3, 2/3) 在三角形的正中间，却在错误四边形的<b>外面</b>（α′ = −1/3 &lt; 0）。</p>
+  <p>"假绿"说的<b>不是"判错了"</b>，而是<b>"判对了也不能算数"</b>：这三点确实在三角形里，PASS 本身没错；但它们<b>不需要正确的参数化也能过</b>，所以对定位 bug 的信息量是<b>零</b>。一条测试的价值 = 它能排除掉多少种错误，而不是它有多绿。</p>
+
+  <h3>三条测试设计原则</h3>
+  <div class="card">
+    <h4>① 顶点的"自身"永远最弱</h4>
+    <p style="margin:4px 0 12px">顶点 a 无论 u、v 写成什么，只要 Q = a，它必然是 (0,0)，必然命中。<b>测试点要挑"参数化之后才明确"的位置</b> —— 重心最好，因为它的 (α, β) = (1/3, 1/3)，错误的参数化几乎不可能凑出来。</p>
+    <h4>② 两个形状的"差集"才有鉴别力，但只防一种错</h4>
+    <p style="margin:4px 0 12px">"平行四边形第四角 (0,2,0)"这条，在 bug 版和正确版<b>都判不命中</b>，对这个 bug 完全无效。它防的是另一种错：把 <code>is_interior</code> 写成 <code>return true;</code>（退化成无限平面）。<b>一条测试只防一种错。</b></p>
+    <h4>③ 单点再准，也不如一整片网格</h4>
+    <p style="margin:4px 0 0">E 组打 7×7 = 49 条射线覆盖整个面，同时比 <b>t</b> 和<b>法线</b>。修复前 <b>0/49</b>，修复后 <b>49/49</b>。你不需要猜哪个点有鉴别力，因为整片都覆盖了。</p>
+  </div>
+
+  <div class="note">
+    <span class="tag">读动画</span><br>
+    切换"正确 / bug"参数化，7 个点的颜色实时翻转。<b>3 绿 4 红</b>。
+    再切到"49 条射线"：红色是"两种拆法给出不同 t"的射线。
+    bug 版全红（只有极少数幸运儿），正确版全绿（49/49）。
+  </div>
+</section>
+
+<!-- ============ 09 ============ -->
+<section id="s9" data-scene="crack">
+  <div class="kicker">细节 · 闭集与开集</div>
+  <h2><span class="h2n">09</span>为什么内部判定用 <code>&gt;=</code> 而不是 <code>&gt;</code></h2>
+  <p class="lead">相邻两个三角形共享一条边。如果两边都用严格不等号，边界点会被<b>同时拒绝</b>。</p>
+
+  <div class="stage-slot"></div>
+
+  <p>这不是理论洁癖。在<b>光栅化器</b>里，屏幕坐标是定点数（比如 1/256 像素精度），<b>大量采样点会精确落在边上</b>。
+    如果两个三角形都把自己那条边判成"外面"，中间就出现一条谁都不画的<b>黑缝</b> —— 也就是常说的三角形接缝闪烁。</p>
+
+  <p>工业界的标准解法是把"边界归谁"写成规则：<b>top-left rule</b>。左边界和上边界算内部，右边界和下边界算外部 ——
+    这样每个边界像素<b>恰好</b>被一个三角形认领，不重不漏。它比"全用开集"或"全用闭集"都精确，但需要知道三角形的绕向。</p>
+
+  <p>我们选更简单的一条：<b>统一用闭集</b>。</p>
+  <div class="eq">
+    <span class="tagline">三角版 · 闭集</span>
+    <span class="line">α ≥ 0 &nbsp;&amp;&amp;&nbsp; β ≥ 0 &nbsp;&amp;&amp;&nbsp; α + β ≤ 1</span>
+  </div>
+
+  <div class="warn">
+    <span class="tag">说实话</span><br>
+    在路径追踪器里，这条缝<b>几乎不可能出现</b>。α、β 是浮点除法算出来的，正好等于 0 或 1 的概率是 0。
+    所以闭集在这套代码里更多是<b>成本为零的正确性保险</b>，不是修了什么实际 bug。
+    真正的战场在光栅化器里。
+  </div>
+
+  <p>但选择闭集还有一个更深的理由，它和 Day 13 的 <code>pad_to_minimums()</code> 是<b>同一个思维模式</b>：</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>选错的代价</th><th>闭集（可能重复命中）</th><th>开集（可能漏命中）</th></tr></thead>
+      <tbody>
+        <tr><td>后果</td><td>极偶发的 z-fighting，绘制两次</td><td>一条贯穿模型的<b>黑线</b></td></tr>
+        <tr><td>肉眼</td><td>看不出来</td><td>一眼就看见</td></tr>
+        <tr><td>结论</td><td class="c" style="color:#26744a;font-weight:700">选它</td><td class="c" style="color:#bf5327;font-weight:700">避开</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="tag">当两种错误的代价不对称时，永远往代价小的那一侧倒。</span><br>
+    Day 13：盒子宁可偏大。<br>
+    Day 14：边界宁可重复命中。<br>
+    这是同一个判断，换了个坐标系。
+  </div>
+
+  <p class="tbl-note">读动画：放大 100 倍的像素网格。切到"开集"，对角线上的像素会同时被两个三角形拒收，变成一道黑缝；切回"闭集"，它们被画两次 —— 重了，但看不出来。</p>
+</section>
+
+<!-- ============ 10 ============ -->
+<section id="s10" data-scene="tests">
+  <div class="kicker">速查 · 自检</div>
+  <h2><span class="h2n">10</span>一页速查：代码 ↔ 动画 ↔ 数学</h2>
+  <p class="lead">今天的每一行代码，都对应一个可以在右侧拖动的东西。</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>代码</th><th>在哪看</th><th>它在说什么数学</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Quad(a, b−a, c−a, mat)</td><td>§2 · 动画：α/β 点</td><td>位置 − 位置 = 边向量；参数化 P = Q + αu + βv</td></tr>
+        <tr><td class="mono">alpha &gt;= 0 &amp;&amp; beta &gt;= 0 &amp;&amp; alpha+beta &lt;= 1</td><td>§2 · Quad/Triangle 切换</td><td>三个重心权重非负；一条直线切掉半个方块</td></tr>
+        <tr><td class="mono">w0 = 1 − α − β</td><td>§3 · 三块彩色面积</td><td>权重和恒为 1；权重 = 对面小三角形的面积比</td></tr>
+        <tr><td class="mono">denom = dot(normal, d)</td><td>§4 · 平行模式</td><td>t = (D − n̂·O)/(n̂·d)，分母为 0 则平行</td></tr>
+        <tr><td class="mono">alpha = dot(w, cross(p, v))</td><td>§4 · 落点 α/β</td><td>叉积消元：p×v = αn</td></tr>
+        <tr><td class="mono">is_interior(alpha, beta)</td><td>§4 · 打偏模式</td><td>图元 = 无限平面 ∩ 形状</td></tr>
+        <tr><td class="mono">bbox = AABB::surrounding(diag1, diag2)</td><td>§5 · 幽灵角</td><td>Q+u+v = b+c−a 不在三角形上</td></tr>
+        <tr><td class="mono">len2 &lt; 1e-12 * uu * vv</td><td>§6 · 塌陷 / 尺度</td><td>sin²θ &lt; 1e-12，与尺度无关</td></tr>
+        <tr><td class="mono">if (degenerate) return false</td><td>§6 · NaN 链</td><td>NaN 让一切比较返回 false</td></tr>
+        <tr><td class="mono">g_normal_shading</td><td>§7 · 两面板比对</td><td>先消灭随机变量，再谈逐像素比对</td></tr>
+        <tr><td class="mono">Triangle(Q, Q+u, Q+v)</td><td>§8 · 7 点 / 49 射线</td><td>测试点要挑参数化之后才明确的位置</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>数字</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>项目</th><th>数值</th></tr></thead>
+      <tbody>
+        <tr><td>单元测试</td><td><b>32 / 32</b>（修复前 13 条失败）</td></tr>
+        <tr><td>E 组 49 条射线</td><td>修复前 <b>t 一致 0/49、法线一致 0/49</b> → 修复后 <b>49/49</b></td></tr>
+        <tr><td>立方体 6 Quad vs 12 Triangle</td><td><code>--normal</code> 下 <b>字节完全相同</b></td></tr>
+        <tr><td>无 BVH vs 有 BVH（12 个零厚度盒子）</td><td><b>字节完全相同</b></td></tr>
+        <tr><td>200 spp 渲染</td><td>四边形 2.93 s / 三角形 4.48 s（400×225）</td></tr>
+        <tr><td>场景图元</td><td>36 个三角形 + 1 个地面 Quad（四边形版 18 + 1）</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="tbl-note">一处小账对不上：devlog 把修复前记作"18 通过 / 13 失败"，可 18 + 13 = 31，而断言总数是 32。原文如此，本页只采信"13 条失败"这个能和三处说法互相印证的数。</p>
+
+  <h3>自检题</h3>
+  <details>
+    <summary>为什么 Triangle 不需要重写 hit()？</summary>
+    <p>因为 <code>Quad::hit()</code> 里调用的 <code>is_interior(alpha, beta)</code> 是 <b>virtual</b> 的。通过基类指针/引用调用虚函数时，实际执行的是<b>对象真实类型</b>的版本（多态）。所以同一份求交逻辑，配 <code>Quad::is_interior</code> 就是四边形，配 <code>Triangle::is_interior</code> 就是三角形 —— <b>行为由实际类型决定，不由代码位置决定</b>。</p>
+  </details>
+  <details>
+    <summary>三角形有 3 个顶点，为什么重心坐标只有 2 个数？</summary>
+    <p>第三个权重是 <b>1 − α − β</b>，被"和为 1"这个约束隐含了。三个权重满足 w0+w1+w2=1，是 2 个自由度 —— 正好对应平面上的 2 个坐标。如果把三个权重都存下来，就会有一个冗余变量，且这个冗余会让"点在不在内部"的判据不稳定。</p>
+  </details>
+  <details>
+    <summary>Triangle 的包围盒等于平行四边形的包围盒。会带来什么问题？不会带来什么？</summary>
+    <p>会带来：BVH 叶子节点里多测一些"盒子相交但三角形不相交"的射线，效率略降（实测慢 53%，其中一半来自图元数翻倍）。<br>
+    不会带来：任何<b>正确性</b>问题。包围盒只用于剪枝，偏大只意味着剪得不够狠，绝不会误伤命中。</p>
+  </details>
+  <details>
+    <summary>如果 unit_vector((0,0,0)) 返回 NaN，为什么 if (fabs(denom) &lt; 1e-8) 拦不住？</summary>
+    <p>IEEE 754 规定<b>任何涉及 NaN 的比较都返回 false</b>（只有 != 返回 true）。所以 <code>fabs(NaN) &lt; 1e-8</code> → false，<code>NaN &lt;= t_min</code> → false，<code>NaN &gt;= t_max</code> → false。<b>所有"把坏值挡在门外"的检查，遇到 NaN 会全部失效。</b>唯一办法是在产生 NaN 之前拦住它 —— 这就是退化保护必须放在构造函数里的原因。</p>
+  </details>
+  <details>
+    <summary>为什么 is_interior 用闭集（>= / <=）？</summary>
+    <p>相邻三角形共享边，全用开区间会让边界点被两边同时拒绝，出现裂缝。但要说实话：在路径追踪器里 α、β 是浮点除法算出来的，恰好等于 0 或 1 的概率是 0，这条缝几乎不可能出现。<b>真正的裂缝在光栅化器里</b>（定点坐标 + 大量边界采样），那里的标准解法是 top-left rule。</p>
+    <p>选闭集的真正理由是<b>代价不对称</b>：重复命中 → 极偶发 z-fighting，肉眼看不出来；漏命中 → 一条贯穿模型的黑线，一眼就看见。</p>
+  </details>
+  <details>
+    <summary>一个立方体用 6 个 Quad 还是 12 个 Triangle，哪个更快？</summary>
+    <p>12 个 Triangle 更慢，实测 2.93 s → 4.48 s（200 spp）。两层原因：<b>图元数翻倍</b>（BVH 叶子候选从 18 涨到 36，每个面测两次）+ <b>包围盒更大</b>（三角形的盒子是平行四边形的盒子，剪枝更松）。<br>
+    但这是几十个图元的玩具场景。真实模型几十万三角形，"四边形省一半图元"的收益远比不上"三角形能表示任意形状"的能力。</p>
+  </details>
+
+  <h3>四个可以亲手做的实验</h3>
+  <ol>
+    <li><b>注释掉退化保护</b>，往场景里塞一个共线三角形。NaN 会污染整条光线路径 —— 可能是黑斑、条纹或者整片异色。</li>
+    <li><b>把 is_interior 改成严格不等号</b>，渲染立方体。大概率看不出变化 —— 这正好说明"理论问题"和"实际问题"的区别。</li>
+    <li><b>把 --normal 下的立方体放大 4 倍</b>，看每个面能不能看出对角线的分界。看不出，因为同一个面的两个三角形法线完全相同。想看见三角网格，必须按<b>重心坐标着色</b>或做顶点法线插值。</li>
+    <li><b>把退化判据改回 len2 &lt; 1e-8</b>，把立方体缩小到边长 0.01，看它会不会凭空消失。这是复现"epsilon 量纲错误"最快的办法。</li>
+  </ol>
+
+  <h3>今天的 C++ 知识点</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>知识点</th><th>要点</th></tr></thead>
+      <tbody>
+        <tr><td><code>override</code></td><td>让编译器检查"你确实覆盖了基类虚函数"。签名写错（少个 const、参数类型不同）会立刻报错，而不是悄悄变成一个新函数、永远不被调用</td></tr>
+        <tr><td>初始化列表调基类构造</td><td><code>Triangle(...) : Quad(a, b-a, c-a, mat) { }</code> —— 派生类构造前必须先构造基类，所以 <code>Quad</code> 里 <code>set_bounding_box()</code> 用的就是 <code>b-a</code>、<code>c-a</code></td></tr>
+        <tr><td>虚函数表（vtable）</td><td><code>Quad::hit()</code> 里调 <code>is_interior(...)</code>，实际执行 <code>Triangle::is_interior</code>。一次间接跳转，换掉整个图元的行为</td></tr>
+        <tr><td>位置 − 位置 = 向量</td><td><code>b - a</code> 返回 <code>Vec3</code>，正好当边向量；<code>Q + 向量</code> 得到位置</td></tr>
+        <tr><td><code>static</code> 命名空间级变量</td><td><code>static bool g_normal_shading</code> 只在本编译单元可见，避免和其他文件的同名变量冲突</td></tr>
+        <tr><td><code>AABB(Q, Q)</code> 是合法调用</td><td>零尺寸盒子不会崩，<code>pad_to_minimums()</code> 会把它撑成 0.0001 的小方块</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="tag">下一步</span><br>
+    ① <b>顶点法线插值</b>：用今天算出的 (α, β) 插值三个顶点的法线，一个 800 三角形的小球就会看起来像完美的球。<br>
+    ② <b>OBJ 网格读取</b>：三角形堆成真实模型，BVH 从 36 个三角形升级到几万个。<br>
+    ③ <b>Cornell Box</b>：矩形当面积光源，<code>Material</code> 新增 <code>emit()</code>。
+  </div>
+</section>
+
+</article>
+
+<aside class="stage-col">
+  <div class="stage" id="stage">
+    <div class="stage-head">
+      <div class="t"><span id="stage-title">把第 4 个点抬离平面</span><small id="stage-sub">四点不共面 → 法线不唯一</small></div>
+      <div class="head-right"><span class="idx" id="stage-idx">1 / 9</span><button class="collapse" id="btn-fold">收起</button></div>
+    </div>
+    <canvas id="stage-canvas"></canvas>
+    <div class="stage-ctrl" id="stage-ctrl">
+      <div class="ctrlpane" data-pane="why">
+        <div class="row"><span>抬起 θ</span><input type="range" id="q-twist" min="0" max="100" value="42"><b id="q-twist-v">0.42</b></div>
+        <div class="row2"><span>第 4 点偏离平面高度 h</span><b class="mono" id="q-h">—</b></div>
+        <div class="ro" id="ro-why"></div>
+        <div class="hint">三角形永远不会出现这一幕：三个点没有"第四个点可以翘起来"的余地。</div>
+      </div>
+
+      <div class="ctrlpane" data-pane="inherit">
+        <div class="seg" id="q-mode"><button data-v="quad">Quad</button><button data-v="tri" class="on">Triangle</button></div>
+        <div class="row"><span>α</span><input type="range" id="i-a" min="0" max="120" value="62"><b id="i-a-v">0.62</b></div>
+        <div class="row"><span>β</span><input type="range" id="i-b" min="0" max="120" value="55"><b id="i-b-v">0.55</b></div>
+        <div class="row2"><label class="chk"><input type="checkbox" id="i-auto" checked>自动扫描</label><span id="i-verdict"></span></div>
+        <div class="ro" id="ro-inh"></div>
+      </div>
+
+      <div class="ctrlpane" data-pane="bary">
+        <div class="row"><span>α</span><input type="range" id="b-a" min="0" max="100" value="34"><b id="b-a-v">0.34</b></div>
+        <div class="row"><span>β</span><input type="range" id="b-b" min="0" max="100" value="38"><b id="b-b-v">0.38</b></div>
+        <div class="row2"><label class="chk"><input type="checkbox" id="b-auto" checked>自动扫描</label>
+          <label class="chk"><input type="checkbox" id="b-area" checked>面积比</label></div>
+        <div class="ro" id="ro-bary"></div>
+      </div>
+
+      <div class="ctrlpane" data-pane="ray">
+        <div class="seg" id="r-mode"><button data-v="hit" class="on">命中三角形</button><button data-v="off">打偏</button><button data-v="par">平行</button></div>
+        <div class="row"><span>落点 α</span><input type="range" id="r-a" min="-30" max="130" value="45"><b id="r-a-v">0.45</b></div>
+        <div class="row"><span>落点 β</span><input type="range" id="r-b" min="-30" max="130" value="30"><b id="r-b-v">0.30</b></div>
+        <div class="ro" id="ro-ray"></div>
+      </div>
+
+      <div class="ctrlpane" data-pane="bbox">
+        <div class="row2"><label class="chk"><input type="checkbox" id="x-ghost" checked>幽灵角</label>
+          <label class="chk"><input type="checkbox" id="x-par" checked>平行四边形</label>
+          <label class="chk"><input type="checkbox" id="x-scan" checked>射线扫描</label></div>
+        <div class="ro" id="ro-bbox"></div>
+        <div class="hint">包围盒按<b>平行四边形</b>算，因为它继承了 Quad 的构造函数。宁可偏大，不可偏小。</div>
+      </div>
+
+      <div class="ctrlpane" data-pane="degen">
+        <div class="row"><span>塌陷</span><input type="range" id="d-k" min="0" max="100" value="0"><b id="d-k-v">0.00</b></div>
+        <div class="row"><span>尺度 e</span><input type="range" id="d-e" min="0" max="100" value="100"><b id="d-e-v">1.00</b></div>
+        <div class="ro" id="ro-degen"></div>
+        <div class="hint">把"塌陷"拉到 100，c 落到 ab 连线上：面积归零，法线算不出来。尺度 e 用来看 <code>1e-8</code> 判据的多米诺。</div>
+      </div>
+
+      <div class="ctrlpane" data-pane="mesh">
+        <div class="seg" id="m-mode"><button data-v="normal">法线着色（--normal）</button><button data-v="mc">普通渲染（MC）</button></div>
+        <div class="row2"><button class="btn primary" id="m-render">重新渲染</button>
+          <label class="chk"><input type="checkbox" id="m-perturb">把顶点挪 2%</label></div>
+        <div class="ro" id="ro-mesh"></div>
+        <div class="hint">浏览器内实时重算（132×74，4 spp）。与仓库那张 400×225 / 200 spp 的图不是同一张，但用的是同一份求交代码。</div>
+      </div>
+
+      <div class="ctrlpane" data-pane="tests">
+        <div class="seg" id="t-param"><button data-v="ok" class="on">正确参数化</button><button data-v="bug">bug 参数化</button></div>
+        <div class="seg" id="t-scope"><button data-v="pts" class="on">7 个测试点</button><button data-v="grid">49 条射线</button></div>
+        <div class="ro" id="ro-tests"></div>
+      </div>
+
+      <div class="ctrlpane" data-pane="crack">
+        <div class="seg" id="c-set"><button data-v="closed" class="on">闭集 &gt;= / &lt;=</button><button data-v="open">开集 &gt; / &lt;</button></div>
+        <div class="ro" id="ro-crack"></div>
+        <div class="hint">屏幕像素网格放大 100 倍。这条对角线就是两个三角形共享的边。</div>
+      </div>
+    </div>
+    <div class="stage-foot"><span>拖动旋转视角 · 点击画面可拾取点</span><span id="stage-scale">透视视图</span></div>
+  </div>
+</aside>
+</div>
+<footer>
+  <p><b>cpp-renderer · Day 14 · 三角形与网格</b></p>
+  <p class="files">include/triangle.h · include/quad.h（退化保护）· src/main.cpp（--normal / cube_scene）· tests/triangle_test.cpp（32 断言）</p>
+  <p>本页的动画不是录像，是<b>同一套数学在浏览器里重算</b>：α、β 用 <code>w·(p×v)</code> 算，退化判据、epsilon 量纲、假绿的 7 个测试点、49 条射线的 t 比对，全部是现场计算结果。§7 的两张图是浏览器内的低分辨率重渲染（132×74 / 4 spp），不是仓库里那张 400×225 / 200 spp 的 PNG。</p>
+</footer>
+<script>
+/* ============================================================
+   0. 向量工具
+   ============================================================ */
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const vlen=a=>Math.sqrt(dot(a,a));
+const unit=a=>{const l=vlen(a); return l<1e-12?[0,0,0]:mul(a,1/l);};
+const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const fmt=(v,n=2)=>{const t=Math.abs(v)<Math.pow(10,-n)/2?0:v; return (t<0?'':'')+t.toFixed(n);};
+const sci=v=>{if(v===0) return '0'; const e=Math.floor(Math.log10(Math.abs(v))); const m=v/Math.pow(10,e);
+  return (Math.abs(m-1)<1e-9?'':m.toFixed(2)+'×')+'10^'+e;};
+function vecStr(v,n=2){return '('+v.map(x=>fmt(x,n)).join(', ')+')';}
+const DEG=180/Math.PI;
+
+/* 与 Quad 构造函数逐行对应的几何体 */
+function faceGeom(Q,u,v){
+  const n=cross(u,v);
+  const len2=dot(n,n), uu=dot(u,u), vv=dot(v,v);
+  const g={Q,u,v,n,len2,uu,vv,degenerate:false};
+  if(len2<=0 || len2<1e-12*uu*vv){
+    g.degenerate=true; g.nn=[0,1,0]; g.D=0; g.w=[0,0,0];
+    return g;
+  }
+  g.nn=unit(n); g.D=dot(g.nn,Q); g.w=mul(n,1/len2);
+  return g;
+}
+const inQuad=(a,b)=>a>=0&&a<=1&&b>=0&&b<=1;
+const inTri =(a,b)=>a>=0&&b>=0&&a+b<=1;
+
+/* 射线 × 平面 → 交点与 (α, β)。第 3 步的判定交给调用者 */
+function castFace(g,O,d,tmin,tmax){
+  if(g.degenerate) return null;
+  const denom=dot(g.nn,d);
+  if(Math.abs(denom)<1e-8) return {reason:'parallel',denom};
+  const t=(g.D-dot(g.nn,O))/denom;
+  if(t<=(tmin==null?1e-4:tmin) || t>=(tmax==null?Infinity:tmax)) return {reason:'window',denom,t};
+  const P=add(O,mul(d,t));
+  const p=sub(P,g.Q);
+  return {reason:null,denom,t,P,
+    a:dot(g.w,cross(p,g.v)), b:dot(g.w,cross(g.u,p)),
+    normal: dot(g.nn,d)<0 ? g.nn : mul(g.nn,-1)};
+}
+
+/* ============================================================
+   1. 画布 / 相机 / 投影
+   ============================================================ */
+const cv=document.getElementById('stage-canvas');
+const ctx=cv.getContext('2d');
+let W=540,H=380,DPR=1;
+const cam={yaw:1.1,pitch:0.5,dist:8.4,target:[0,0,0]};
+let VP={cx:0,cy:0,fpx:600};
+const DEFAULT_ZOOM=2.3;
+let cur='why';
+
+function fit(){
+  const r=cv.getBoundingClientRect();
+  if(r.width<20||r.height<20) return;
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  W=r.width; H=r.height;
+  cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  VP={cx:W/2,cy:H/2,fpx:H*DEFAULT_ZOOM};
+}
+function basis(){
+  const cp=Math.cos(cam.pitch), sp=Math.sin(cam.pitch);
+  const dir=[cp*Math.cos(cam.yaw), sp, cp*Math.sin(cam.yaw)];
+  const eye=add(cam.target,mul(dir,cam.dist));
+  const fwd=unit(sub(cam.target,eye));
+  let right=unit(cross(fwd,[0,1,0]));
+  if(!isFinite(right[0])||vlen(right)<1e-6) right=[1,0,0];
+  const up=cross(right,fwd);
+  return {eye,fwd,right,up};
+}
+function project(B,p){
+  const d=sub(p,B.eye);
+  const z=dot(d,B.fwd);
+  if(z<0.06) return null;
+  return {x:VP.cx+VP.fpx*dot(d,B.right)/z, y:VP.cy-VP.fpx*dot(d,B.up)/z, z};
+}
+function camFromNormal(target,n,dist,pitchBias){
+  const nn=unit(n);
+  cam.target=target.slice();
+  cam.dist=dist;
+  cam.pitch=Math.asin(clamp(nn[1],-1,1))+(pitchBias||0);
+  cam.yaw=Math.atan2(nn[2],nn[0]);
+}
+/* 从一个平面形状的斜上方看它：沿法线偏开 tilt 弧度，才有立体感 */
+function viewPlane(t,n,dist,tilt){
+  const nn=unit(n);
+  cam.target=t.slice(); cam.dist=dist;
+  const p0=Math.asin(clamp(nn[1],-1,1)), y0=Math.atan2(nn[2],nn[0]);
+  cam.pitch=clamp(p0+(tilt||0.5)*0.6,0.10,1.34);
+  cam.yaw=y0+(tilt||0.5);
+}
+
+/* ============================================================
+   2. 绘图原语（全部吃三维坐标）
+   ============================================================ */
+function line3(B,a,b,o={}){
+  const A=project(B,a), C=project(B,b);
+  if(!A||!C) return;
+  ctx.save();
+  ctx.globalAlpha=o.alpha==null?1:o.alpha;
+  ctx.strokeStyle=o.color||'#2b3242';
+  ctx.lineWidth=o.w||1.5;
+  ctx.lineCap='round';
+  if(o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(C.x,C.y); ctx.stroke();
+  ctx.restore();
+}
+function poly3(B,pts,o={}){
+  const P=pts.map(p=>project(B,p));
+  if(P.some(p=>!p)) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(P[0].x,P[0].y);
+  for(let i=1;i<P.length;i++) ctx.lineTo(P[i].x,P[i].y);
+  ctx.closePath();
+  ctx.globalAlpha=o.alpha==null?1:o.alpha;
+  if(o.fill){ctx.fillStyle=o.fill;ctx.fill();}
+  if(o.stroke){ctx.strokeStyle=o.stroke;ctx.lineWidth=o.w||1.6;ctx.lineJoin='round';ctx.stroke();}
+  ctx.restore();
+}
+function dot3(B,p,o={}){
+  const S=project(B,p);
+  if(!S) return;
+  const r=o.r||4.5;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(S.x,S.y,r,0,Math.PI*2);
+  ctx.fillStyle=o.fill||'#20242e'; ctx.fill();
+  if(o.stroke!==null){ctx.strokeStyle=o.stroke||'#ffffff';ctx.lineWidth=o.sw||1.8;ctx.stroke();}
+  if(o.ring){ctx.beginPath();ctx.arc(S.x,S.y,r+5,0,Math.PI*2);ctx.strokeStyle=o.ring;ctx.lineWidth=1.2;ctx.globalAlpha=.5;ctx.stroke();}
+  ctx.restore();
+  if(o.label) label3(B,p,o.label,{dx:o.dx==null?9:o.dx,dy:o.dy==null?-10:o.dy,color:o.labelColor,size:o.size});
+}
+function label3(B,p,text,o={}){
+  const S=project(B,p);
+  if(!S) return;
+  ctx.save();
+  ctx.font=(o.weight||600)+' '+(o.size||12)+'px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign=o.align||'left';
+  ctx.textBaseline='middle';
+  const x=S.x+(o.dx||0), y=S.y+(o.dy||0);
+  if(o.bg!==false){
+    const w=ctx.measureText(text).width;
+    ctx.globalAlpha=.84; ctx.fillStyle=o.bgc||'#ffffff';
+    const bx=o.align==='right'?x-w-4:(o.align==='center'?x-w/2-4:x-4);
+    roundRect(bx,y-9,w+8,18,5); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+  ctx.fillStyle=o.color||'#20242e';
+  ctx.fillText(text,x,y);
+  ctx.restore();
+}
+function arrow3(B,a,b,o={}){
+  const A=project(B,a), C=project(B,b);
+  if(!A||!C) return;
+  const dx=C.x-A.x, dy=C.y-A.y, L=Math.hypot(dx,dy);
+  const ux=dx/(L||1), uy=dy/(L||1);
+  const hl=o.head||9, hw=o.head?o.head*.46:4.2;
+  const tip={x:C.x-ux*hl*0.35,y:C.y-uy*hl*0.35};
+  ctx.save();
+  ctx.globalAlpha=o.alpha==null?1:o.alpha;
+  ctx.strokeStyle=o.color||'#20242e';
+  ctx.fillStyle=o.color||'#20242e';
+  ctx.lineWidth=o.w||1.8; ctx.lineCap='round';
+  if(o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); ctx.moveTo(A.x,A.y); ctx.lineTo(tip.x,tip.y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(C.x,C.y);
+  ctx.lineTo(C.x-ux*hl-uy*hw, C.y-uy*hl+ux*hw);
+  ctx.lineTo(C.x-ux*hl+uy*hw, C.y-uy*hl-ux*hw);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+/* 屏幕空间文字 */
+function txt(t,x,y,o={}){
+  ctx.save();
+  ctx.font=(o.b?'600 ':'')+(o.size||11.5)+'px '+(o.mono?'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace':'-apple-system,"PingFang SC","Microsoft YaHei",sans-serif');
+  ctx.fillStyle=o.c||'#4d5464';
+  ctx.textAlign=o.align||'left';
+  ctx.textBaseline=o.base||'middle';
+  ctx.fillText(t,x,y);
+  ctx.restore();
+}
+function badge(text,x,y,color,bg){
+  ctx.save();
+  ctx.font='600 11.5px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  const w=ctx.measureText(text).width+16;
+  roundRect(x,y,w,22,11);
+  ctx.fillStyle=bg; ctx.fill();
+  ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(text,x+8,y+11.5);
+  ctx.restore();
+}
+function ro3(id,html){const el=document.getElementById(id); if(el) el.innerHTML=html;}
+
+/* ============================================================
+   3. 全局状态
+   ============================================================ */
+const ST={
+  twist:0.42, mode:'tri', ia:0.62, ib:0.55, iauto:true,
+  ba:0.34, bb:0.38, bauto:true, barea:true,
+  rmode:'hit', ra:0.45, rb:0.30,
+  ghost:true, par:true, scan:true,
+  dk:0, de:1,
+  mmode:'normal', mperturb:false, seed:0,
+  tparam:'ok', tscope:'pts',
+  cset:'closed'
+};
+const anim={t:0};
+const C_BLUE='#2c56c9', C_WARM='#bf5327', C_GREEN='#26744a', C_VIOLET='#7a45b5', C_INK='#20242e';
+
+/* ============================================================
+   4. 演示几何（与仓库里的数值对应）
+   ============================================================ */
+const A=[-1.55,-0.5,-0.95], Bp=[-0.35,0.85,0.95], Cp=[1.75,-0.5,0.45];
+const TRI=faceGeom(A,sub(Bp,A),sub(Cp,A));      // 三角形 a b c
+const GHOST=add(Bp,sub(Cp,A));                  // b + c - a ：幽灵角
+const QUAD=[A,Bp,GHOST,Cp];                     // 平行四边形
+const P3=(g,a,b)=>add(g.Q,add(mul(g.u,a),mul(g.v,b)));
+const Q3=(a,b)=>P3(TRI,a,b);
+
+/* 地面平面上的三角形（§4 求交场景） */
+const FA=[-1.6,0,1.2], FU=[3.2,0,0], FV=[0,0,-2.4];
+const FLAT=faceGeom(FA,FU,FV);
+const F3=(a,b)=>add(FA,add(mul(FU,a),mul(FV,b)));
+
+/* §6 退化场景 */
+const DA=[-1.6,-0.4,-0.6], DB=[1.2,-0.4,0.9], DC=[0.1,1.15,-0.35];
+
+/* §8 测试三角形 */
+const TA=[1,0,0], TB=[1,1,0], TC=[0,1,0];
+const TESTPTS=[
+  ['顶点 a',[1,0,0],'a'],
+  ['ab 中点',[1,0.5,0],'m'],
+  ['顶点 b',[1,1,0],'b'],
+  ['顶点 c',[0,1,0],'c'],
+  ['重心',[2/3,2/3,0],'g'],
+  ['ac 中点',[0.5,0.5,0],'n'],
+  ['bc 中点',[0.5,1,0],'h']
+];
+
+/* ============================================================
+   5. 场景
+   ============================================================ */
+const SCENES={};
+
+/* ---------- 5.1 四点不共面 ---------- */
+SCENES.why={
+  pane:'why', idx:'1 / 9',
+  title:'把第 4 个点抬离平面',
+  sub:'四点不共面 → “这个面朝哪”没有唯一答案',
+  cam:{yaw:-0.62,pitch:1.06,dist:11.4,target:[0.78,0.22,0.78]},
+  enter(){ viewPlane([0.78,0.22,0.78],TRI.nn,11.4,0.55); },
+  draw(B){
+    const t=ST.twist;
+    const D=add(GHOST,mul(TRI.nn,t*1.9));
+    const u=sub(Bp,A), v=sub(Cp,A), uv=add(u,v);
+
+    /* 两种拆法，绕向必须一致：法线都取 u×v 那一侧 */
+    const nA=cross(sub(Bp,A),sub(Cp,A));      // △ a b c
+    const nB=cross(sub(D,Bp),sub(Cp,Bp));    // △ b d c
+    const nC=cross(sub(Bp,A),sub(D,A));       // △ a b d
+    const nD=cross(sub(D,A),sub(Cp,A));       // △ a d c
+    const ang=(x,y)=>Math.acos(clamp(dot(unit(x),unit(y)),-1,1))*DEG;
+
+    /* 面 */
+    poly3(B,[A,Bp,D,Cp],{fill:'rgba(44,86,201,.05)',stroke:'#cfcbc0',w:1.3});
+    line3(B,Bp,Cp,{color:'#2c56c9',w:1.7,dash:[6,4]});
+    line3(B,A,D,{color:'#b3a2cf',w:1.5,dash:[4,5],alpha:.9});
+
+    /* 四个法线 */
+    const c1=mul(add(add(A,Bp),Cp),1/3);
+    const c2=mul(add(add(Bp,D),Cp),1/3);
+    const c3=mul(add(add(A,Bp),D),1/3);
+    const c4=mul(add(add(A,D),Cp),1/3);
+    const on=t>0.04?.95:.4;
+    arrow3(B,c1,add(c1,mul(unit(nA),1.05)),{color:C_BLUE,w:1.9,alpha:on,head:8});
+    arrow3(B,c2,add(c2,mul(unit(nB),1.05)),{color:C_BLUE,w:1.9,alpha:on,head:8});
+    arrow3(B,c3,add(c3,mul(unit(nC),1.0)),{color:C_VIOLET,w:1.7,alpha:.8,head:8});
+    arrow3(B,c4,add(c4,mul(unit(nD),1.0)),{color:C_VIOLET,w:1.7,alpha:.8,head:8});
+    label3(B,add(c1,mul(unit(nA),1.05)),'n₁',{color:C_BLUE,dx:3,dy:-10,size:11});
+    label3(B,add(c2,mul(unit(nB),1.05)),'n₂',{color:C_BLUE,dx:3,dy:-10,size:11});
+    label3(B,add(c3,mul(unit(nC),1.0)),'n₃',{color:C_VIOLET,dx:3,dy:10,size:11});
+    label3(B,add(c4,mul(unit(nD),1.0)),'n₄',{color:C_VIOLET,dx:3,dy:10,size:11});
+
+    /* 抬起的第 4 点与垂足 */
+    if(t>0.02){
+      line3(B,D,GHOST,{color:C_WARM,w:1.4,dash:[3,4]});
+      dot3(B,GHOST,{r:3,fill:'#fff',stroke:C_WARM,sw:1.3});
+    }
+    dot3(B,A,{r:4.6,fill:C_INK});
+    dot3(B,Bp,{r:4.6,fill:C_INK});
+    dot3(B,Cp,{r:4.6,fill:C_INK});
+    dot3(B,D,{r:5.2,fill:t>0.02?C_WARM:C_INK});
+    label3(B,A,'a',{dx:-14,dy:12,size:13});
+    label3(B,Bp,'b',{dx:6,dy:-11,size:13});
+    label3(B,Cp,'c',{dx:9,dy:12,size:13});
+    label3(B,D,'d',{dx:4,dy:15,size:13,color:t>0.02?C_WARM:'#20242e'});
+
+    const h=t*1.9;
+    const qh=document.getElementById('q-h'); if(qh) qh.textContent=fmt(h,3);
+    ro3('ro-why',
+      '<span class="k">拆法 ①</span> 对角线 b–c   ∠(n₁,n₂) = '+fmt(ang(nA,nB),2)+'°\n'+
+      '<span class="k">拆法 ②</span> 对角线 a–d   ∠(n₃,n₄) = '+fmt(ang(nC,nD),2)+'°\n'+
+      '<span class="k">两种拆法之间</span>       ∠(n₁,n₃) = '+fmt(ang(nA,nC),2)+'°\n'+
+      (t>0.02
+        ? '<span class="no">→ 法线取决于你选了哪条对角线</span>'
+        : '<span class="ok">→ 四点共面，四个法线重合</span>'));
+  }
+};
+
+/* ---------- 5.2 继承：判定区域 ---------- */
+SCENES.inherit={
+  pane:'inherit', idx:'2 / 9',
+  title:'同一个 (α, β)，两种判定',
+  sub:'Quad：方块内 · Triangle：被 α+β=1 切掉一半',
+  cam:{yaw:-0.66,pitch:1.06,dist:10.4,target:[0.6,0.1,0.55]},
+  enter(){ viewPlane([0.6,0.1,0.55],TRI.nn,10.4,0.50); },
+  draw(B){
+    if(ST.iauto){
+      ST.ia=0.55+0.42*Math.sin(anim.t*0.62);
+      ST.ib=0.5+0.42*Math.sin(anim.t*0.91+1.3);
+      const ea=document.getElementById('i-a'), eb=document.getElementById('i-b');
+      if(ea){ea.value=Math.round(ST.ia*100);eb.value=Math.round(ST.ib*100);}
+    }
+    const a=clamp(ST.ia,0,1.2), b=clamp(ST.ib,0,1.2);
+    const P=Q3(a,b);
+
+    /* 平行四边形整块 */
+    poly3(B,QUAD,{fill:'rgba(44,86,201,.05)',stroke:'#c9c5b9',w:1.3});
+    /* 被切掉的那半块（α+β>1） */
+    poly3(B,[Bp,GHOST,Cp],{fill:'rgba(191,83,39,'+(ST.mode==='tri'?'.20':'.09')+')',
+      stroke:ST.mode==='tri'?C_WARM:'#d9c3b8',w:ST.mode==='tri'?1.5:1});
+    /* 三角形 */
+    poly3(B,[A,Bp,Cp],{fill:'rgba(44,86,201,.10)',stroke:C_BLUE,w:2});
+    /* 切线 */
+    line3(B,Bp,Cp,{color:C_WARM,w:2,alpha:.9});
+    label3(B,mul(add(Bp,Cp),0.5),'α + β = 1',{color:C_WARM,dx:6,dy:14,size:11.5});
+
+    /* 分解路径 */
+    const PU=add(A,mul(TRI.u,a));
+    line3(B,A,PU,{color:'rgba(191,83,39,.55)',w:1.4,dash:[5,4]});
+    line3(B,PU,P,{color:'rgba(38,116,74,.55)',w:1.4,dash:[5,4]});
+    dot3(B,P,{r:5.6,fill:inTri(a,b)?C_INK:'#fff',stroke:inTri(a,b)?'#fff':C_WARM,
+      ring:inTri(a,b)?'#20242e':null,label:'P',dx:10,dy:-12,size:13});
+
+    dot3(B,A,{r:4.2,fill:C_INK,label:'a',dx:-13,dy:10,size:13});
+    dot3(B,Bp,{r:4.2,fill:C_INK,label:'b',dx:-4,dy:-12,size:13});
+    dot3(B,Cp,{r:4.2,fill:C_INK,label:'c',dx:10,dy:9,size:13});
+    dot3(B,GHOST,{r:3.2,fill:'#fff',stroke:'#b9b4a6',sw:1.3,label:'Q+u+v',dx:-6,dy:15,size:10.5,labelColor:'#858c9c',align:'right'});
+
+    const okQ=inQuad(a,b), okT=inTri(a,b);
+    const ok=ST.mode==='tri'?okT:okQ;
+    const vd=document.getElementById('i-verdict');
+    if(vd) vd.innerHTML=ok
+      ? '<span style="color:#26744a;font-weight:700">命中 ✓</span>'
+      : '<span style="color:#bf5327;font-weight:700">拒绝 ×</span>';
+
+    ro3('ro-inh',
+      'α = '+fmt(a)+'   β = '+fmt(b)+'\n'+
+      '<span class="k">Quad  判据</span> 0≤α≤1 &amp;&amp; 0≤β≤1   → '+(okQ?'<span class="ok">true</span>':'<span class="no">false</span>')+'\n'+
+      '<span class="k">Triangle 判据</span> α≥0,β≥0,α+β≤1 → '+(okT?'<span class="ok">true</span>':'<span class="no">false</span>')+'\n'+
+      'α + β = '+fmt(a+b,3)+(a+b>1?'  <span class="no">（&gt;1，属于被切掉的角）</span>':''));
+
+    setHL('code-tri', ST.mode==='tri'?[7,8,9]:[5]);
+    const vb=document.getElementById('vt-b'), va=document.getElementById('vt-a');
+    const ttl=document.getElementById('vt-b-title'), body=document.getElementById('vt-b-body');
+    if(vb&&ttl&&body){
+      vb.classList.add('act'); if(va) va.classList.remove('dead');
+      ttl.textContent = ST.mode==='tri'?'Triangle::is_interior(a, b)':'Quad::is_interior(a, b)';
+      body.textContent = ST.mode==='tri'
+        ? 'return a >= 0 && b >= 0 && a + b <= 1;'
+        : 'return a >= 0 && a <= 1 && b >= 0 && b <= 1;';
+    }
+  }
+};
+
+/* ---------- 5.3 重心坐标 ---------- */
+SCENES.bary={
+  pane:'bary', idx:'3 / 9',
+  title:'重心坐标：三个权重，和为 1',
+  sub:'权重 = 对面小三角形的面积比',
+  cam:{yaw:-0.70,pitch:1.08,dist:9.4,target:[0.05,0.05,0.15]},
+  enter(){ viewPlane([0.05,0.05,0.15],TRI.nn,9.4,0.45); },
+  draw(B){
+    if(ST.bauto){
+      ST.ba=0.34+0.30*Math.sin(anim.t*0.6);
+      ST.bb=0.30+0.28*Math.sin(anim.t*0.85+2.0);
+      ST.ba=clamp(ST.ba,0.02,0.95); ST.bb=clamp(ST.bb,0.02,0.95);
+      if(ST.ba+ST.bb>0.94){const k=0.94/(ST.ba+ST.bb); ST.ba*=k; ST.bb*=k;}
+      const ea=document.getElementById('b-a'), eb=document.getElementById('b-b');
+      if(ea){ea.value=Math.round(ST.ba*100);eb.value=Math.round(ST.bb*100);}
+    }
+    const a=clamp(ST.ba,0,1), b=clamp(ST.bb,0,1);
+    const w0=1-a-b, w1=a, w2=b;
+    const P=Q3(a,b);
+
+    poly3(B,[A,Bp,Cp],{fill:'#fff',stroke:'#d5d2c8',w:1.2});
+
+    if(ST.barea){
+      /* 三块子三角形，颜色浓淡 ∝ 权重 */
+      const sub1=[Bp,Cp,P], sub2=[A,Cp,P], sub0=[A,Bp,P];
+      poly3(B,sub0,{fill:'rgba(44,86,201,'+(0.06+0.30*Math.max(w0,0))+')',stroke:'none'});
+      poly3(B,sub1,{fill:'rgba(191,83,39,'+(0.06+0.30*Math.max(w1,0))+')',stroke:'none'});
+      poly3(B,sub2,{fill:'rgba(38,116,74,'+(0.06+0.30*Math.max(w2,0))+')',stroke:'none'});
+      line3(B,P,A,{color:'rgba(120,120,130,.35)',w:1,dash:[3,4]});
+      line3(B,P,Bp,{color:'rgba(120,120,130,.35)',w:1,dash:[3,4]});
+      line3(B,P,Cp,{color:'rgba(120,120,130,.35)',w:1,dash:[3,4]});
+    }
+    poly3(B,[A,Bp,Cp],{stroke:C_BLUE,w:2});
+
+    /* 切线 α+β=1 */
+    line3(B,Bp,Cp,{color:'#c9b8ae',w:1.3,dash:[5,4]});
+
+    /* 分解路径 */
+    const PU=add(A,mul(TRI.u,a));
+    line3(B,A,PU,{color:C_WARM,w:1.7,dash:[5,4]});
+    line3(B,PU,P,{color:C_GREEN,w:1.7,dash:[5,4]});
+    arrow3(B,A,PU,{color:C_WARM,w:1.5,alpha:.85,head:7});
+    arrow3(B,PU,P,{color:C_GREEN,w:1.5,alpha:.85,head:7});
+    dot3(B,P,{r:6,fill:C_INK,ring:'#20242e'});
+
+    dot3(B,A,{r:5,fill:C_BLUE,label:'v₀  w₀='+fmt(w0),dx:-8,dy:16,size:11.5,labelColor:C_BLUE,align:'right'});
+    dot3(B,Bp,{r:5,fill:C_WARM,label:'v₁  w₁='+fmt(w1),dx:-8,dy:-13,size:11.5,labelColor:C_WARM,align:'right'});
+    dot3(B,Cp,{r:5,fill:C_GREEN,label:'v₂  w₂='+fmt(w2),dx:10,dy:6,size:11.5,labelColor:C_GREEN});
+
+    /* 屏幕空间权重条 */
+    const bx=16,by=H-34,bw=Math.min(300,W-32),bh=11;
+    txt('w₀ + w₁ + w₂ = 1',bx,by-13,{mono:true,size:10.5,c:'#858c9c'});
+    let xx=bx;
+    [[w0,C_BLUE],[w1,C_WARM],[w2,C_GREEN]].forEach(([w,c])=>{
+      const seg=Math.max(0,w)*bw;
+      ctx.save(); ctx.globalAlpha=.85; ctx.fillStyle=c;
+      ctx.fillRect(xx,by,seg,bh); ctx.restore();
+      if(seg>26) txt(fmt(w),xx+seg/2,by+bh/2,{c:'#fff',size:9.5,b:true,align:'center',mono:true});
+      xx+=seg;
+    });
+    ctx.save(); ctx.strokeStyle='#d5d2c8'; ctx.lineWidth=1;
+    ctx.strokeRect(bx+.5,by+.5,bw,bh); ctx.restore();
+
+    ro3('ro-bary',
+      'α = '+fmt(a)+'    β = '+fmt(b)+'\n'+
+      'w₀ = 1−α−β = '+fmt(w0)+'\n'+
+      'w₁ = α     = '+fmt(w1)+'\n'+
+      'w₂ = β     = '+fmt(w2)+'\n'+
+      'Σw = '+fmt(w0+w1+w2,3)+'   (恒等于 1)\n'+
+      '<span class="k">面积比</span> A(a,P,c)/A(a,b,c) = '+fmt(w1,3)+' = α');
+  }
+};
+/* ---------- 5.4 求交：三步 ---------- */
+SCENES.ray={
+  pane:'ray', idx:'4 / 9',
+  title:'射线 × 平面 × 形状',
+  sub:'t 解出来了，(α, β) 也算出来了，只在最后一步被拒',
+  cam:{yaw:0.95,pitch:0.60,dist:11.6,target:[0,0.50,-0.1]},
+  draw(B){
+    const a=ST.ra, b=ST.rb;
+    const P=F3(a,b);
+    const par=(ST.rmode==='par');
+    const O=par? add(add(P,mul(FLAT.nn,1.9)),[1.7,0,0.35]) : add(P,mul(FLAT.nn,2.55));
+    const d=par? unit(cross(FLAT.nn,[0,1,0])) : mul(FLAT.nn,-1);
+
+    /* 无限平面（点阵） */
+    for(let i=-0.6;i<=1.61;i+=0.275){
+      line3(B,F3(i,-0.6),F3(i,1.6),{color:'#e6e8ee',w:1,alpha:.85});
+      line3(B,F3(-0.6,i),F3(1.6,i),{color:'#e6e8ee',w:1,alpha:.85});
+    }
+    /* 平行四边形（虚线） */
+    poly3(B,[FA,add(FA,FU),add(FA,add(FU,FV)),add(FA,FV)],
+      {fill:'rgba(191,83,39,.035)',stroke:'#d8c3b8',w:1.2,alpha:1});
+    /* 三角形 */
+    poly3(B,[FA,add(FA,FU),add(FA,FV)],{fill:'rgba(44,86,201,.11)',stroke:C_BLUE,w:2});
+
+    /* 射线 */
+    const h=castFace(FLAT,O,d);
+    const hit=!!(h&&!h.reason&&inTri(h.a,h.b));
+    const col=hit?C_INK:C_WARM;
+    line3(B,O,par?add(O,mul(d,6)):P,{color:col,w:1.9,alpha:.9});
+    dot3(B,O,{r:3.4,fill:'#fff',stroke:col,sw:1.4,label:'O',dx:7,dy:-9,size:11});
+    if(!par) arrow3(B,add(O,mul(sub(P,O),0.55)),add(O,mul(sub(P,O),0.92)),{color:col,w:1.6,head:7});
+
+    if(!par){
+      dot3(B,P,{r:5.4,fill:hit?C_INK:'#fff',stroke:hit?'#fff':C_WARM,
+        ring:hit?C_INK:C_WARM,label:'P',dx:9,dy:-11,size:12});
+      line3(B,O,[O[0],0,O[2]],{color:'#c9c5b9',w:1,dash:[3,4],alpha:.8});
+    }
+    /* 垂直辅助线 */
+    if(!par){
+      const foot=[O[0],0,O[2]];
+      dot3(B,foot,{r:2.4,fill:'#c9c5b9',stroke:null});
+    }
+
+    /* 判定徽章 */
+    if(par)      badge('denom ≈ 0 → 第 1 步 return false',14,14,'#bf5327','#fdf3ee');
+    else if(!h)  badge('t 不在窗口内 → 第 1 步 return false',14,14,'#bf5327','#fdf3ee');
+    else if(!inTri(h.a,h.b)) badge('α+β>1 → 第 3 步 is_interior 拒绝',14,14,'#bf5327','#fdf3ee');
+    else         badge('命中：rec.t / rec.p / rec.normal',14,14,'#26744a','#f0f7f2');
+
+    let s='';
+    if(par){
+      s='<span class="k">denom = n̂·d</span> = '+fmt(h?h.denom:0,6)+'\n'+
+        '|denom| &lt; 1e-8  → <span class="no">平行，无交点</span>\n'+
+        '（整条光线躺在平面里也是同一情况）';
+      setHL('code-hit',[1,2,3]);
+    }else{
+      const ok=h&&inTri(h.a,h.b);
+      s='<span class="k">denom</span> = '+fmt(h?h.denom:1,4)+'\n'+
+        '<span class="k">t</span>     = '+fmt(h?h.t:0,4)+'   （O 到 P 的距离）\n'+
+        '<span class="k">α, β</span>  = '+fmt(h?h.a:0,4)+', '+fmt(h?h.b:0,4)+'\n'+
+        'α+β   = '+fmt(h?h.a+h.b:0,4)+'\n'+
+        (ok?'<span class="ok">第 3 步：is_interior → true，命中</span>'
+           :'<span class="no">第 3 步：is_interior → false，落在平面上但不在形状里</span>');
+      setHL('code-hit',[7,8,9,10,11,13,14]);
+    }
+    ro3('ro-ray',s);
+  }
+};
+
+/* ---------- 5.5 包围盒的幽灵角 ---------- */
+SCENES.bbox={
+  pane:'bbox', idx:'5 / 9',
+  title:'包围盒 = 平行四边形的包围盒',
+  sub:'Q+u+v = b + c − a，这个点根本不在三角形上',
+  cam:{yaw:-0.55,pitch:1.02,dist:11.6,target:[0.7,0.1,0.7]},
+  enter(){ viewPlane([0.7,0.1,0.7],TRI.nn,14.0,0.62); },
+  draw(B){
+    const pts=QUAD;
+    const mn=[0,1,2].map(k=>Math.min(...pts.map(p=>p[k])));
+    const mx=[0,1,2].map(k=>Math.max(...pts.map(p=>p[k])));
+    const V=(sx,sy,sz)=>[sx?mx[0]:mn[0], sy?mx[1]:mn[1], sz?mx[2]:mn[2]];
+
+    if(ST.par) poly3(B,QUAD,{fill:'rgba(191,83,39,.07)',stroke:'#d8c3b8',w:1.2});
+    poly3(B,[A,Bp,Cp],{fill:'rgba(44,86,201,.12)',stroke:C_BLUE,w:2});
+
+    /* AABB 12 条棱 */
+    const edges=[[[0,0,0],[1,0,0]],[[0,0,0],[0,1,0]],[[0,0,0],[0,0,1]],
+                 [[1,1,1],[0,1,1]],[[1,1,1],[1,0,1]],[[1,1,1],[1,1,0]],
+                 [[1,0,0],[1,1,0]],[[1,0,0],[1,0,1]],
+                 [[0,1,0],[1,1,0]],[[0,1,0],[0,1,1]],
+                 [[0,0,1],[1,0,1]],[[0,0,1],[0,1,1]]];
+    edges.forEach(([p,q])=>line3(B,V(p[0],p[1],p[2]),V(q[0],q[1],q[2]),
+      {color:'#8fa0c8',w:1.2,alpha:.9}));
+
+    /* 幽灵角 */
+    if(ST.ghost){
+      dot3(B,GHOST,{r:4.6,fill:'#fff',stroke:C_WARM,sw:1.7,label:'b + c − a',dx:8,dy:-12,size:11,labelColor:C_WARM});
+      line3(B,add(GHOST,[0,0.001,0]),add(GHOST,mul(TRI.nn,0.9)),{color:'#e0d8cf',w:1,dash:[2,3]});
+    }
+
+    /* 25 条采样射线 */
+    let hitN=0, wasteN=0, shown=0;
+    const prog=ST.scan? (0.5+0.5*Math.sin(anim.t*0.55)) : 1;
+    const total=25;
+    for(let i=0;i<5;i++)for(let j=0;j<5;j++){
+      const a=0.1+0.2*i, b=0.1+0.2*j;
+      const P=Q3(a,b);
+      const ok=inTri(a,b);
+      if(ok) hitN++; else wasteN++;
+      if(shown/total>prog) continue;
+      shown++;
+      const O=add(P,mul(TRI.nn,1.45));
+      if(!ST.scan){ if(!ok) continue; }
+      line3(B,O,P,{color:ok?'rgba(38,116,74,.55)':'rgba(191,83,39,.55)',w:1.1});
+      dot3(B,P,{r:2.8,fill:ok?C_GREEN:C_WARM,stroke:null});
+    }
+
+    ro3('ro-bbox',
+      'bbox.min = '+vecStr(mn)+'\n'+
+      'bbox.max = '+vecStr(mx)+'\n'+
+      '四角：a, b, c, <span class="no">b+c−a</span>\n'+
+      '<span class="k">盒内 25 个采样点</span> 命中 '+hitN+' / 白跑 '+wasteN+'\n'+
+      '<span class="k">面积比</span> 平行四边形 : 三角形 = 2 : 1');
+  }
+};
+
+/* ---------- 5.6 退化与 epsilon ---------- */
+SCENES.degen={
+  pane:'degen', idx:'6 / 9',
+  title:'退化：n = 0，然后 NaN 淹没一切',
+  sub:'sin²θ = len2 / (uu·vv)，与尺度无关',
+  cam:{yaw:0.95,pitch:0.50,dist:8.8,target:[0,0.12,0]},
+  enter(){ cam.yaw=0.95; cam.pitch=0.50; cam.dist=8.8; cam.target=[0,0.12,0]; },
+  draw(B){
+    const k=ST.dk;
+    const u0=sub(DB,DA), v0=sub(DC,DA);
+    const tproj=dot(v0,u0)/Math.max(dot(u0,u0),1e-12);
+    const foot=add(DA,mul(u0,tproj));
+    const C=lerp(DC,foot,k);
+    const g=faceGeom(DA,sub(DB,DA),sub(C,DA));
+
+    /* ab 延长线 */
+    line3(B,add(DA,mul(unit(u0),-0.6)),add(DB,mul(unit(sub(DB,DA)),0.75)),
+      {color:'#c9c5b9',w:1.2,dash:[5,4]});
+
+    const live=g.degenerate? C_WARM : C_BLUE;
+    poly3(B,[DA,DB,C],{fill:g.degenerate?'rgba(191,83,39,.16)':'rgba(44,86,201,.11)',stroke:live,w:2});
+
+    /* 法线：长度按 |n| 真实缩小 */
+    const cen=mul(add(add(DA,DB),C),1/3);
+    const ln=vlen(g.n);
+    const arrowLen=0.25+2.0*Math.min(1,ln/ (vlen(cross(u0,v0))||1));
+    if(ln>1e-9){
+      arrow3(B,cen,add(cen,mul(unit(g.n),arrowLen)),{color:C_VIOLET,w:2.1,head:9});
+      label3(B,add(cen,mul(unit(g.n),arrowLen)),'n̂',{color:C_VIOLET,dx:5,dy:-9,size:12});
+    }
+    /* 面积提示 */
+    label3(B,cen,'面积 = |n|/2 = '+fmt(ln/2,4),{color:'#858c9c',dx:0,dy:18,size:10.5});
+
+    dot3(B,DA,{r:4.6,fill:C_INK,label:'a',dx:-13,dy:10,size:13});
+    dot3(B,DB,{r:4.6,fill:C_INK,label:'b',dx:10,dy:8,size:13});
+    dot3(B,C,{r:5.2,fill:k>0.85?C_WARM:C_INK,label:'c',dx:9,dy:-11,size:13});
+    if(k>0.35) dot3(B,foot,{r:2.8,fill:'#fff',stroke:C_WARM,sw:1.3});
+
+    const sin2=g.uu*g.vv>0? g.len2/(g.uu*g.vv) : 0;
+    const bad=g.len2<1e-8, good=g.degenerate;
+    const e=ST.de;
+    const eLen2=Math.pow(e,4);          // 直角、边长 e ：len2 = e^4
+    const eBad=eLen2<1e-8;
+    const eGood=eLen2 < 1e-12*Math.pow(e,4);   // 直角时 sin²θ=1，永不触发
+
+    badge(g.degenerate?'退化：hit() 直接 return false':'正常',14,14,
+      g.degenerate?C_WARM:C_GREEN, g.degenerate?'#fdf3ee':'#f0f7f2');
+
+    ro3('ro-degen',
+      '|u| = '+fmt(vlen(g.u))+'   |v| = '+fmt(vlen(g.v))+'\n'+
+      '<span class="k">len2 = |u×v|²</span> = '+sci(g.len2)+'\n'+
+      '<span class="k">uu·vv</span>       = '+sci(g.uu*g.vv)+'\n'+
+      '<span class="k">sin²θ</span>       = '+sci(sin2)+'\n'+
+      '错误 len2&lt;1e-8 → '+(bad?'<span class="no">退化</span>':'<span class="ok">正常</span>')+
+      '   正确 sin²θ&lt;1e-12 → '+(good?'<span class="no">退化</span>':'<span class="ok">正常</span>')+'\n'+
+      '──────── 尺度 e = '+e.toFixed(4)+' ────────\n'+
+      '直角边长 e ⟹ len2 = e⁴ = '+sci(eLen2)+'\n'+
+      '错误判据 → '+(eBad?'<span class="no">退化（模型静默消失）</span>':'<span class="ok">正常</span>')+'\n'+
+      '正确判据 → <span class="ok">正常</span>（sin²θ=1 与 e 无关）');
+    setHL('code-degen',[3,4,5,7]);
+  }
+};
+/* ============================================================
+   6. 迷你渲染器（§7 的两张对照图）
+   —— 和仓库同一套求交代码，只是浏览器里跑、分辨率低
+   ============================================================ */
+const MW=132, MH=74, M_ASP=MW/MH, M_TAN=0.335;
+const M_EYE=[0.5,2.45,9.5], M_AT=[0,0.05,0.15];
+const MB=(function(){
+  const fwd=unit(sub(M_AT,M_EYE));
+  let right=unit(cross(fwd,[0,1,0]));
+  const up=cross(right,fwd);
+  return {fwd,right,up};
+})();
+const MPRIMS={};
+const CUBES=[{cx:-2.5,alb:[0.70,0.12,0.12]},{cx:0,alb:[0.15,0.55,0.22]},{cx:2.5,alb:[0.18,0.30,0.85]}];
+
+function cubeFaces(cx){
+  const h=1;
+  return [
+    {Q:[cx+h,-h,-h], u:[0,2,0], v:[0,0,2]},
+    {Q:[cx-h,-h,-h], u:[0,0,2], v:[0,2,0]},
+    {Q:[cx-h, h,-h], u:[0,0,2], v:[2,0,0]},
+    {Q:[cx-h,-h,-h], u:[2,0,0], v:[0,0,2]},
+    {Q:[cx-h,-h, h], u:[2,0,0], v:[0,2,0]},
+    {Q:[cx-h,-h,-h], u:[0,2,0], v:[2,0,0]}
+  ];
+}
+function buildPrims(tris,perturb){
+  const key=(tris?'t':'q')+(perturb?'p':'');
+  if(MPRIMS[key]) return MPRIMS[key];
+  const out=[];
+  const addFace=(Q,u,v,alb)=>{
+    if(!tris){ out.push({g:faceGeom(Q,u,v),kind:'q',alb}); }
+    else{
+      /* 与仓库完全一致：两个三角形，第二个的边是 v 和 v−u */
+      out.push({g:faceGeom(Q,u,v),kind:'t',alb});
+      out.push({g:faceGeom(add(Q,u),v,sub(v,u)),kind:'t',alb});
+    }
+  };
+  CUBES.forEach((c,ci)=>{
+    cubeFaces(c.cx).forEach((f,fi)=>{
+      let u=f.u, v=f.v.slice();
+      /* 敏感性实验：把中间立方体正面的一条边挪 2% */
+      if(perturb && ci===1 && fi===4) v=[v[0], v[1], v[2]+0.04];
+      addFace(f.Q,u,v,c.alb);
+    });
+  });
+  /* 地面：两个版本都是 Quad，不参与对比 */
+  addFace([-8,-1,8],[16,0,0],[0,0,-16],[0.72,0.72,0.72]);
+  MPRIMS[key]=out;
+  return out;
+}
+function mulberry32(a){
+  return function(){
+    a=(a+0x6D2B79F5)|0;
+    let t=a;
+    t=Math.imul(t^(t>>>15), t|1);
+    t^=t+Math.imul(t^(t>>>7), t|61);
+    return ((t^(t>>>14))>>>0)/4294967296;
+  };
+}
+function randUnit(rng){
+  const z=rng()*2-1, a=rng()*Math.PI*2, r=Math.sqrt(Math.max(0,1-z*z));
+  return [r*Math.cos(a), r*Math.sin(a), z];
+}
+function skyCol(d){
+  const t=clamp(0.5*(d[1]+1),0,1);
+  return lerp([0.95,0.965,1.0],[0.42,0.60,0.92],t);
+}
+function hitPrims(prims,O,d){
+  let best=null;
+  for(let i=0;i<prims.length;i++){
+    const g=prims[i].g;
+    if(g.degenerate) continue;
+    const den=dot(g.nn,d);
+    if(Math.abs(den)<1e-8) continue;
+    const t=(g.D-dot(g.nn,O))/den;
+    if(t<=1e-4) continue;
+    if(best&&t>=best.t) continue;
+    const P=add(O,mul(d,t));
+    const p=sub(P,g.Q);
+    const a=dot(g.w,cross(p,g.v)), b=dot(g.w,cross(g.u,p));
+    const ins = prims[i].kind==='q' ? inQuad(a,b) : inTri(a,b);
+    if(!ins) continue;
+    const nrm=dot(g.nn,d)<0? g.nn : mul(g.nn,-1);
+    best={t,P,a,b,n:nrm,alb:prims[i].alb};
+  }
+  return best;
+}
+function traceRay(prims,O,d,depth,rng){
+  const h=hitPrims(prims,O,d);
+  if(!h) return skyCol(d);
+  if(depth<=0) return [0,0,0];
+  const nd=unit(sub(add(add(h.P,h.n),randUnit(rng)),h.P));
+  const c=traceRay(prims,h.P,nd,depth-1,rng);
+  return [c[0]*h.alb[0], c[1]*h.alb[1], c[2]*h.alb[2]];
+}
+const RCACHE={};
+function renderMesh(tris,perturb,mode){
+  const key=(tris?'t':'q')+'|'+(perturb?'p':'')+'|'+mode+(mode==='mc'?'|'+(ST.seed||0):'');
+  if(RCACHE[key]) return RCACHE[key];
+  const prims=buildPrims(tris,perturb);
+  const data=new Uint8ClampedArray(MW*MH*4);
+  const spp = mode==='mc'?3:1;
+  let sigSum=0, sigN=0;
+  const t0=performance.now();
+  for(let py=0;py<MH;py++){
+    const sy=1-((py+0.5)/MH)*2;
+    for(let px=0;px<MW;px++){
+      const sx=((px+0.5)/MW)*2-1;
+      const dir=unit(add(MB.fwd,add(mul(MB.right,sx*M_TAN*M_ASP),mul(MB.up,sy*M_TAN))));
+      let s1=[0,0,0], s2=[0,0,0];
+      for(let s=0;s<spp;s++){
+        let c;
+        if(mode==='mc'){
+          const rng=mulberry32((px*374761393+py*668265263+s*1274126177+(ST.seed||0)*2654435761)>>>0);
+          c=traceRay(prims,M_EYE,dir,3,rng);
+        }else{
+          const h=hitPrims(prims,M_EYE,dir);
+          c = h? [0.5*(h.n[0]+1),0.5*(h.n[1]+1),0.5*(h.n[2]+1)] : skyCol(dir);
+        }
+        for(let k=0;k<3;k++){s1[k]+=c[k]; s2[k]+=c[k]*c[k];}
+      }
+      for(let k=0;k<3;k++){
+        const m=s1[k]/spp;
+        if(spp>1){
+          const v=Math.sqrt(Math.max(0,s2[k]/spp-m*m));
+          sigSum+=v; sigN++;
+        }
+        s1[k]=m;
+      }
+      const o=(py*MW+px)*4;
+      data[o  ]=Math.sqrt(clamp(s1[0],0,1))*255;
+      data[o+1]=Math.sqrt(clamp(s1[1],0,1))*255;
+      data[o+2]=Math.sqrt(clamp(s1[2],0,1))*255;
+      data[o+3]=255;
+    }
+  }
+  const ms=performance.now()-t0;
+  const rec={data,hash:fnv(data),ms,sigma:sigN?sigSum/sigN*255:0};
+  RCACHE[key]=rec;
+  return rec;
+}
+function fnv(data){
+  let h=0x811c9dc5;
+  for(let i=0;i<data.length;i++){ h^=data[i]; h=Math.imul(h,0x01000193); }
+  return (h>>>0).toString(16).padStart(8,'0');
+}
+function imgCanvas(rec){
+  if(rec._cv) return rec._cv;
+  const c=document.createElement('canvas');
+  c.width=MW; c.height=MH;
+  const g=c.getContext('2d');
+  const im=g.createImageData(MW,MH);
+  im.data.set(rec.data);
+  g.putImageData(im,0,0);
+  rec._cv=c;
+  return c;
+}
+function diffCanvas(a,b){
+  const key=a.hash+b.hash;
+  if(RCACHE['d'+key]) return RCACHE['d'+key];
+  const c=document.createElement('canvas');
+  c.width=MW; c.height=MH;
+  const g=c.getContext('2d');
+  const im=g.createImageData(MW,MH);
+  let n=0;
+  for(let i=0;i<MW*MH;i++){
+    const o=i*4;
+    const d=(a.data[o]!==b.data[o])||(a.data[o+1]!==b.data[o+1])||(a.data[o+2]!==b.data[o+2]);
+    if(d) n++;
+    im.data[o  ]=d?191:250;
+    im.data[o+1]=d?83:250;
+    im.data[o+2]=d?39:248;
+    im.data[o+3]=255;
+  }
+  g.putImageData(im,0,0);
+  c._n=n;
+  RCACHE['d'+key]=c;
+  return c;
+}
+function countDiff(a,b){
+  let n=0;
+  for(let i=0;i<MW*MH;i++){
+    const o=i*4;
+    if(a.data[o]!==b.data[o]||a.data[o+1]!==b.data[o+1]||a.data[o+2]!==b.data[o+2]) n++;
+  }
+  return n;
+}
+
+/* ---------- 5.7 字节比对 ---------- */
+SCENES.mesh={
+  pane:'mesh', idx:'7 / 9',
+  title:'6 Quad  vs  12 Triangle',
+  sub:'法线着色：逐字节比对（不弹射、不消费随机数）',
+  cam:{yaw:1.1,pitch:0.5,dist:9,target:[0,0,0]},
+  noOrbit:true,
+  draw(){
+    const mc=(ST.mmode==='mc');
+    const qN=renderMesh(false,false,'normal');
+    const tN=renderMesh(true ,false,'normal');
+    const qP=renderMesh(false,true ,'normal');
+    const tP=renderMesh(true ,true ,'normal');
+    const A= mc? renderMesh(false,ST.mperturb,'mc') : (ST.mperturb? qP : qN);
+    const Bq= mc? renderMesh(true ,ST.mperturb,'mc') : (ST.mperturb? tP : tN);
+    const dv= mc? diffCanvas(A,Bq) : diffCanvas(qN,qP);
+    const nDiff=countDiff(A,Bq);
+    const nPert=countDiff(qN,qP);
+
+    const PX=[16,191,366], PY=58, PW=158, PH=89;
+    txt('同一份 Quad::hit()，两种图元 · 逐字节比对',16,24,{b:true,size:12.5,c:'#20242e'});
+    txt(mc?'普通渲染（3 spp · 蒙特卡洛弹射）':'法线着色（--normal · 确定性）',16,40,{size:11,c:mc?'#bf5327':'#26744a',mono:true});
+
+    const labels=['6 Quad','12 Triangle','差异：原模型 vs 挪 2%'];
+    txt(labels[0],PX[0],PY-9,{size:11.5,b:true,c:'#4d5464'});
+    txt(labels[1],PX[1],PY-9,{size:11.5,b:true,c:'#4d5464'});
+    txt(mc?'差异图 A vs B':labels[2],PX[2],PY-9,{size:11.5,b:true,c:'#4d5464'});
+
+    ctx.save();
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(imgCanvas(A),PX[0],PY,PW,PH);
+    ctx.drawImage(imgCanvas(Bq),PX[1],PY,PW,PH);
+    ctx.drawImage(dv,PX[2],PY,PW,PH);
+    ctx.strokeStyle='#e2dfd6'; ctx.lineWidth=1;
+    PX.forEach(x=>ctx.strokeRect(x+.5,PY+.5,PW,PH));
+    ctx.restore();
+
+    txt('#'+A.hash,PX[0],PY+PH+13,{mono:true,size:10,c:'#858c9c'});
+    txt('#'+Bq.hash,PX[1],PY+PH+13,{mono:true,size:10,c:'#858c9c'});
+    txt((mc?nDiff:nPert)+' px 不同',PX[2],PY+PH+13,{mono:true,size:10,c:'#858c9c'});
+
+    const nd=(mc?nDiff:nPert);
+    if(nd===0) txt('0 个像素',PX[2]+PW/2,PY+PH/2,{size:11,align:'center',c:'#b9b4a6'});
+    else txt(nd+' 像素',PX[2]+PW/2,PY+PH/2,{size:11,align:'center',b:true,c:'#bf5327',mono:true});
+
+    const same=(A.hash===Bq.hash);
+    const yb=PY+PH+46;
+    if(mc){
+      badge('噪声 σ ≈ '+A.sigma.toFixed(1)+' / 255',16,yb,'#bf5327','#fdf3ee');
+      txt('本帧 A vs B：'+nDiff+' 个像素不同 —— 但这恰恰是问题：',16,yb+28,{size:11,c:'#5a4034'});
+      txt('每个像素自己就在 ±'+Math.round(A.sigma)+' 级地随机摆动，',16,yb+46,{size:11,c:'#5a4034'});
+      txt('「0」不能当成「几何正确」的证据，「N」也不能当成「几何错了」的证据。',16,yb+64,{size:11,c:'#5a4034'});
+    }else{
+      badge(same?'两种拆法：hash 相同 · 0 像素差异':'hash 不同 · '+nDiff+' 像素',
+        16,yb, same?'#26744a':'#bf5327', same?'#f0f7f2':'#fdf3ee');
+      txt('挪一个顶点 2%：'+nPert+' 个像素不同'+(nPert>0?'   ← 这套比对有分辨力 ✓':''),16,yb+22,
+        {size:11,c:nPert>0?'#26744a':'#bf5327'});
+      txt('渲染 '+(A.ms|0)+' ms × 2 · 132×74 · 不弹射、不消费随机数',16,yb+42,{size:10.5,c:'#858c9c',mono:true});
+    }
+
+    ro3('ro-mesh',
+      '<span class="k">6 Quad</span>   #'+qN.hash+'\n'+
+      '<span class="k">12 Tri</span>   #'+tN.hash+(qN.hash===tN.hash?'  <span class="ok">✔ 字节相同</span>':'  <span class="no">✘</span>')+'\n'+
+      '<span class="k">当前差异</span> '+nDiff+' / '+(MW*MH)+' px\n'+
+      '<span class="k">挪 2%</span>  #'+qP.hash+'  差异 '+nPert+' px\n'+
+      '<span class="k">图元数</span>   18  vs  37（含地面）\n'+
+      '<span class="k">噪声 σ</span>   '+(mc?A.sigma.toFixed(1):'0.0')+' / 255');
+  }
+};
+
+/* ---------- 5.8 假绿 ---------- */
+SCENES.tests={
+  pane:'tests', idx:'8 / 9',
+  title:'7 个测试点 / 49 条射线',
+  sub:'bug 版：3 绿 4 红，其中 3 条是假绿',
+  cam:{yaw:Math.PI/2,pitch:0.2,dist:3.6,target:[0.5,0.5,0]},
+  enter(){
+    if(ST.tscope==='pts'){ camFromNormal([0.5,0.5,0],[0,0,1],4.1,0.16); }
+    else{
+      const Qg=[-1.2,0.7,1.4], ug=[2.4,0,0.3], vg=[0.2,1.6,-0.9];
+      const c=add(Qg,add(mul(ug,0.5),mul(vg,0.5)));
+      camFromNormal(c,unit(cross(ug,vg)),5.6,0.04);
+    }
+  },
+  draw(B){
+    const bug=(ST.tparam==='bug');
+    const grid=(ST.tscope==='grid');
+
+    if(!grid){
+      const u=bug? TB : sub(TB,TA);
+      const v=bug? TC : sub(TC,TA);
+      const g=faceGeom(TA,u,v);
+
+      /* z=0 平面 */
+      for(let i=-0.4;i<=1.5;i+=0.25){
+        line3(B,[i,-0.2,0],[i,1.5,0],{color:'#eceef3',w:1,alpha:.9});
+        line3(B,[-0.4,i,0],[1.5,i,0],{color:'#eceef3',w:1,alpha:.9});
+      }
+      /* 正确的三角形 */
+      poly3(B,[TA,TB,TC],{fill:'rgba(44,86,201,.07)',stroke:C_BLUE,w:2});
+      /* bug 版平行四边形：Q + [0,0]→u' →v' */
+      if(bug){
+        poly3(B,[TA,add(TA,u),add(TA,add(u,v)),add(TA,v)],
+          {fill:'rgba(191,83,39,.08)',stroke:C_WARM,w:1.5,alpha:1});
+      }
+
+      let pass=0;
+      TESTPTS.forEach(([name,P])=>{
+        const h=castFace(g,[P[0],P[1],4],[0,0,-1],0,1e9);
+        const ok=h&&!h.reason&&inTri(h.a,h.b);
+        if(ok) pass++;
+        const c=ok?C_GREEN:C_WARM;
+        line3(B,[P[0],P[1],1.15],P,{color:ok?'rgba(38,116,74,.35)':'rgba(191,83,39,.35)',w:1});
+        dot3(B,P,{r:4.4,fill:ok?C_GREEN:C_WARM,stroke:'#fff',sw:1.2});
+        label3(B,P,name,{dx:0,dy:-13,size:10,color:c,align:'center'});
+      });
+
+      dot3(B,TA,{r:5,fill:'#fff',stroke:C_BLUE,sw:1.8});
+      dot3(B,TB,{r:5,fill:'#fff',stroke:C_BLUE,sw:1.8});
+      dot3(B,TC,{r:5,fill:'#fff',stroke:C_BLUE,sw:1.8});
+      label3(B,TA,'a(1,0,0)',{dx:-6,dy:16,size:10.5,color:'#858c9c'});
+      label3(B,TB,'b(1,1,0)',{dx:8,dy:2,size:10.5,color:'#858c9c'});
+      label3(B,TC,'c(0,1,0)',{dx:-8,dy:14,size:10.5,color:'#858c9c',align:'right'});
+
+      badge((bug?'bug 参数化：':'正确参数化：')+pass+' / 7 通过',14,14,
+        pass===7?'#26744a':'#bf5327', pass===7?'#f0f7f2':'#fdf3ee');
+
+      const rows=TESTPTS.map(([name,P])=>{
+        const h=castFace(g,[P[0],P[1],4],[0,0,-1],0,1e9);
+        const ok=h&&!h.reason&&inTri(h.a,h.b);
+        const aa=h&&!h.reason?h.a:NaN, bb=h&&!h.reason?h.b:NaN;
+        return '<span class="k">'+name.padEnd(6,' ')+'</span> α='+fmt(aa,3).padStart(7)+
+               ' β='+fmt(bb,3).padStart(7)+'  '+(ok?'<span class="ok">PASS</span>':'<span class="no">FAIL</span>');
+      }).join('\n');
+      ro3('ro-tests', rows+'\n'+(pass===7?'<span class="ok">7 / 7</span>':'<span class="no">'+pass+' / 7 —— 3 条假绿躺在两个形状的交集里</span>'));
+    }else{
+      const Qg=[-1.2,0.7,1.4], ug=[2.4,0,0.3], vg=[0.2,1.6,-0.9];
+      const quad=faceGeom(Qg,ug,vg);
+      const A0=Qg, A1=add(Qg,ug), A2=add(Qg,vg), B0=A1, B1=add(Qg,add(ug,vg)), B2=A2;
+      const t1=faceGeom(A0, bug?A1:sub(A1,A0), bug?A2:sub(A2,A0));
+      const t2=faceGeom(B0, bug?B1:sub(B1,B0), bug?B2:sub(B2,B0));
+
+      poly3(B,[A0,A1,B1,B2],{fill:'rgba(44,86,201,.07)',stroke:C_BLUE,w:1.6});
+      line3(B,A0,B1,{color:'#c3cbdd',w:1.2,dash:[5,4]});
+
+      let ok=0;
+      for(let i=0;i<7;i++)for(let j=0;j<7;j++){
+        const s=(i+0.5)/7, t=(j+0.5)/7;
+        const P=add(Qg,add(mul(ug,s),mul(vg,t)));
+        const O=add(P,mul(quad.nn,3));
+        const d=mul(quad.nn,-1);
+        const hq=castFace(quad,O,d);
+        const h1=castFace(t1,O,d), h2=castFace(t2,O,d);
+        const iq=hq&&!hq.reason&&inQuad(hq.a,hq.b);
+        const c1=h1&&!h1.reason&&inTri(h1.a,h1.b)?h1:null;
+        const c2=h2&&!h2.reason&&inTri(h2.a,h2.b)?h2:null;
+        const ct=(c1&&c2)?(c1.t<c2.t?c1:c2):(c1||c2);
+        const match=iq&&ct&&Math.abs(hq.t-ct.t)<1e-12;
+        if(match) ok++;
+        dot3(B,P,{r:2.6,fill:match?C_GREEN:C_WARM,stroke:null});
+      }
+      badge((bug?'bug 参数化：':'正确参数化：')+ok+' / 49 一致',14,14,
+        ok===49?'#26744a':'#bf5327', ok===49?'#f0f7f2':'#fdf3ee');
+
+      ro3('ro-tests',
+        '<span class="k">同一张立方体面，7×7 = 49 条射线</span>\n'+
+        '比 t、比法线，逐条对照：\n'+
+        '一致 '+ok+' / 49\n'+
+        (ok===49?'<span class="ok">→ 两种拆法给出同一份几何</span>'
+                :'<span class="no">→ 三角形的形状整个错了</span>\n'+
+                 '<span class="k">一格一个采样点，红色 = t 对不上</span>'));
+    }
+  }
+};
+
+/* ---------- 5.9 闭集 / 开集 ---------- */
+SCENES.crack={
+  pane:'crack', idx:'9 / 9',
+  title:'共享边上的像素归谁',
+  sub:'闭集：画两次 · 开集：一条黑缝',
+  noOrbit:true,
+  draw(){
+    const N=16, CELL=18, X0=Math.round((W-N*CELL)/2), Y0=54;
+    txt('把屏幕像素放大 100 倍：共享边 α + β = 1 上的采样点',16,24,{b:true,size:12.5,c:'#20242e'});
+    txt('格子 = 一个像素中心，颜色 = 它被哪几个三角形认领',16,40,{size:11,c:'#858c9c'});
+
+    const closed=(ST.cset==='closed');
+    let both=0, none=0;
+    for(let r=0;r<N;r++){
+      for(let i=0;i<N;i++){
+        const j=N-1-r;
+        const al=(i+0.5)/N, be=(j+0.5)/N;
+        const s=al+be;
+        const in1=closed? s<=1 : s<1;
+        const in2=closed? s>=1 : s>1;
+        const cnt=(in1?1:0)+(in2?1:0);
+        const x=X0+i*CELL, y=Y0+r*CELL;
+        ctx.save();
+        if(cnt===2){ ctx.fillStyle=C_WARM; both++; }
+        else if(cnt===1){ ctx.fillStyle=(in1?C_BLUE:C_VIOLET); }
+        else { ctx.fillStyle='#2b303c'; none++; }
+        ctx.globalAlpha=(cnt===2)?.92:.22;
+        ctx.fillRect(x+1,y+1,CELL-2,CELL-2);
+        if(cnt===2){ ctx.globalAlpha=1; ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.strokeRect(x+4.5,y+4.5,CELL-9,CELL-9); }
+        ctx.restore();
+      }
+    }
+    ctx.save();
+    ctx.strokeStyle='#d5d2c8'; ctx.lineWidth=1;
+    ctx.strokeRect(X0+.5,Y0+.5,N*CELL,N*CELL);
+    ctx.restore();
+
+    /* 图例 */
+    const ly=Y0+N*CELL+16;
+    [['#2c56c9','只被 T₁ 认领'],['#7a45b5','只被 T₂ 认领'],['#bf5327','被两个都认领（画两次）'],['#2b303c','谁都不认领（黑缝）']]
+      .forEach((it,i)=>{
+        const x=16+i*130;
+        ctx.save(); ctx.globalAlpha=i===2?.92:(i===3?1:.3); ctx.fillStyle=it[0];
+        ctx.fillRect(x,ly-5,9,9); ctx.restore();
+        txt(it[1],x+13,ly,{size:10,c:'#6b7280'});
+      });
+
+    badge(closed?'闭集 >= / <=  ·  '+both+' 个边界像素被画两次':'开集 > / <  ·  '+none+' 个边界像素一次都没画',
+      16,Y0+N*CELL+26, closed?'#26744a':'#bf5327', closed?'#f0f7f2':'#fdf3ee');
+
+    ro3('ro-crack',
+      '<span class="k">网格</span> 16×16 = '+(N*N)+' 个像素中心\n'+
+      '<span class="k">共享边上的像素</span> '+N+' 个（α+β 恰好 =1）\n'+
+      '<span class="k">判定</span> '+(closed?'α+β <= 1  /  α+β >= 1':'α+β < 1  /  α+β > 1')+'\n'+
+      (closed?'<span class="ok">→ 重复命中 '+both+' 次：多画一遍，看不出来</span>'
+             :'<span class="no">→ 漏命中 '+none+' 个：一条贯穿模型的黑线</span>')+'\n'+
+      '<span class="k">代价不对称 ⟹ 往代价小的一侧倒</span>');
+  }
+};
+/* ============================================================
+   7. 代码行高亮 / 控件 / 场景切换
+   ============================================================ */
+function setHL(id,lines){
+  const root=document.getElementById(id); if(!root) return;
+  const key=id+':'+lines.join(',');
+  if(root._k===key) return;
+  root._k=key;
+  root.querySelectorAll('.cl').forEach(el=>{
+    el.classList.toggle('hl', lines.indexOf(+el.dataset.l)>=0);
+  });
+}
+function bindRange(id,vid,cb,scale){
+  const e=document.getElementById(id), t=document.getElementById(vid);
+  if(!e) return;
+  const f=()=>{
+    const v=(+e.value)/(scale||100);
+    if(t) t.textContent=fmt(v,2);
+    cb(v);
+  };
+  e.addEventListener('input',f);
+  return f;
+}
+function bindSeg(id,cb){
+  const el=document.getElementById(id); if(!el) return;
+  el.addEventListener('click',ev=>{
+    const b=ev.target.closest('button'); if(!b) return;
+    [...el.querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x===b));
+    cb(b.dataset.v);
+  });
+}
+function setSeg(id,v){
+  const el=document.getElementById(id); if(!el) return;
+  [...el.querySelectorAll('button')].forEach(x=>x.classList.toggle('on',x.dataset.v===v));
+}
+
+/* ---------- 控件绑定 ---------- */
+const fTwist=bindRange('q-twist','q-twist-v',v=>{ST.twist=v;});
+bindSeg('q-mode',v=>{ST.mode=v;});
+const fIA=bindRange('i-a','i-a-v',v=>{ST.ia=v;});
+const fIB=bindRange('i-b','i-b-v',v=>{ST.ib=v;});
+bindRange('b-a','b-a-v',v=>{ST.ba=v;});
+bindRange('b-b','b-b-v',v=>{ST.bb=v;});
+bindRange('r-a','r-a-v',v=>{ST.ra=v;});
+bindRange('r-b','r-b-v',v=>{ST.rb=v;});
+bindRange('d-k','d-k-v',v=>{ST.dk=v;});
+bindRange('d-e','d-e-v',v=>{
+  ST.de=0.002*Math.pow(500,v);
+  const t=document.getElementById('d-e-v'); if(t) t.textContent=ST.de.toFixed(4);
+});
+document.getElementById('d-e').value=100;
+
+const chk=(id,fn)=>{const e=document.getElementById(id); if(e) e.addEventListener('change',()=>fn(e.checked));};
+chk('i-auto',v=>{ST.iauto=v;});
+chk('b-auto',v=>{ST.bauto=v;});
+chk('b-area',v=>{ST.barea=v;});
+chk('x-ghost',v=>{ST.ghost=v;});
+chk('x-par',v=>{ST.par=v;});
+chk('x-scan',v=>{ST.scan=v;});
+chk('m-perturb',v=>{ST.mperturb=v;});
+
+bindSeg('r-mode',v=>{
+  ST.rmode=v;
+  if(v==='hit'){ST.ra=0.42;ST.rb=0.30;}
+  if(v==='off'){ST.ra=0.86;ST.rb=0.58;}
+  const ea=document.getElementById('r-a'), eb=document.getElementById('r-b');
+  if(ea){ea.value=Math.round(clamp(ST.ra,0,1)*100);}
+  if(eb){eb.value=Math.round(clamp(ST.rb,0,1)*100);}
+  const ta=document.getElementById('r-a-v'), tb=document.getElementById('r-b-v');
+  if(ta) ta.textContent=fmt(clamp(ST.ra,0,1)); if(tb) tb.textContent=fmt(clamp(ST.rb,0,1));
+});
+bindSeg('m-mode',v=>{ST.mmode=v;});
+bindSeg('t-param',v=>{ST.tparam=v;});
+bindSeg('t-scope',v=>{
+  ST.tscope=v;
+  if(SCENES.tests.enter) SCENES.tests.enter();
+  rc();
+});
+bindSeg('c-set',v=>{ST.cset=v;});
+document.getElementById('m-render').addEventListener('click',()=>{
+  ST.seed=(ST.seed||0)+1;
+  for(const k in RCACHE){ if(k.split('|')[2]==='mc') delete RCACHE[k]; }
+});
+
+/* ---------- 场景切换 ---------- */
+let lastScene='';
+function show(name,force){
+  if(!SCENES[name]) return;
+  if(!force&&name===lastScene) return;
+  lastScene=name; cur=name;
+  const s=SCENES[name];
+  const t=document.getElementById('stage-title'), sb=document.getElementById('stage-sub'), ix=document.getElementById('stage-idx');
+  if(t) t.textContent=s.title;
+  if(sb) sb.textContent=s.sub;
+  if(ix) ix.textContent=s.idx;
+  if(s.cam){ cam.yaw=s.cam.yaw; cam.pitch=s.cam.pitch; cam.dist=s.cam.dist; cam.target=s.cam.target.slice(); }
+  if(s.enter) s.enter();
+  document.querySelectorAll('.ctrlpane').forEach(p=>p.classList.toggle('on',p.dataset.pane===s.pane));
+  cv.style.cursor=s.noOrbit?'default':'grab';
+}
+
+/* ---------- 旋转 / 拾取 ---------- */
+let drag=null;
+cv.addEventListener('pointerdown',e=>{
+  drag={x:e.clientX,y:e.clientY,yaw:cam.yaw,pitch:cam.pitch,moved:0};
+  try{cv.setPointerCapture(e.pointerId);}catch(_){}
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const dx=e.clientX-drag.x, dy=e.clientY-drag.y;
+  drag.moved=Math.max(drag.moved,Math.hypot(dx,dy));
+  if(SCENES[cur]&&SCENES[cur].noOrbit) return;
+  cam.yaw=drag.yaw+dx*0.0075;
+  cam.pitch=clamp(drag.pitch+dy*0.006,-0.15,1.32);
+});
+cv.addEventListener('pointerup',e=>{
+  if(drag&&drag.moved<6) pickPoint(e);
+  drag=null;
+});
+cv.addEventListener('pointercancel',()=>{drag=null;});
+
+function pickPoint(ev){
+  const r=cv.getBoundingClientRect();
+  const sx=ev.clientX-r.left, sy=ev.clientY-r.top;
+  const B=basis();
+  const d=unit(add(B.fwd,add(mul(B.right,(sx-VP.cx)/VP.fpx),mul(B.up,-(sy-VP.cy)/VP.fpx))));
+  const target=(cur==='ray')?FLAT:TRI;
+  const h=castFace(target,B.eye,d,0.01,1e9);
+  if(!h||h.reason) return;
+  if(cur==='ray'){
+    ST.ra=clamp(h.a,-0.3,1.3); ST.rb=clamp(h.b,-0.3,1.3);
+    const ea=document.getElementById('r-a'), eb=document.getElementById('r-b');
+    if(ea) ea.value=Math.round(clamp(ST.ra,0,1)*100);
+    if(eb) eb.value=Math.round(clamp(ST.rb,0,1)*100);
+    const ta=document.getElementById('r-a-v'), tb=document.getElementById('r-b-v');
+    if(ta) ta.textContent=fmt(ST.ra); if(tb) tb.textContent=fmt(ST.rb);
+  }
+  if(cur==='inherit'){
+    ST.ia=clamp(h.a,0,1.2); ST.ib=clamp(h.b,0,1.2); ST.iauto=false;
+    const c=document.getElementById('i-auto'); if(c) c.checked=false;
+    const ea=document.getElementById('i-a'), eb=document.getElementById('i-b');
+    if(ea) ea.value=Math.round(clamp(ST.ia,0,1)*100);
+    if(eb) eb.value=Math.round(clamp(ST.ib,0,1)*100);
+    const ta=document.getElementById('i-a-v'), tb=document.getElementById('i-b-v');
+    if(ta) ta.textContent=fmt(ST.ia); if(tb) tb.textContent=fmt(ST.ib);
+  }
+  if(cur==='bary'){
+    ST.ba=clamp(h.a,0,1); ST.bb=clamp(h.b,0,1); ST.bauto=false;
+    const c=document.getElementById('b-auto'); if(c) c.checked=false;
+    const ea=document.getElementById('b-a'), eb=document.getElementById('b-b');
+    if(ea) ea.value=Math.round(ST.ba*100);
+    if(eb) eb.value=Math.round(ST.bb*100);
+    const ta=document.getElementById('b-a-v'), tb=document.getElementById('b-b-v');
+    if(ta) ta.textContent=fmt(ST.ba); if(tb) tb.textContent=fmt(ST.bb);
+  }
+}
+
+/* ---------- 动画链接 ---------- */
+document.querySelectorAll('.animlink').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    show(btn.dataset.scene,true);
+    if(btn.dataset.mode){ ST.mode=btn.dataset.mode; setSeg('q-mode',ST.mode); }
+    if(btn.dataset.ray){ ST.rmode=btn.dataset.ray; setSeg('r-mode',ST.rmode); }
+    if(window.innerWidth>1180){
+      const st=document.getElementById('stage');
+      const r=st.getBoundingClientRect();
+      if(r.top<0||r.bottom>window.innerHeight) st.scrollIntoView({behavior:'smooth',block:'center'});
+    }else{
+      document.getElementById('mobile-stage-slot').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+  });
+});
+
+/* ---------- 折叠 ---------- */
+document.getElementById('btn-fold').addEventListener('click',e=>{
+  const st=document.getElementById('stage');
+  st.classList.toggle('collapsed');
+  folded=st.classList.contains('collapsed');
+  e.target.textContent=folded?'展开':'收起';
+  if(!folded) requestAnimationFrame(fit);
+});
+
+/* ---------- 移动端把舞台搬到顶部 ---------- */
+function layoutStage(){
+  const mob=window.innerWidth<=1180;
+  const stage=document.getElementById('stage');
+  const slot=document.getElementById('mobile-stage-slot');
+  const aside=document.querySelector('aside.stage-col');
+  if(mob){ if(slot&&stage.parentElement!==slot) slot.appendChild(stage); }
+  else { if(aside&&stage.parentElement!==aside) aside.appendChild(stage); }
+  requestAnimationFrame(fit);
+}
+
+/* ============================================================
+   8. 渲染循环
+   ============================================================ */
+function rc(){ /* 占位：强制重绘（缓存已在下一帧按需取用） */ }
+function drawStage(){
+  if(!W||!H) return;
+  try{
+    const B=basis();
+    const g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#fdfdfb'); g.addColorStop(1,'#f2f1eb');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    const s=SCENES[cur];
+    if(s&&s.draw) s.draw(B);
+  }catch(err){
+    ctx.save();
+    ctx.fillStyle='#bf5327'; ctx.font='12px ui-monospace,monospace';
+    ctx.fillText('scene error: '+err.message,14,H-16);
+    ctx.restore();
+    if(!drawStage._warned){ drawStage._warned=true; console.error(err); }
+  }
+}
+let last=0, folded=false;
+function loop(ts){
+  if(!last) last=ts;
+  const dt=Math.min(0.05,(ts-last)/1000); last=ts;
+  anim.t+=dt;
+  if(!folded) drawStage();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- 滚动定位 ---------- */
+const secs=[...document.querySelectorAll('section[data-scene]')];
+if('IntersectionObserver' in window){
+  const io=new IntersectionObserver(ents=>{
+    let best=null;
+    ents.forEach(en=>{ if(en.isIntersecting){ if(!best||en.intersectionRatio>best.intersectionRatio) best=en; } });
+    if(best) show(best.target.dataset.scene);
+  },{rootMargin:'-22% 0px -58% 0px',threshold:[0,0.01]});
+  secs.forEach(s=>io.observe(s));
+}
+
+/* ---------- 启动 ---------- */
+window.addEventListener('resize',()=>{
+  layoutStage();
+  if(window.innerWidth>1180) fit();
+});
+function boot(){
+  fit();
+  layoutStage();
+  const s=SCENES.why;
+  cam.yaw=s.cam.yaw; cam.pitch=s.cam.pitch; cam.dist=s.cam.dist; cam.target=s.cam.target.slice();
+  show('why',true);
+  requestAnimationFrame(fit);
+  requestAnimationFrame(loop);
+  if(fTwist) fTwist();
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot);
+else boot();
+</script>
+</body>
+</html>
