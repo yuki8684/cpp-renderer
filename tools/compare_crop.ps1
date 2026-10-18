@@ -46,7 +46,7 @@ if ($W -le 0 -or $H -le 0) {
     exit 1
 }
 
-$barH  = 26
+$barH  = 30
 $outW  = $W * $Scale * 2
 $outH  = $H * $Scale + $barH
 
@@ -74,7 +74,8 @@ $g.DrawImage($imgA, $dstRectA, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
 $font  = New-Object System.Drawing.Font("Consolas", 13, [System.Drawing.FontStyle]::Bold)
 $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(230, 237, 243))
 $sf    = New-Object System.Drawing.StringFormat
-$sf.Alignment = [System.Drawing.StringAlignment]::Center
+$sf.Alignment     = [System.Drawing.StringAlignment]::Center
+$sf.LineAlignment = [System.Drawing.StringAlignment]::Center   # 垂直居中，否则文字会被下边框裁掉
 $g.DrawString($LabelBefore, $font, $brush, ($W * $Scale / 2), ($barH / 2), $sf)
 $g.DrawString($LabelAfter,  $font, $brush, ($W * $Scale * 1.5), ($barH / 2), $sf)
 

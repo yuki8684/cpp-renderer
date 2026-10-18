@@ -22,6 +22,18 @@
 #include "bvh.h"
 #include "color.h"
 #include "quad.h"
+#include "triangle.h"
+
+
+// ============================================================
+// ★ 调试开关：法线着色（Day 14）
+//
+// 命中后直接输出法线方向映射到 [0,1]，不弹射、不消费随机数。
+// 好处是【完全确定性】：同一个几何，两次渲染逐字节相同。
+// 这让"同一个立方体的两种拆法"可以精确到字节地比对 ——
+// 不需要担心"漫反射弹射把浮点尾数差异放大"的问题。
+// ============================================================
+static bool g_normal_shading = false;
 
 
 // ============================================================
@@ -36,6 +48,14 @@ Color ray_color(const Ray& r, const Hittable& world, int depth) {
     HitRecord rec;
 
     if (world.hit(r, 0.01, infinity, rec)) {
+
+       // ★ 法线调试模式：直接返回法线颜色，不弹射
+       if (g_normal_shading) {
+           return 0.5 * Color(rec.normal.x() + 1.0,
+                              rec.normal.y() + 1.0,
+                              rec.normal.z() + 1.0);
+       }
+
        Ray   scattered;    // 弹射出去的光线
        Color attenuation;  // 反射率（打几折，是个颜色）
 
@@ -352,6 +372,58 @@ HittableList quad_scene() {
 }
 
 
+// ---------- 场景 D：同一个立方体的两种拆法（Day 14）----------
+// as_triangles = false → 每个面 1 个 Quad（6 个面 = 6 个图元）
+// as_triangles = true  → 每个面 2 个 Triangle（6 个面 = 12 个图元）
+//
+// ★ 这两种拆法必须渲染出【一模一样】的画面 —— 这就是今天的核心验收。
+//
+// ⚠️ 三角形版的绕向必须和四边形一致，否则法线会翻转：
+//    面 (Q, u, v) 拆成  (Q, Q+u, Q+v)  和  (Q+u, Q+u+v, Q+v)
+//    第二个三角形的边是 v 和 (v-u)，cross(v, v-u) = -cross(v,u) = cross(u,v) ✓
+HittableList cube_scene(bool as_triangles) {
+    HittableList world;
+
+    auto red   = std::make_shared<Lambertian>(Color(0.70, 0.12, 0.12));
+    auto green = std::make_shared<Lambertian>(Color(0.15, 0.55, 0.22));
+    auto blue  = std::make_shared<Lambertian>(Color(0.18, 0.30, 0.85));
+    auto white = std::make_shared<Lambertian>(Color(0.72, 0.72, 0.72));
+
+    // 把一个面加进世界（四边形版 1 个图元 / 三角形版 2 个图元）
+    auto add_face = [&](const Point3& Q, const Vec3& u, const Vec3& v,
+                        std::shared_ptr<Material> m) {
+        if (!as_triangles) {
+            world.add(std::make_shared<Quad>(Q, u, v, m));
+        } else {
+            world.add(std::make_shared<Triangle>(Q,         Q + u, Q + v, m));
+            world.add(std::make_shared<Triangle>(Q + u, Q + u + v, Q + v, m));
+        }
+    };
+
+    // 边长 2、中心在 (cx, 0, 0) 的立方体：y ∈ [-1,1]，z ∈ [-1,1]
+    // 每个面的 u × v 都朝【外】，这是六个面绕向正确与否的关键
+    auto add_box = [&](double cx, std::shared_ptr<Material> m) {
+        const double h = 1.0;
+        add_face(Point3(cx + h, -h, -h), Vec3(0, 2, 0), Vec3(0, 0, 2), m); // +x
+        add_face(Point3(cx - h, -h, -h), Vec3(0, 0, 2), Vec3(0, 2, 0), m); // -x
+        add_face(Point3(cx - h,  h, -h), Vec3(0, 0, 2), Vec3(2, 0, 0), m); // +y
+        add_face(Point3(cx - h, -h, -h), Vec3(2, 0, 0), Vec3(0, 0, 2), m); // -y
+        add_face(Point3(cx - h, -h,  h), Vec3(2, 0, 0), Vec3(0, 2, 0), m); // +z
+        add_face(Point3(cx - h, -h, -h), Vec3(0, 2, 0), Vec3(2, 0, 0), m); // -z
+    };
+
+    add_box(-2.5, red);
+    add_box( 0.0, green);
+    add_box( 2.5, blue);
+
+    // 地面（两种版本都是 Quad，不参与对比）
+    world.add(std::make_shared<Quad>(Point3(-8, -1, 8),
+                                     Vec3(16, 0, 0), Vec3(0, 0, -16), white));
+
+    return world;
+}
+
+
 int main(int argc, char** argv) {
 #ifdef _WIN32
     // 让 Windows 控制台按 UTF-8 解释输出，避免中文日志变成乱码
@@ -366,6 +438,9 @@ int main(int argc, char** argv) {
     bool use_bvh = true;    // 是否用 BVH（--no-bvh 关闭，用于两步验收）
     int  samples_per_pixel = 32;   // 每像素采样数（--spp 覆盖）
 
+    // 场景名：random / quads / cube-quads / cube-tris
+    std::string scene_name = "random";
+
     // 解析命令行参数
     for(int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -379,6 +454,16 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--quads") {
             use_quads = true;
+            scene_name = "quads";
+        }
+        else if(arg == "--cube-quads") {
+            scene_name = "cube-quads";
+        }
+        else if(arg == "--cube-tris") {
+            scene_name = "cube-tris";
+        }
+        else if(arg == "--normal") {
+            g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
         }
         else if(arg == "--no-bvh") {
             use_bvh = false;
@@ -419,8 +504,12 @@ int main(int argc, char** argv) {
     }
 
     // ---------- 场景：一个装着所有物体的"世界" ----------
-    // 想换场景只改这一行：simple_scene() / random_scene() / quad_scene()
-    HittableList world_list = use_quads ? quad_scene() : random_scene(half);
+    // 想换场景只改这一行：simple_scene() / random_scene() / quad_scene() / cube_scene()
+    HittableList world_list;
+    if      (scene_name == "quads")      world_list = quad_scene();
+    else if (scene_name == "cube-quads") world_list = cube_scene(false);
+    else if (scene_name == "cube-tris")  world_list = cube_scene(true);
+    else                                 world_list = random_scene(half);
 
     // ⚠️ BVH 的构造函数是【按值传参】，它拿到的是 world_list 的副本，
     //    所以建完树之后 world_list 仍然完整可用 —— 这正是"两步验收"的前提。
@@ -445,8 +534,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    Camera camera = use_quads
+    Camera camera = (scene_name == "quads")
         ? Camera(Point3(0, 0, 9), Point3(0, 0, 0), Vec3(0, 1, 0), 80, 1.0, 0.0)
+        : (scene_name == "cube-quads" || scene_name == "cube-tris")
+        ? Camera(Point3(0, 4, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
         : Camera(Point3(13, 2, 3),      // 站远一点、高一点
                  Point3(0, 0, 0),       // 看向原点
                  Vec3(0, 1, 0),         // 世界上方向

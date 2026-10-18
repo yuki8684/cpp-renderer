@@ -51,9 +51,23 @@ public:
         // ------------------------------------------------------------
 
         Vec3 n = cross(u, v);//叉积，得到向量，垂直于u，v
+
+        double len2 = dot(n, n);
+        double uu   = dot(u, u);
+        double vv   = dot(v, v);
+
+        if(len2 <= 0.0 || len2 < 1e-12 * uu * vv) {
+            degenerate = true;
+            normal     = Vec3(0, 1, 0);
+            D          = 0.0;
+            w          = Vec3(0, 0, 0);
+            bbox       = AABB(Q, Q);
+            return;
+        }
+
         normal = unit_vector(n);
-        D = dot(normal, Q);
-        w = n / dot(n, n);
+        D      = dot(normal, Q);
+        w      = n / len2;
 
 
         set_bounding_box();
@@ -64,6 +78,8 @@ public:
     // ============================================================
     bool hit(const Ray& r, double t_min, double t_max,
              HitRecord& rec) const override {
+
+        if(degenerate) return false;
 
         // ---------- 第 1 步：射线 × 无限平面 ----------
         // 平面方程（隐式）：  normal · P = D
@@ -162,4 +178,5 @@ private:
 
     std::shared_ptr<Material> mat;
     AABB bbox;
+    bool degenerate = false;//u ∥ v 时法线算不出来，必须禁用 hit()
 };

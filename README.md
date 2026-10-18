@@ -9,6 +9,47 @@
 
 ## 效果展示
 
+### Day 14 · 三角形与网格（只重写一个虚函数）
+
+![Day 14 三角形立方体](gallery/day14-triangle-cubes.png)
+
+> 三个立方体、共 **36 个三角形**（每个面 2 个）+ 一块地面。400×225 · 200 spp · 4.48 s。
+>
+> `Triangle` 整个类只做两件事：
+> ```cpp
+> Triangle(a, b, c, mat) : Quad(a, b - a, c - a, mat) {}
+> bool is_interior(double a, double b) const override {
+>     return a >= 0 && b >= 0 && a + b <= 1;
+> }
+> ```
+> 求交、平面参数、包围盒全部从 `Quad` 继承 —— 因为 `Quad::hit()` 里那句
+> `is_interior(alpha, beta)` 是 **virtual** 调用。
+> **同一份求交代码，行为由实际对象类型决定。这就是多态的价值。**
+
+**验收：同一立方体，两种拆法必须一模一样**
+
+![Quad vs Triangle](gallery/day14-quad-vs-tri.png)
+
+> 新增 `--normal` 调试开关：命中后直接返回法线颜色，**不弹射、不消费随机数**。
+> 去掉蒙特卡洛之后，图像完全由几何决定：
+> `Get-FileHash` → 6 个 Quad 和 12 个 Triangle **字节完全相同**。
+>
+> 为什么要专门做一个调试模式？因为正常渲染有漫反射弹射，浮点尾数差异会被
+> 随机序列放大成满屏噪声错位 —— **这时候逐像素比对的失败并不能说明几何错了**。
+> **想验证几何，就要先把“随机”这个变量从实验里踢出去。**
+
+| 测试 | 结果 |
+|---|---|
+| `tests/triangle_test.cpp`（A 顶点不在原点 / B 朝向 / C 退化+尺度 / D 包围盒 / E 49 条射线对照） | **32 / 32** |
+| 两步验收（立方体 12 个零厚度包围盒） | **字节完全相同** |
+
+> **两个真 bug 被测试抓到：**
+> 1. **传顶点当边向量** —— `Quad(a, b, c, mat)` 而不是 `Quad(a, b-a, c-a, mat)`。
+>    只有 `a` 恰好在原点吇“碰巧对”。13 条测试变红，但其中 **3 条是“假绿”**（见 devlog）。
+> 2. **epsilon 量纲错误** —— `len2 < 1e-8`。`len2` 是长度的四次方，
+>    等价于“边长 < 0.01 就判死” ：边长为 1mm 的三角形、即 20 万面的模型，**会整个静默消失**。
+>    改成与尺度无关的 `len2 < 1e-12 · |u|² · |v|²`，即 `sin²θ < 1e-12`。
+
 ### Day 13 · 第二个几何图元：平行四边形（+ 挖掉 Day 8 埋的雷）
 
 ![Day 13 四边形场景](gallery/day13-quads.png)
@@ -217,7 +258,8 @@
 | 11 | **复杂度实测**：双对数性能曲线（斜率 0.98 vs 0.17）+ 可重置 RNG | ✅ |
 | 12 | **gamma 校正 + Schlick 菲涅尔** —— 《Ray Tracing in One Weekend》**全部完成** 🎓 | ✅ |
 | 13 | **`Quad` 平行四边形** + `pad_to_minimums()` 修掉零厚度包围盒（两步验收字节一致） | ✅ |
-| — | 后续：《The Next Week》（三角形 / 网格 / 纹理 / 光源）+ 多线程、实时渲染 | 📋 |
+| 14 | **`Triangle` 三角形** —— 只覆盖一个虚函数；退化保护 + 尺度无关 epsilon；立方体两种拆法字节一致 | ✅ |
+| — | 后续：《The Next Week》（顶点法线插值 / OBJ 网格 / 纹理 / 光源）+ 多线程、实时渲染 | 📋 |
 
 ---
 
@@ -268,6 +310,7 @@ cpp-renderer/
 │   ├── hittable.h         HitRecord + Hittable 抽象接口（hit / bounding_box）
 │   ├── sphere.h           球体求交 + 包围盒
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
+│   ├── triangle.h         **三角形 —— 继承 Quad，只重写 is_interior 一行**
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
 │   ├── lambertian.h       哑光
@@ -277,7 +320,8 @@ cpp-renderer/
 │   └── main.cpp            ray_color + 场景构建 + render() + --bench 基准测试
 ├── tests/
 │   ├── aabb_test.cpp       AABB 单元测试（独立可执行，1 秒反馈）
-│   └── quad_test.cpp       Quad 单元测试（α/β 手算验算 + BVH 一致性）
+│   ├── quad_test.cpp       Quad 单元测试（α/β 手算验算 + BVH 一致性）
+│   └── triangle_test.cpp   Triangle 单元测试（含 49 条射线对比两种拆法）
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
 │   ├── test.ps1           一键：编译 + 运行所有单元测试
@@ -304,6 +348,9 @@ cmake --build build -j
 ./build/raytracer.exe --grid 22       # 改球阵规模（half=22 → 44×44，约 1900 球）
 ./build/raytracer.exe --bench         # 扫规模跑基准 -> output/bench.csv
 ./build/raytracer.exe --quads         # 四边形场景（Day 13）
+./build/raytracer.exe --cube-quads    # 立方体：每面 1 个 Quad
+./build/raytracer.exe --cube-tris     # 立方体：每面 2 个 Triangle
+./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
 ./build/raytracer.exe --quads --spp 400   # 自定义采样数
 ./build/raytracer.exe --quads --no-bvh    # 关掉 BVH，用于两步验收
 ```
@@ -343,6 +390,9 @@ cmake --build build -j
   这就是**路径追踪**与“严格光线追踪”的分界线（后者在分叉处光线数指数爆炸）。
 - **接口分离**：`Hittable` 回答"撞到了吗"，`Material` 回答"往哪弹、打几折"。
   加新材质（比如 `Isotropic`）时，`ray_color` 和求交代码完全不用动。
+- **多态降本**：`Triangle` 没有 `hit()`、没有包围盒代码，只重写了一个 `is_interior`。
+  因为 `Quad::hit()` 里那句 `is_interior(alpha, beta)` 是 virtual 调用 ——
+  **同一份求交代码，行为由对象真实类型决定**。加下一个图元（圆盘/椭圆）也只需要一个函数。
 - **输出参数**：`scatter(r_in, rec, attenuation, scattered)` 用引用传出两个结果，
   配合 `bool` 返回"是否散射"。
 - **可空输出用指针**：`render(..., std::ostream* out)` —— `nullptr` 表示“只算不写”。
