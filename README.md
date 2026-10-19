@@ -9,6 +9,63 @@
 
 ## 效果展示
 
+### Day 15 · 顶点法线插值（光滑着色）
+
+**同一个球、同一份几何，只改法线**
+
+![法线对照](gallery/day15-normal-flat-vs-smooth.png)
+
+> 左：平面着色（每个面一个法线）→ 直接看出多边形结构。
+> 右：光滑着色（插值顶点法线）→ 连续渐变。
+> **但两边的剪影完全一样** —— 法线插值不改几何，轮廓仍然由网格密度决定。
+
+![金属对照](gallery/day15-smooth-vs-flat.png)
+
+> 同一颗球（6×10 网格）放大 3 倍。左边能数出切面，右边是连续过渡。
+>
+> ⚠️ 第一版用 `Lambertian` 渲染，flat 和 smooth **几乎看不出差别** ——
+> 因为哑光向四面八方散射，亮度是各方向入射光的**积分**，对法线不敏感。
+> 换成 `Metal` 后差别立刻剧烈起来：反射方向 = `reflect(d, n)`，完全由法线决定。
+> **验证一个视觉效果，必须选对材质。**
+
+**定量结果**（441 条射线，对比解析真法线）
+
+| 着色 | 法线最大夹角误差 |
+|---|---|
+| Flat | **10.55°** |
+| Smooth | **1.21 × 10⁻⁶ °** |
+
+> 差 7 个数量级不是巧合。设顶点法线 `d_k = (a_k − c)/r`，则
+> ```
+> n = (1−α−β)·d0 + α·d1 + β·d2 = (P − c) / r
+> ```
+> **位置插值和法线插值用的是同一组重心权重**，而球面的顶点法线恰好是位置的线性函数，
+> 所以插值结果精确一致。（任意 OBJ 模型没有这个性质，顶点法线只能估。）
+
+**实现：一个虚函数钩子**
+
+```cpp
+// Quad::hit() 的骨架
+//   1. 平面求交            ← 固定
+//   2. 算 (α, β)            ← 固定
+//   3. is_interior(α, β)?   ← 钩子①：形状
+//   4. 填 rec               ← 固定
+//   5. set_hit_normal(α, β) ← 钩子②：法线
+```
+
+> 典型的**模板方法模式**：基类写死流程，派生类只填变化的两步。
+> `Triangle` 因此只需两个函数就能从"平面着色"变成"Phong 着色"。
+
+| 测试 | 结果 |
+|---|---|
+| `tests/smooth_test.cpp`（顶点 / 重心 / 平面着色 / 球面定量） | **16 / 16** |
+| 全套测试 | **ALL TESTS PASSED** |
+| 构建警告 | **0** |
+
+> **Flat / Gouraud / Phong** —— 图形学面试常客：
+> Flat 每面一个法线；Gouraud 在**顶点**算光照并插值**颜色**（会丢高光）；
+> **Phong 插值法线，每个采样点重新算光照**（今天做的）。
+
 ### Day 14 · 三角形与网格（只重写一个虚函数）
 
 ![Day 14 三角形立方体](gallery/day14-triangle-cubes.png)
@@ -259,7 +316,8 @@
 | 12 | **gamma 校正 + Schlick 菲涅尔** —— 《Ray Tracing in One Weekend》**全部完成** 🎓 | ✅ |
 | 13 | **`Quad` 平行四边形** + `pad_to_minimums()` 修掉零厚度包围盒（两步验收字节一致） | ✅ |
 | 14 | **`Triangle` 三角形** —— 只覆盖一个虚函数；退化保护 + 尺度无关 epsilon；立方体两种拆法字节一致 | ✅ |
-| — | 后续：《The Next Week》（顶点法线插值 / OBJ 网格 / 纹理 / 光源）+ 多线程、实时渲染 | 📋 |
+| 15 | **顶点法线插值（Phong 着色）** —— 虚函数钩子；误差 10.55° → 1.2e-06° | ✅ |
+| — | 后续：《The Next Week》（OBJ 网格 / 纹理 / 光源）+ 多线程、实时渲染 | 📋 |
 
 ---
 
@@ -311,6 +369,7 @@ cpp-renderer/
 │   ├── sphere.h           球体求交 + 包围盒
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
 │   ├── triangle.h         **三角形 —— 继承 Quad，只重写 is_interior 一行**
+│   ├── mesh.h             球面网格（三角形拼球，可选顶点法线）
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
 │   ├── lambertian.h       哑光
@@ -321,7 +380,8 @@ cpp-renderer/
 ├── tests/
 │   ├── aabb_test.cpp       AABB 单元测试（独立可执行，1 秒反馈）
 │   ├── quad_test.cpp       Quad 单元测试（α/β 手算验算 + BVH 一致性）
-│   └── triangle_test.cpp   Triangle 单元测试（含 49 条射线对比两种拆法）
+│   ├── triangle_test.cpp   Triangle 单元测试（含 49 条射线对比两种拆法）
+│   └── smooth_test.cpp     光滑着色（含定量：插值法线 vs 解析真法线）
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
 │   ├── test.ps1           一键：编译 + 运行所有单元测试
@@ -350,6 +410,8 @@ cmake --build build -j
 ./build/raytracer.exe --quads         # 四边形场景（Day 13）
 ./build/raytracer.exe --cube-quads    # 立方体：每面 1 个 Quad
 ./build/raytracer.exe --cube-tris     # 立方体：每面 2 个 Triangle
+./build/raytracer.exe --sphere-flat   # 球面网格：平面着色
+./build/raytracer.exe --sphere-smooth # 球面网格：光滑着色（顶点法线插值）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
 ./build/raytracer.exe --quads --spp 400   # 自定义采样数
 ./build/raytracer.exe --quads --no-bvh    # 关掉 BVH，用于两步验收
@@ -393,6 +455,9 @@ cmake --build build -j
 - **多态降本**：`Triangle` 没有 `hit()`、没有包围盒代码，只重写了一个 `is_interior`。
   因为 `Quad::hit()` 里那句 `is_interior(alpha, beta)` 是 virtual 调用 ——
   **同一份求交代码，行为由对象真实类型决定**。加下一个图元（圆盘/椭圆）也只需要一个函数。
+- **两个虚函数钩子**：`is_interior` 控制**形状**，`set_hit_normal` 控制**法线**。
+  这就是模板方法模式：`Quad::hit()` 的流程写死，派生类只填变化的两步。
+  Day 16 加圆盘、椭圆还是只写这两个函数。
 - **输出参数**：`scatter(r_in, rec, attenuation, scattered)` 用引用传出两个结果，
   配合 `bool` 返回"是否散射"。
 - **可空输出用指针**：`render(..., std::ostream* out)` —— `nullptr` 表示“只算不写”。

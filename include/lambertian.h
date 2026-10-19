@@ -13,7 +13,8 @@ class Lambertian : public Material {
 public:
     Lambertian(const Color& albedo) : albedo(albedo) {}
 
-    bool scatter(const Ray& r_in, const HitRecord& rec,
+    // 参数名省略：哑光散射不看入射方向（金属需要看，所以 Metal 那里留着）
+    bool scatter(const Ray&, const HitRecord& rec,
                  Color& attenuation, Ray& scattered) const override {
 
         // ------------------------------------------------------------

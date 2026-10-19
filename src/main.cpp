@@ -23,6 +23,7 @@
 #include "color.h"
 #include "quad.h"
 #include "triangle.h"
+#include "mesh.h"
 
 
 // ============================================================
@@ -424,6 +425,39 @@ HittableList cube_scene(bool as_triangles) {
 }
 
 
+// ---------- 场景 E：球面网格，平面着色 vs 光滑着色（Day 15）----------
+// 三个球网格密度不同：越粗糙，flat 和 smooth 的差别越剧烈。
+// 但两者的【几何完全相同】—— 只有法线不一样，所以剪影必须一致。
+//
+// ⚠️ 材质用【金属】而不是哑光：
+//    哑光向四面八方散射，亮度对法线几乎不敏感 → flat/smooth 差别看不出来。
+//    镜面反射方向 = reflect(d, n)，完全由法线决定 → 法线的折线立刻暴露。
+HittableList sphere_mesh_scene(bool smooth) {
+    HittableList world;
+
+    auto red   = std::make_shared<Metal>(Color(0.75, 0.22, 0.22), 0.03);
+    auto green = std::make_shared<Metal>(Color(0.22, 0.68, 0.32), 0.03);
+    auto blue  = std::make_shared<Metal>(Color(0.28, 0.42, 0.90), 0.03);
+    auto white = std::make_shared<Lambertian>(Color(0.72, 0.72, 0.72));
+
+    // 地面
+    world.add(std::make_shared<Quad>(Point3(-8, -1, 8),
+                                     Vec3(16, 0, 0), Vec3(0, 0, -16), white));
+
+    const double xs[3]        = { -2.6, 0.0, 2.6 };
+    const int    rings[3]     = { 6,   12,  24  };
+    const int    segments[3]  = { 10,  20,  40  };
+    std::shared_ptr<Material> mats[3] = { red, green, blue };
+
+    for (int k = 0; k < 3; ++k) {
+        add_sphere_mesh(world, Point3(xs[k], 0, 0), 1.0,
+                        rings[k], segments[k], mats[k], smooth);
+    }
+
+    return world;
+}
+
+
 int main(int argc, char** argv) {
 #ifdef _WIN32
     // 让 Windows 控制台按 UTF-8 解释输出，避免中文日志变成乱码
@@ -434,7 +468,6 @@ int main(int argc, char** argv) {
 
     int half = 11; // 默认随机场景的半径
     bool bench = false; // 是否只跑性能测试（不输出图片）
-    bool use_quads = false; // 用四边形场景（Day 13）
     bool use_bvh = true;    // 是否用 BVH（--no-bvh 关闭，用于两步验收）
     int  samples_per_pixel = 32;   // 每像素采样数（--spp 覆盖）
 
@@ -453,7 +486,6 @@ int main(int argc, char** argv) {
             bench = true;
         }
         else if(arg == "--quads") {
-            use_quads = true;
             scene_name = "quads";
         }
         else if(arg == "--cube-quads") {
@@ -461,6 +493,12 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--cube-tris") {
             scene_name = "cube-tris";
+        }
+        else if(arg == "--sphere-flat") {
+            scene_name = "sphere-flat";
+        }
+        else if(arg == "--sphere-smooth") {
+            scene_name = "sphere-smooth";
         }
         else if(arg == "--normal") {
             g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
@@ -506,10 +544,12 @@ int main(int argc, char** argv) {
     // ---------- 场景：一个装着所有物体的"世界" ----------
     // 想换场景只改这一行：simple_scene() / random_scene() / quad_scene() / cube_scene()
     HittableList world_list;
-    if      (scene_name == "quads")      world_list = quad_scene();
-    else if (scene_name == "cube-quads") world_list = cube_scene(false);
-    else if (scene_name == "cube-tris")  world_list = cube_scene(true);
-    else                                 world_list = random_scene(half);
+    if      (scene_name == "quads")         world_list = quad_scene();
+    else if (scene_name == "cube-quads")    world_list = cube_scene(false);
+    else if (scene_name == "cube-tris")     world_list = cube_scene(true);
+    else if (scene_name == "sphere-flat")   world_list = sphere_mesh_scene(false);
+    else if (scene_name == "sphere-smooth") world_list = sphere_mesh_scene(true);
+    else                                    world_list = random_scene(half);
 
     // ⚠️ BVH 的构造函数是【按值传参】，它拿到的是 world_list 的副本，
     //    所以建完树之后 world_list 仍然完整可用 —— 这正是"两步验收"的前提。
@@ -538,6 +578,8 @@ int main(int argc, char** argv) {
         ? Camera(Point3(0, 0, 9), Point3(0, 0, 0), Vec3(0, 1, 0), 80, 1.0, 0.0)
         : (scene_name == "cube-quads" || scene_name == "cube-tris")
         ? Camera(Point3(0, 4, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
+        : (scene_name == "sphere-flat" || scene_name == "sphere-smooth")
+        ? Camera(Point3(0, 3.5, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
         : Camera(Point3(13, 2, 3),      // 站远一点、高一点
                  Point3(0, 0, 0),       // 看向原点
                  Vec3(0, 1, 0),         // 世界上方向

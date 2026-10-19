@@ -134,13 +134,22 @@ public:
         rec.t      = t;
         rec.p      = intersection;
         rec.mat    = mat;
-        rec.set_face_normal(r, normal);
+        
+        set_hit_normal(r, rec, alpha, beta);
         return true;
     }
 
     bool bounding_box(AABB& output) const override {
         output = bbox;
         return true;
+    }
+
+
+    // 参数名省略掉：签名保留（子类覆盖时对得上），
+    // 但不引入变量，天然没有 -Wunused-parameter 警告
+    virtual void set_hit_normal(const Ray& r, HitRecord& rec,
+                                double /* alpha */, double /* beta */) const {
+        rec.set_face_normal(r, normal);
     }
 
     // ============================================================
