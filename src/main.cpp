@@ -492,6 +492,9 @@ HittableList cornell_box() {
     auto red   = std::make_shared<Lambertian>(Color(0.65, 0.05, 0.05));
     auto white = std::make_shared<Lambertian>(Color(0.73, 0.73, 0.73));
     auto green = std::make_shared<Lambertian>(Color(0.12, 0.45, 0.15));
+    // ⚠️ 实验记录：换成 Lambertian(Color(15,15,15)) 后整张图 mean=0.000 / max=0（纯黑）。
+    //    因为"发光"和"反光"是两件事：emitted() 负责注入能量，albedo 只负责打几折。
+    //    详见 docs/devlog.md Day 16「实验：把光源换成极亮的哑光白墙」。
     auto light = std::make_shared<DiffuseLight>(Color(15.0, 15.0, 15.0));
 
     const double W = 987.0;
