@@ -81,6 +81,26 @@ auto light = std::make_shared<Lambertian>(Color(15.0, 15.0, 15.0));     // 实�
 > 顺带两条推论：① `albedo` 的物理范围是 `[0,1]`，超过 1 违反能量守恒会"能量雪崩"；
 > ② 默认值买的是兼容性，卖的是检查 —— **"忘记重写 `emitted()`"是完全静默的**。
 
+把这条链完整跑一遍：`tools/emitted_demo.cpp`（把 `Color` 换成单个 `float`，只留递归结构）
+
+```powershell
+g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
+.\build\emitted_demo.exe
+```
+
+```
+场景 A（灯 = Lambertian）          场景 B（灯 = DiffuseLight）
+  depth 用完 → 0                   层2 命中灯 → scatter=false → 返回 15
+  层1: 0 + 0.73 × 0      = 0       层3: 0 + 0.73 × 15     = 10.95
+  层2: 0 + 15.00 × 0     = 0
+  层3: 0 + 0.73 × 0      = 0
+  ==> 0.000                        ==> 10.950
+```
+
+> 场景 A 里 `albedo = 15` 是整条链最大的数字，**但它乘的是内层的 `0`**。
+> 场景 B 里递归**根本没走到底** —— 在灯那一层就终止并交出了 15。
+> **能量不是从 `albedo` 来的，是从"递归终止时交出的 `emitted`"来的。**
+
 ### Day 15 · 顶点法线插值（光滑着色）
 
 **同一个球、同一份几何，只改法线**
@@ -462,6 +482,7 @@ cpp-renderer/
 │   ├── plot_bench.ps1     读 bench.csv -> 生成双对数性能曲线 SVG
 │   ├── check_gamma.ps1    **验证 gamma 数学恒等式（可证伪）**
 │   ├── measure_noise.ps1  **用二阶差分量化高频噪声（不含信号）**
+│   ├── emitted_demo.cpp   **把 ray_color 的递归剥光，用真数字跑一遍**
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换

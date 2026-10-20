@@ -7868,53 +7868,171 @@ auto light = std::make_shared<Lambertian>(Color(15.0, 15.0, 15.0));
 > 📌 **PNG 体积也是一个判据**：392 字节说明整张图只有 1 种颜色。
 > Day 13 那条"噪声越多 PNG 越大"的观察，反过来用就是"**纯色 PNG 极小**"。
 
-### 为什么会全黑 —— 跟着一条光线走一遍
+### 为什么会全黑 —— 把递归剥光，跑给你看
 
-`ray_color` 的骨架：
+#### 第 1 步：先认清 `ray_color` 是一个【递归函数】
 
 ```cpp
-Color emitted = rec.mat->emitted();
-
-if (!rec.mat->scatter(r, rec, attenuation, scattered))
-    return emitted;                              // 路径终止
-
-return emitted + attenuation * ray_color(...);   // 自发光 + 反射回来
+return emitted + attenuation * ray_color(scattered, world, depth - 1);
+//                              ^^^^^^^^^ 自己调自己
 ```
 
-现在把一条相机光线从头跟到尾：
+这句话不是"算完再乘"，而是：
+
+> **"先让【下一层】把颜色算出来，我再拿它的结果乘上自己的 `attenuation`。"**
+
+所以一条光线的最终颜色，是一条**从最深处往外交卷**的链。
+必须先把最底层算出来，外面才能算。
+
+#### 第 2 步：递归必须有"底"—— 这个渲染器一共有 4 个出口
+
+```cpp
+Color ray_color(const Ray& r, const Hittable& world, int depth) {
+
+    // 出口①：弹射次数用完
+    if (depth <= 0) return Color(0, 0, 0);          // ← 永远是黑
+
+    HitRecord rec;
+    if (world.hit(r, 0.01, infinity, rec)) {
+
+        Color emitted = rec.mat->emitted();
+
+        // 出口②：材质不散射 → 路径终止，交出 emitted
+        if (!rec.mat->scatter(r, rec, attenuation, scattered))
+            return emitted;                         // ← 唯一可能为正的出口
+
+        // 出口③：会散射 → 继续往里递归
+        return emitted + attenuation * ray_color(scattered, world, depth - 1);
+    }
+
+    // 出口④：什么都没打到 → 返回背景色
+    return (1.0 - t) * g_bg_bottom + t * g_bg_top;  // Cornell Box 里是黑
+}
+```
+
+**把 4 个出口列成表：**
+
+| 出口 | 触发条件 | 返回什么 | 能给正数吗 |
+|---|---|---|---|
+| ① | `depth <= 0` | 固定 `(0,0,0)` | ❌ |
+| ② | `scatter()` 返回 **false** | `emitted()` | ✅ **唯一来源** |
+| ④ | 什么都没命中 | 背景色 | ❌（Cornell 是黑） |
+| ③ | 以上都不满足 | 继续递归 | 取决于更里层 |
+
+> **整张图的全部亮度，最终都来自某个"`scatter` 返回 false 且 `emitted` 非零"的出口。**
+> 记住这句话，下面就全是它的推论。
+
+#### 第 3 步：`Lambertian` 永远走不到出口②
+
+翻代码：
+
+```cpp
+// lambertian.h
+bool scatter(const Ray&, const HitRecord& rec,
+             Color& attenuation, Ray& scattered) const override {
+    Vec3 direction = rec.normal + random_unit_vector();
+    scattered = Ray(rec.p, direction);
+    attenuation = albedo;
+    return true;            // ★ 永远 true —— 永远不会终止路径
+}
+
+// material.h
+virtual Color emitted() const { return Color(0, 0, 0); }   // ★ 永远黑
+```
+
+于是在一个只有 `Lambertian` 的封闭盒子里：
+
+- 出口① → 黑
+- 出口② → **进不去**（`scatter` 永远返回 true）
+- 出口④ → 黑
+
+**三条路全是黑的 ⇒ 整张图纯黑。** 和实测 `mean = 0.000`、`max = 0` 完全吻合。
+
+#### 第 4 步：把递归剥光跑一遍（真代码 + 真输出）
+
+新增 `tools/emitted_demo.cpp`。它把 `Color` 换成单个 `float`、把光线换成"预设命中路线"，
+**只保留 `ray_color` 的数学结构**：
+
+```cpp
+static float trace(const Mat* const* route, int level, int indent) {
+    if (level == 0) return 0.0f;                        // 出口①
+
+    const Mat& m = *route[DEPTH - level];
+
+    if (!m.scatters) return m.emitted;                  // 出口②：不递归，直接交卷
+
+    float inner  = trace(route, level - 1, indent + 1); // ← 先把里面算出来
+    float result = m.emitted + m.albedo * inner;        // ← 再乘 attenuation
+    return result;
+}
+```
+
+编译运行：
+
+```powershell
+g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
+.\build\emitted_demo.exe
+```
+
+**实际输出：**
 
 ```
-第 1 次命中：地面（Lambertian 0.73）
-    emitted     = (0,0,0)        ← Lambertian 没重写 emitted()，走基类默认黑
-    scatter     = true
-    attenuation = (0.73, 0.73, 0.73)
-    → 返回 0 + 0.73 × (继续追)
+================ 场景 A：灯 = Lambertian(15,15,15) ================
+（albedo 15 是反射率，emitted 0 表示【不发光】）
 
-第 2 次命中：「灯」—— 现在是 Lambertian(15,15,15)
-    emitted     = (0,0,0)        ★ 关键！它不发光了
-    scatter     = true           ← 会继续弹，不会终结路径
-    attenuation = (15,15,15)
-    → 返回 0 + 15 × (继续追)
+层3 地面         emitted=0.00   albedo=0.73   scatter=true
+  层2 灯(哑光)    emitted=0.00   albedo=15.00  scatter=true
+    层1 后墙         emitted=0.00   albedo=0.73   scatter=true
+      [depth 用完] ——> 返回 0.000
+       ↑ 层1 汇总: 0.00 + 0.73 × 0.0000 = 0.0000
+     ↑ 层2 汇总: 0.00 + 15.00 × 0.0000 = 0.0000
+   ↑ 层3 汇总: 0.00 + 0.73 × 0.0000 = 0.0000
 
-第 3 次命中：墙
-    ... 同样是 0 + 0.73 × (...)
+  ==> 这条光线最终亮度 = 0.000   （也就是 0，纯黑）
 
-...
+================ 场景 B：灯 = DiffuseLight(15,15,15) ==============
+（emitted 15 表示【自己发光】，scatter=false 表示路径到此为止）
 
-第 N 次：depth 用完
-    → 返回 (0,0,0)
+层3 地面         emitted=0.00   albedo=0.73   scatter=true
+  层2 灯(自发光) emitted=15.00  albedo=0.00   scatter=false   ——> 路径终止，直接交卷返回 15.000
+   ↑ 层3 汇总: 0.00 + 0.73 × 15.0000 = 10.9500
+
+  ==> 这条光线最终亮度 = 10.950   （有光了！）
 ```
 
-把括号一层层展开：
+#### 第 5 步：逐行读输出
+
+**场景 A（哑光"灯"）—— 从里往外读：**
 
 ```
-0 + 0.73 × (0 + 15 × (0 + 0.73 × (... × 0)))
-                                  ↑
-                          最内层是 0
+  depth 用完              → 0
+  层1: 0 + 0.73 × 0       = 0
+  层2: 0 + 15.00 × 0      = 0     ← 全程最大的数字 15，乘的却是 0
+  层3: 0 + 0.73 × 0       = 0
 ```
 
-**整条链乘到最后一定是 0。** 因为最内层的递归出口 `depth <= 0` 返回 `(0,0,0)`，
-而背景也是黑 —— 这个盒子里**没有任何地方能凭空产生能量**。
+**盯住层 2**：`albedo = 15` 是这条链里最大的数字，但它乘的是内层的 `0`。
+`15 × 0 = 0`。这就是"乘数再大也没用"的具体样子。
+
+**场景 B（自发光灯）—— 递归根本没走到底：**
+
+```
+  层2 命中灯 → scatter = false → 【不再递归】直接返回 15
+  层3: 0 + 0.73 × 15      = 10.95
+```
+
+**注意：层 1 完全没有执行。** 路径在灯那里就终止了。
+
+#### 第 6 步：一句话总结差异
+
+| | 走到"灯"时执行的是哪一行 | 结果 |
+|---|---|---|
+| `DiffuseLight` | `return emitted;`（**不进递归**） | 交出 **15**，能量从这里注入 |
+| `Lambertian` | `return emitted + albedo * ray_color(...)`（**继续递归**） | 一路递归到出口①，拿到 **0** |
+
+> **能量不是从 `albedo` 来的，是从"递归终止时交出的 `emitted`"来的。**
+> `albedo` 只是把"下游已经算好的能量"打个折往上传。
+> **下游是 0，它打折打得再狠也还是 0。**
 
 ### 核心区分：`emitted` 和 `attenuation` 是两件完全不同的事
 
