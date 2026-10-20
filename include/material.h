@@ -38,4 +38,7 @@ public:
     // 返回：这次有没有发生散射（返回 false 表示光被吸收了）
     virtual bool scatter(const Ray& r_in, const HitRecord& rec,
                          Color& attenuation, Ray& scattered) const = 0;
+
+
+    virtual Color emitted() const {return Color(0, 0, 0);}
 };

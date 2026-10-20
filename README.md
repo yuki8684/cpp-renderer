@@ -9,6 +9,53 @@
 
 ## 效果展示
 
+### Day 16 · 光源与 `Material::emit()`：第一张 Cornell Box
+
+![Cornell Box](gallery/day16-cornell-naive-s1024.png)
+
+> 图形学最著名的测试场景。400×225 · **1024 spp · 82.6 s**。
+>
+> 图上能看到的三个物理现象：
+> **① 软阴影**（光源有面积，投影边缘渐变）
+> **② 颜色渗透 color bleeding**（左墙根偏绿、右墙根偏红）
+> **③ 天花板被地面反照**（灯附近最亮，远处变暗）
+
+**为什么之前一张图都没有阴影？**
+
+> 之前的光源是背景天空：**包围整个世界、位于无穷远、占据 180°** 的巨大面光源。
+> 阴影的清晰度由光源的**角尺寸**决定：太阳（0.5°）锐利，天空（180°）几乎没有。
+> **想要阴影，就必须有一个"小的、有明确位置的"光源。**
+
+**路径追踪里，"光源"到底是什么？**
+
+> 把 Cornell Box 背景设成纯黑，盒子里就**没有任何东西会发光** → 整张图纯黑。
+> 因为光线可逆：真实世界是「光源 → 物体 → 相机」，我们从相机**反着追**。
+> 所以必须让某些表面**自己产出颜色**：
+> ```cpp
+> Color emitted = rec.mat->emitted();
+> if (!rec.mat->scatter(...)) return emitted;          // 路径终止在光源上
+> return emitted + attenuation * ray_color(...);        // 自发光 + 反射光
+> ```
+> `emitted` 默认返回黑色，所以**老材质一行都不用改**。
+
+**噪点：1/√N 规律被精确验证**
+
+![噪点对照](gallery/day16-noise-16-vs-1024.png)
+
+| spp | 耗时 | 高频噪声 |
+|---|---|---|
+| 16 | 1.3 s | **64.16** |
+| 64 | 5.2 s | **38.38** |
+| 1024 | 82.6 s | **9.20** |
+
+> 64 → 1024：采样数涨 16 倍，噪声降 **4.17 倍**（理论值 √16 = 4）✓
+>
+> 新增 `tools/measure_noise.ps1`：用**二阶差分**而非标准差量化噪声 ——
+> 画面本身有大范围渐变，标准差里混进了信号；线性区域的二阶差分恰好为 0。
+>
+> **想把噪声再降 10 倍，采样数得涨 100 倍 → 82.6 s 变成 2.3 小时。**
+> 这就是为什么必须换算法（Day 17 的 NEE），而不是堆采样。
+
 ### Day 15 · 顶点法线插值（光滑着色）
 
 **同一个球、同一份几何，只改法线**
@@ -317,7 +364,8 @@
 | 13 | **`Quad` 平行四边形** + `pad_to_minimums()` 修掉零厚度包围盒（两步验收字节一致） | ✅ |
 | 14 | **`Triangle` 三角形** —— 只覆盖一个虚函数；退化保护 + 尺度无关 epsilon；立方体两种拆法字节一致 | ✅ |
 | 15 | **顶点法线插值（Phong 着色）** —— 虚函数钩子；误差 10.55° → 1.2e-06° | ✅ |
-| — | 后续：《The Next Week》（OBJ 网格 / 纹理 / 光源）+ 多线程、实时渲染 | 📋 |
+| 16 | **光源与 `emit()`** —— 第一张 Cornell Box（软阴影 / 颜色渗透）；噪声量化工具 | ✅ |
+| — | 后续：《The Next Week》（光源采样 NEE / OBJ 网格 / 纹理）+ 多线程、实时渲染 | 📋 |
 
 ---
 
@@ -370,6 +418,7 @@ cpp-renderer/
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
 │   ├── triangle.h         **三角形 —— 继承 Quad，只重写 is_interior 一行**
 │   ├── mesh.h             球面网格（三角形拼球，可选顶点法线）
+│   ├── diffuse_light.h    **纯光源：只发光不散射**
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
 │   ├── lambertian.h       哑光
@@ -387,6 +436,7 @@ cpp-renderer/
 │   ├── test.ps1           一键：编译 + 运行所有单元测试
 │   ├── plot_bench.ps1     读 bench.csv -> 生成双对数性能曲线 SVG
 │   ├── check_gamma.ps1    **验证 gamma 数学恒等式（可证伪）**
+│   ├── measure_noise.ps1  **用二阶差分量化高频噪声（不含信号）**
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
@@ -412,6 +462,7 @@ cmake --build build -j
 ./build/raytracer.exe --cube-tris     # 立方体：每面 2 个 Triangle
 ./build/raytracer.exe --sphere-flat   # 球面网格：平面着色
 ./build/raytracer.exe --sphere-smooth # 球面网格：光滑着色（顶点法线插值）
+./build/raytracer.exe --cornell       # Cornell Box（Cornell 盒子 + 面光源）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
 ./build/raytracer.exe --quads --spp 400   # 自定义采样数
 ./build/raytracer.exe --quads --no-bvh    # 关掉 BVH，用于两步验收

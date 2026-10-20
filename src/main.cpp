@@ -24,6 +24,7 @@
 #include "quad.h"
 #include "triangle.h"
 #include "mesh.h"
+#include "diffuse_light.h"
 
 
 // ============================================================
@@ -35,6 +36,19 @@
 // 不需要担心"漫反射弹射把浮点尾数差异放大"的问题。
 // ============================================================
 static bool g_normal_shading = false;
+
+// ============================================================
+// ★ 背景色（Day 16）
+//
+// 以前背景写死成"蓝白渐变天空"。但 Cornell Box 是【封闭盒子】，
+// 盒子正面开口朝向相机 —— 如果背景还是蓝天，
+// "天空的光"就会从那个开口漏进盒子里，影子全部变淡，失去意义。
+//
+// 所以背景色必须能按场景切换。
+// ★ 记住：在这个渲染器里，背景色就是"环境光"。
+// ============================================================
+static Color g_bg_top    = Color(0.5, 0.7, 1.0);
+static Color g_bg_bottom = Color(1.0, 1.0, 1.0);
 
 
 // ============================================================
@@ -59,21 +73,24 @@ Color ray_color(const Ray& r, const Hittable& world, int depth) {
 
        Ray   scattered;    // 弹射出去的光线
        Color attenuation;  // 反射率（打几折，是个颜色）
+       Color emitted = rec.mat->emitted();//判断这个材质是否自己发光
 
+       
        if (rec.mat->scatter(r, rec, attenuation, scattered))
        {
-         return attenuation * ray_color(scattered, world, depth - 1);
+          return emitted + attenuation * ray_color(scattered, world, depth - 1); 
        }
 
-       return Color(0, 0, 0); // 光被吸收了
+       
+       return emitted;
     }
 
-    // 没命中：蓝白渐变背景
+    // 没命中：返回背景色
+    // 默认是蓝白渐变天空；Cornell Box 会把两个颜色都设成纯黑
     Vec3 unit_dir = unit_vector(r.direction());
     double t = 0.5 * (unit_dir.y() + 1.0);
 
-    return (1.0 - t) * Color(1.0, 1.0, 1.0)
-         +         t  * Color(0.5, 0.7, 1.0);
+    return (1.0 - t) * g_bg_bottom + t * g_bg_top;
 }
 
 
@@ -458,6 +475,70 @@ HittableList sphere_mesh_scene(bool smooth) {
 }
 
 
+// ---------- 场景 F：Cornell Box（Day 16）----------
+// 图形学里最著名的测试场景：封闭盒子，一面墙绿一面墙红，天花板上开一个方形光口。
+// 它能同时测试：颜色渗透（color bleeding）、软阴影、间接光。
+//
+// 尺寸：x ∈ [0, 987]，y ∈ [0, 555]，z ∈ [0, 555]
+//   为什么 x 取 987 而不是 555？因为画面是 16:9，
+//   盒子开口的宽高比必须和画面一致，否则要么裁掉上下、要么左右露黑边。
+//   987 / 555 = 1.778 = 16 / 9 ✓
+//
+// 开口在 z = 0 一侧朝向相机。
+// ⚠️ 相机在盒子外面，所以背景【必须是纯黑】——否则天光会从开口漏进来。
+HittableList cornell_box() {
+    HittableList world;
+
+    auto red   = std::make_shared<Lambertian>(Color(0.65, 0.05, 0.05));
+    auto white = std::make_shared<Lambertian>(Color(0.73, 0.73, 0.73));
+    auto green = std::make_shared<Lambertian>(Color(0.12, 0.45, 0.15));
+    auto light = std::make_shared<DiffuseLight>(Color(15.0, 15.0, 15.0));
+
+    const double W = 987.0;
+    const double H = 555.0;
+
+    // 左墙（红） 法线 +x
+    // ⚠️ 相机在 z = -800 朝 +z 看，所以"世界 +x 方向"出现在【画面左侧】：
+    //    面向 +z、头顶 +y 时，你的右手指向 -x。
+    //    按 RTIOW 原版，红在左、绿在右。
+    world.add(std::make_shared<Quad>(Point3(0, 0, 0),
+                                     Vec3(0, H, 0), Vec3(0, 0, H), red));
+    // 右墙（绿） 法线 -x
+    world.add(std::make_shared<Quad>(Point3(W, 0, 0),
+                                     Vec3(0, 0, H), Vec3(0, H, 0), green));
+    // 地板（白） 法线 +y
+    world.add(std::make_shared<Quad>(Point3(0, 0, 0),
+                                     Vec3(0, 0, H), Vec3(W, 0, 0), white));
+    // 天花板（白） 法线 -y
+    world.add(std::make_shared<Quad>(Point3(W, H, H),
+                                     Vec3(-W, 0, 0), Vec3(0, 0, -H), white));
+    // 后墙（白） 法线 -z
+    world.add(std::make_shared<Quad>(Point3(0, 0, H),
+                                     Vec3(0, H, 0), Vec3(W, 0, 0), white));
+
+    // 天花板上的方形光源 —— 法线朝下（-y）
+    world.add(std::make_shared<Quad>(Point3(W / 2 + 130, H - 1, 370),
+                                     Vec3(-260, 0, 0), Vec3(0, 0, -180), light));
+
+    // 两个盒子（和 RTIOW 的 Cornell Box 摆位一致）
+    auto add_box = [&](double x0, double x1, double y0, double y1,
+                       double z0, double z1, std::shared_ptr<Material> m) {
+        const double sx = x1 - x0, sy = y1 - y0, sz = z1 - z0;
+        world.add(std::make_shared<Quad>(Point3(x1, y0, z0), Vec3(0, sy, 0), Vec3(0, 0, sz), m)); // +x
+        world.add(std::make_shared<Quad>(Point3(x0, y0, z0), Vec3(0, 0, sz), Vec3(0, sy, 0), m)); // -x
+        world.add(std::make_shared<Quad>(Point3(x0, y1, z0), Vec3(0, 0, sz), Vec3(sx, 0, 0), m)); // +y
+        world.add(std::make_shared<Quad>(Point3(x0, y0, z0), Vec3(sx, 0, 0), Vec3(0, 0, sz), m)); // -y
+        world.add(std::make_shared<Quad>(Point3(x0, y0, z1), Vec3(sx, 0, 0), Vec3(0, sy, 0), m)); // +z
+        world.add(std::make_shared<Quad>(Point3(x0, y0, z0), Vec3(0, sy, 0), Vec3(sx, 0, 0), m)); // -z
+    };
+
+    add_box(330, 590,   0, 330, 180, 440, white);   // 高盒子
+    add_box(650, 880,   0, 190, 300, 540, white);   // 矮盒子
+
+    return world;
+}
+
+
 int main(int argc, char** argv) {
 #ifdef _WIN32
     // 让 Windows 控制台按 UTF-8 解释输出，避免中文日志变成乱码
@@ -499,6 +580,9 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--sphere-smooth") {
             scene_name = "sphere-smooth";
+        }
+        else if(arg == "--cornell") {
+            scene_name = "cornell";
         }
         else if(arg == "--normal") {
             g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
@@ -549,7 +633,14 @@ int main(int argc, char** argv) {
     else if (scene_name == "cube-tris")     world_list = cube_scene(true);
     else if (scene_name == "sphere-flat")   world_list = sphere_mesh_scene(false);
     else if (scene_name == "sphere-smooth") world_list = sphere_mesh_scene(true);
+    else if (scene_name == "cornell")       world_list = cornell_box();
     else                                    world_list = random_scene(half);
+
+    // Cornell Box 是封闭盒子，背景必须纯黑（否则天光从开口漏进来）
+    if (scene_name == "cornell") {
+        g_bg_top    = Color(0, 0, 0);
+        g_bg_bottom = Color(0, 0, 0);
+    }
 
     // ⚠️ BVH 的构造函数是【按值传参】，它拿到的是 world_list 的副本，
     //    所以建完树之后 world_list 仍然完整可用 —— 这正是"两步验收"的前提。
@@ -580,6 +671,9 @@ int main(int argc, char** argv) {
         ? Camera(Point3(0, 4, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
         : (scene_name == "sphere-flat" || scene_name == "sphere-smooth")
         ? Camera(Point3(0, 3.5, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
+        : (scene_name == "cornell")
+        ? Camera(Point3(493.5, 277.5, -800), Point3(493.5, 277.5, 0),
+                 Vec3(0, 1, 0), 38.3, 800.0, 0.0)
         : Camera(Point3(13, 2, 3),      // 站远一点、高一点
                  Point3(0, 0, 0),       // 看向原点
                  Vec3(0, 1, 0),         // 世界上方向
