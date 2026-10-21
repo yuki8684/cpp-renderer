@@ -50,12 +50,106 @@ static bool g_normal_shading = false;
 static Color g_bg_top    = Color(0.5, 0.7, 1.0);
 static Color g_bg_bottom = Color(1.0, 1.0, 1.0);
 
+// ============================================================
+// ★ 光源登记表（Day 17）
+//
+// 以前光源靠"随机乱弹碰巧撞上"。NEE 要改成"主动朝光源打"，
+// 就必须能【枚举】场景里的光源。直接把 Quad 指针 + 它发的光记下来，
+// 采样时不用遍历整个世界。
+//
+// ⚠️ 指针生命周期：
+//    这些 Quad 由 HittableList 里的 shared_ptr 持有；
+//    BVH 拷贝的也是同一批 shared_ptr（对象没被复制），
+//    所以渲染期间指针一直有效。
+// ============================================================
+struct LightRef {
+    const Quad* geo;      // 几何体（用来在它上面采样）
+    Color       emitted;  // 它发出的光
+};
+static std::vector<LightRef> g_lights;
+
+static bool g_nee = true;   // --no-nee 关闭，用于 A/B 对比
+
+
+// ============================================================
+// ★ NEE：从表面点 p 直接朝光源采样（Day 17）
+//
+// 返回这一点的【直接光照】贡献，单位已经是"辐射亮度"，
+// 可以像 emitted / 间接光一样直接相加。
+//
+// 为什么需要它？
+//   随机弹射撞上小光源的概率极低 → 绝大多数采样返回 0 → 方差巨大。
+//   NEE 直接对光源面积做积分，把"碰运气"变成"确定性地找"。
+// ============================================================
+static Color estimate_direct_light(const Point3& p, const Vec3& n,
+                                   const Color& albedo, const Hittable& world) {
+    if (g_lights.empty()) return Color(0, 0, 0);
+
+    // ---------- 1. 均匀挑一个光源 ----------
+    int    idx        = int(random_double() * double(g_lights.size()));
+    if (idx >= int(g_lights.size())) idx = int(g_lights.size()) - 1;
+    const LightRef& L = g_lights[std::size_t(idx)];
+    const double pick_pdf = 1.0 / double(g_lights.size());   // 选中它的概率
+
+    // ---------- 2. 在光源上均匀采样一点 ----------
+    Point3 lp; 
+    Vec3   ln; 
+    double pdf_area = 0.0;
+    L.geo->sample_area(lp, ln, pdf_area);
+    if (pdf_area <= 0.0) return Color(0, 0, 0);
+
+    // ---------- 3. 方向与距离 ----------
+    Vec3   to_light = lp - p; // p : 光线打到的位置
+    double dist2    = dot(to_light, to_light); 
+    double dist     = std::sqrt(dist2);//dist和dist2都是在计算to_light的长度，dist2是第一步，dist是结果
+    if (dist < 1e-9) return Color(0, 0, 0);
+    Vec3 wi = to_light / dist;              // 从 p 指向光源的单位向量
+
+    // ---------- 4. 两个余弦因子 ----------
+    // TODO(T1)：表面法线 n 与 wi 的余弦
+    //   ⚠️ 算完要判 <= 0：光源跑到表面背后时不该有贡献
+    double cos_surf = dot(n, wi);// 地面法线朝上，正对灯
+    if (cos_surf <= 0.0) return Color(0, 0, 0);
+
+    // TODO(T2)：光源法线 ln 与"从光源指向 p 的方向"的余弦
+    //   提示：从光源指向 p 的单位向量是 -wi
+    //   ⚠️ 同样要判 <= 0（背面朝向 p 的光源不发光）
+    double cos_light = dot(ln, -wi); // 灯朝下，正对地面
+    if (cos_light <= 0.0) return Color(0, 0, 0);
+
+    // ---------- 5. 阴影射线：中间有没有东西挡着？ ----------
+    // TODO(T3)：朝 wi 打一条射线，只要在 (0.001, dist - 0.001) 内命中任何东西，
+    //           就说明被遮挡，直接返回黑色
+    Ray shadow(p, wi);
+    HitRecord srec;
+    if (world.hit(shadow, 0.001, dist - 0.001, srec)) return Color(0, 0, 0);
+
+    // ---------- 6. 面积 pdf → 立体角 pdf ----------
+    //   换元公式：  dω = cos_light / dist² · dA
+    //   所以概率密度也要跟着换：  pdf_ω = pdf_A · dist² / cos_light
+    //   多光源时还要乘上"选中这个光源的概率"
+    // TODO(T4)
+    double pdfw = pick_pdf * pdf_area * dist2 / cos_light;
+
+    // ---------- 7. 最终估计量 ----------
+    //   Lambertian 的 BRDF： f = albedo / π
+    //   估计量 = f · L_e · cos_surf / pdf_ω
+    Color f = albedo / pi;
+    // TODO(T5)
+    return f * L.emitted * cos_surf / pdfw;
+}
+
 
 // ============================================================
 // 光线 -> 颜色
+//
+// ★ Day 17：多了一个 skip_emitted 参数
+//   "上一次弹射已经做过 NEE 了，所以这次直接命中光源的亮度要跳过"
+//   否则同一个光源会被算两遍（NEE 算一次 + 随机弹射撞上再算一次）。
+//
 // 必须定义在 main 外面；漫反射 / 金属都需要它递归调用自己
 // ============================================================
-Color ray_color(const Ray& r, const Hittable& world, int depth) {
+Color ray_color(const Ray& r, const Hittable& world, int depth, bool skip_emitted) {
     // ★ 保险丝：弹射次数用完就放弃这条光线。
     //   必须有！否则玻璃的"全反射"会让递归无限深入 → 栈溢出崩溃 (0xC00000FD)
     if (depth <= 0) return Color(0, 0, 0);
@@ -71,18 +165,28 @@ Color ray_color(const Ray& r, const Hittable& world, int depth) {
                               rec.normal.z() + 1.0);
        }
 
+       // ★ 上一次做过 NEE → 这次直接看到光源的贡献要跳过（避免重复计算）
+       Color emitted = skip_emitted ? Color(0, 0, 0) : rec.mat->emitted();
+
        Ray   scattered;    // 弹射出去的光线
        Color attenuation;  // 反射率（打几折，是个颜色）
-       Color emitted = rec.mat->emitted();//判断这个材质是否自己发光
 
-       
-       if (rec.mat->scatter(r, rec, attenuation, scattered))
-       {
-          return emitted + attenuation * ray_color(scattered, world, depth - 1); 
+       if (!rec.mat->scatter(r, rec, attenuation, scattered)) {
+           return emitted;      // 不散射：路径终止（纯光源走这条路）
        }
 
-       
-       return emitted;
+       // ★ NEE：漫反射表面额外做一次"直接朝光源采样"
+       Color direct(0, 0, 0);
+       bool  did_nee = false;
+       if (g_nee && rec.mat->is_diffuse()) {
+           direct  = estimate_direct_light(rec.p, rec.normal,
+                                           rec.mat->diffuse_albedo(), world);
+           did_nee = true;
+       }
+
+       return emitted
+            + direct
+            + attenuation * ray_color(scattered, world, depth - 1, did_nee);
     }
 
     // 没命中：返回背景色
@@ -132,7 +236,7 @@ void render(const Hittable& world, const Camera& camera,
                 double t = (j + random_double()) / height;
 
                 Ray r = camera.get_ray(s, t);
-                pixel_color += ray_color(r, world, max_depth);
+                pixel_color += ray_color(r, world, max_depth, false);
             }
 
             // 平均
@@ -520,8 +624,11 @@ HittableList cornell_box() {
                                      Vec3(0, H, 0), Vec3(W, 0, 0), white));
 
     // 天花板上的方形光源 —— 法线朝下（-y）
-    world.add(std::make_shared<Quad>(Point3(W / 2 + 130, H - 1, 370),
-                                     Vec3(-260, 0, 0), Vec3(0, 0, -180), light));
+    // ★ Day 17：同时把它登记进光源表，NEE 才知道该往哪里采样
+    auto light_quad = std::make_shared<Quad>(Point3(W / 2 + 130, H - 1, 370),
+                                             Vec3(-260, 0, 0), Vec3(0, 0, -180), light);
+    world.add(light_quad);
+    g_lights.push_back({ light_quad.get(), Color(15.0, 15.0, 15.0) });
 
     // 两个盒子（和 RTIOW 的 Cornell Box 摆位一致）
     auto add_box = [&](double x0, double x1, double y0, double y1,
@@ -593,6 +700,9 @@ int main(int argc, char** argv) {
         else if(arg == "--no-bvh") {
             use_bvh = false;
         }
+        else if(arg == "--no-nee") {
+            g_nee = false;   // 关闭光源采样，回到纯随机弹射（A/B 对比用）
+        }
         else if(arg == "--spp" && i + 1 < argc) {
             samples_per_pixel = std::stoi(argv[i + 1]);
             ++i;
@@ -630,6 +740,7 @@ int main(int argc, char** argv) {
 
     // ---------- 场景：一个装着所有物体的"世界" ----------
     // 想换场景只改这一行：simple_scene() / random_scene() / quad_scene() / cube_scene()
+    g_lights.clear();          // 光源表按场景重建
     HittableList world_list;
     if      (scene_name == "quads")         world_list = quad_scene();
     else if (scene_name == "cube-quads")    world_list = cube_scene(false);

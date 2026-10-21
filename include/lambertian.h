@@ -40,6 +40,10 @@ public:
         return true;    // 成功散射
     }
 
+    // ★ Day 17：哑光是漫反射，可以做 NEE（主动朝光源采样）
+    bool is_diffuse() const override { return true; }
+    Color diffuse_albedo() const override { return albedo; }
+
 private:
     // 反射率（albedo，拉丁语"白度"）
     //

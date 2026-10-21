@@ -41,4 +41,18 @@ public:
 
 
     virtual Color emitted() const {return Color(0, 0, 0);}
+
+    // ============================================================
+    // ★ Day 17 新增：NEE（光源采样）需要的两个能力查询
+    //
+    // 为什么不直接在 main 里 dynamic_cast 成 Lambertian？
+    //   ① 渲染热路径上不应该有 RTTI 查询（慢）
+    //   ② "我能不能做直接光采样"本来就是【材质自己的知识】：
+    //      镜面金属和玻璃是 delta 分布（只有一个反射方向），
+    //      根本不存在"在光源上采一点"这回事
+    //
+    // 默认 false / 黑色：纯光源、金属、玻璃都不参与 NEE
+    // ============================================================
+    virtual bool is_diffuse() const { return false; }
+    virtual Color diffuse_albedo() const { return Color(0, 0, 0); }
 };

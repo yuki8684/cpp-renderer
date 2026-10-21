@@ -68,6 +68,7 @@ public:
         normal = unit_vector(n);
         D      = dot(normal, Q);
         w      = n / len2;
+        area   = std::sqrt(len2);   // 面积 = |u × v|（Day 17：光源采样要用）
 
 
         set_bounding_box();
@@ -170,6 +171,30 @@ public:
 
     }
 
+    // ============================================================
+    // ★ Day 17 新增：在平行四边形上【均匀】采样一个点
+    //
+    // 为什么要这个东西？
+    //   以前光源是靠"随机乱弹碰巧撞上"。NEE 改成"主动朝光源打"，
+    //   就需要一个函数能回答：随便给我一个光源上的点吧。
+    //
+    // pdf 用的是【面积测度】：均匀采样时 pdf = 1 / 面积
+    //   （每单位面积的命中概率一样）
+    //
+    // 均匀采样的做法：α、β 各自 [0,1) 均匀随机
+    //   p = Q + α·u + β·v
+    //   因为 (α, β) 在单位正方形上均匀，映射到平行四边形后仍然均匀
+    //   （平行四边形的面积元 |u×v| 是常数，雅可比行列式恒等于 |u×v|）
+    // ============================================================
+    void sample_area(Point3& p, Vec3& n, double& pdf) const {
+        p   = Q + random_double() * u + random_double() * v;
+        n   = normal;
+        pdf = (area > 0.0) ? (1.0 / area) : 0.0;
+    }
+
+    // 这个面发出的光（材质的 emitted()）
+    Color emitted_color() const { return mat->emitted(); }
+
 private:
     // 四个角：Q, Q+u, Q+v, Q+u+v
     // 包围盒 = 这两个对角点对各自形成的盒子的【并集】
@@ -184,6 +209,7 @@ private:
     Vec3   w;      // 平面坐标辅助向量 n / (n·n)
     Vec3   normal; // 单位法线
     double D = 0.0; // 平面常数：normal · P = D
+    double area = 0.0;  // 面积 |u × v|（Day 17）
 
     std::shared_ptr<Material> mat;
     AABB bbox;
