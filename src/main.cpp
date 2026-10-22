@@ -2,6 +2,9 @@
 #include <fstream>
 #include <string>
 #include <chrono>
+#include <thread>      // Day 18：std::thread / hardware_concurrency
+#include <atomic>      // Day 18：进度计数
+#include <cstdint>     // Day 18：std::uint8_t
 
 #ifdef _WIN32
 #include <windows.h>
@@ -25,7 +28,8 @@
 #include "triangle.h"
 #include "mesh.h"
 #include "diffuse_light.h"
-
+#include <thread>
+#include <cstdint>
 
 // ============================================================
 // ★ 调试开关：法线着色（Day 14）
@@ -69,6 +73,9 @@ struct LightRef {
 static std::vector<LightRef> g_lights;
 
 static bool g_nee = true;   // --no-nee 关闭，用于 A/B 对比
+
+// ★ Day 18：开几个线程。0 = 自动（取硬件线程数）
+static int g_threads = 0;
 
 
 // ============================================================
@@ -211,46 +218,123 @@ double seconds_since(Clock::time_point t0) {
 }
 
 // ============================================================
-// 渲染函数：把世界渲染成图像
+// 渲染函数：把世界渲染成图像（Day 18 改成两阶段并行）
+//
+// 阶段 1（并行）：每个线程算自己那一段【连续的行】，结果写进 pixels[]
+// 阶段 2（串行）：主线程按 PPM 要求的顺序统一写文件
+//
+// 为什么必须分两阶段？
+//   多个线程同时往同一个 ofstream 里写 → 行顺序错乱 → PPM 文件损坏。
+//   先算到内存、再统一写出，就不会有这个问题；
+//   而且"结果可复现"也变简单了：线程调度再乱，内存布局都是确定的。
+// ============================================================
 void render(const Hittable& world, const Camera& camera,
                 int width, int height, int samples_per_pixel, int max_depth,
                 std::ostream* out) {
 
-    // PPM 文件头 —— 只有在要写文件时才写
-    if (out) *out << "P3\n" << width << ' ' << height << "\n255\n";
+    // ---------- 决定开几个线程 ----------
+    unsigned nthreads = (g_threads > 0)
+        ? unsigned(g_threads)
+        : std::thread::hardware_concurrency();   // 0 = 自动
+    if (nthreads == 0u) nthreads = 1u;            // 查不到就单线程（规范允许返回 0）
+    if (nthreads > unsigned(height)) nthreads = unsigned(height);
 
-    for (int j = height - 1; j >= 0; --j) {
-        // 进度条只在正式渲染时打，benchmark 模式下会刷屏
-        if (out) std::cerr << "\r剩余扫描线: " << (j + 1) << ' ' << std::flush;
-
-        for (int i = 0; i < width; ++i) {
-
-            // 累积器：必须在采样循环【外面】，否则每次采样都被清零
-            Color pixel_color(0, 0, 0);
-
-            // 第 3 层循环：同一个像素射 samples_per_pixel 条光线
-            // ⚠️ 计数器叫 sample，不叫 s —— 因为下面像素坐标已经用了 s
-            for (int sample = 0; sample < samples_per_pixel; ++sample) {
-                // 在像素【内部】随机取点 —— 这就是抗锯齿的来源
-                double s = (i + random_double()) / width;
-                double t = (j + random_double()) / height;
-
-                Ray r = camera.get_ray(s, t);
-                pixel_color += ray_color(r, world, max_depth, false);
-            }
-
-            // 平均
-            Color color = pixel_color / double(samples_per_pixel);
-
-            // ---------- 写像素 ----------
-            int ir = to_byte(color.x());
-            int ig = to_byte(color.y());
-            int ib = to_byte(color.z());
-
-            if(out) *out << ir << ' ' << ig << ' ' << ib << '\n';
-        }
+    if (out) {
+        std::cerr << "\n[线程] " << nthreads
+                  << " 个，图像 " << width << 'x' << height
+                  << "，每像素 " << samples_per_pixel << " 采样\n";
     }
 
+    // ---------- 阶段 1：并行计算，结果先存内存 ----------
+    // 每个像素 3 个字节（RGB）。size_t 换算防止 4K 图时 int 溢出。
+    std::vector<std::uint8_t> pixels(std::size_t(width) * std::size_t(height) * 3u, 0);
+
+    // 一个线程要干的活：算第 [row_begin, row_end) 行
+    auto worker = [&](unsigned tid) {
+        const int row_begin = int(std::uint64_t(height) * tid       / nthreads);
+        const int row_end   = int(std::uint64_t(height) * (tid + 1) / nthreads);
+
+        for (int j = row_begin; j < row_end; ++j) {
+
+            // ★★ 关键设计：每一行【单独播种】，种子由行号散列得到
+            //
+            //   为什么不按线程编号播种？因为那样"结果"会依赖于线程数：
+            //   开 8 个线程和开 1 个线程，同一行会落在不同线程里，
+            //   用了不同的随机序列 → 图像不一样 → 无法验收。
+            //
+            //   按【行号】播种则得到更强的不变量：
+            //   【线程数完全不影响结果】，--threads 1 和 --threads 8 逐字节相同。
+            //
+            //   2654435761u 是 Knuth 乘法散列常数（黄金比例的 2^32 倍），
+            //   把连续的行号打散，避免相邻行拿到相关的随机序列。
+            reset_rng(5489u + 2654435761u * unsigned(j));
+
+            for (int i = 0; i < width; ++i) {
+
+                // 累积器：必须在采样循环【外面】，否则每次采样都被清零
+                Color pixel_color(0, 0, 0);
+
+                // 第 3 层循环：同一个像素射 samples_per_pixel 条光线
+                // ⚠️ 计数器叫 sample，不叫 s —— 因为下面像素坐标已经用了 s
+                for (int sample = 0; sample < samples_per_pixel; ++sample) {
+                    // 在像素【内部】随机取点 —— 这就是抗锯齿的来源
+                    double s = (i + random_double()) / width;
+                    double t = (j + random_double()) / height;
+
+                    Ray r = camera.get_ray(s, t);
+                    pixel_color += ray_color(r, world, max_depth, false);
+                }
+
+                // 平均
+                Color color = pixel_color / double(samples_per_pixel);
+
+                // 写进内存（不是文件！）
+                const std::size_t k = (std::size_t(j) * std::size_t(width)
+                                       + std::size_t(i)) * 3u;
+                pixels[k + 0] = std::uint8_t(to_byte(color.x()));
+                pixels[k + 1] = std::uint8_t(to_byte(color.y()));
+                pixels[k + 2] = std::uint8_t(to_byte(color.z()));
+            }
+        }
+    };
+
+    // ---------- 开线程 ----------
+    // 进度用原子计数器，只在线程【整块算完】时打一次，避免控制台乱码
+    std::atomic<int> blocks_done{0};
+
+    auto worker_with_progress = [&](unsigned tid) {
+        worker(tid);
+        if (out) {
+            const int d = ++blocks_done;
+            std::cerr << "\r[线程] 完成 " << d << '/' << nthreads << ' ' << std::flush;
+        }
+    };
+
+    std::vector<std::thread> pool;
+    if (nthreads > 1u) pool.reserve(nthreads - 1u);
+
+    for (unsigned t = 1; t < nthreads; ++t) {
+        pool.emplace_back(worker_with_progress, t);
+    }
+    worker_with_progress(0);          // 主线程也干活，省一个线程的创建开销
+
+    for (auto& th : pool) th.join();   // ★ 必须 join，否则 main 返回时 std::terminate
+
+    if (out) std::cerr << "\n";
+
+    // ---------- 阶段 2：主线程按顺序写文件（串行） ----------
+    if (!out) return;                 // nullptr = 只算不写（基准测试用）
+
+    *out << "P3\n" << width << ' ' << height << "\n255\n";
+    for (int j = height - 1; j >= 0; --j) {
+        for (int i = 0; i < width; ++i) {
+            const std::size_t k = (std::size_t(j) * std::size_t(width)
+                                   + std::size_t(i)) * 3u;
+            *out << int(pixels[k + 0]) << ' '
+                 << int(pixels[k + 1]) << ' '
+                 << int(pixels[k + 2]) << '\n';
+        }
+    }
 }
 
 
@@ -702,6 +786,10 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--no-nee") {
             g_nee = false;   // 关闭光源采样，回到纯随机弹射（A/B 对比用）
+        }
+        else if(arg == "--threads" && i + 1 < argc) {
+            g_threads = std::stoi(argv[i + 1]);
+            ++i;
         }
         else if(arg == "--spp" && i + 1 < argc) {
             samples_per_pixel = std::stoi(argv[i + 1]);
