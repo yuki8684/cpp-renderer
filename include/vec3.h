@@ -162,6 +162,8 @@ inline Vec3 random_in_unit_disk() {
 //
 // 用在：Day 19 的对照实验（证明余弦加权好多少），以及后续做 MIS 的备选策略
 // ============================================================
+// 它产出的是"半球上的随机方向"：
+// 给定表面法线normal，返回一个位于法线所朝半球上的单位向量；在这个半球里，任何方向上的密度都相同
 inline Vec3 random_on_hemisphere(const Vec3& normal) {
     Vec3 v = random_unit_vector();
     return (dot(v, normal) > 0.0) ? v : -v;

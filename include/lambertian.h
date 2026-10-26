@@ -17,45 +17,52 @@ public:
     bool scatter(const Ray&, const HitRecord& rec,
                  Color& attenuation, Ray& scattered) const override {
 
-        // ------------------------------------------------------------
-        // TODO(你来实现)：三步
+        // ============================================================
+        // ★ Day 19：pdf 补偿 —— 你自己推
         //
-        //   ① 算弹射方向
-        //        方向 = 表面法线 + 一个随机单位向量
-        //        （回想上节课：+ 法线 是为了保证方向一定在球的【外侧】）
+        //   attenuation 这个变量【物理上代表什么】？
         //
-        //   ② 造一条弹射光线
-        //        起点 = 交点
-        //        方向 = 上面算出来的方向
-        //        （提示：Ray 的构造函数要 (起点, 方向) 两个参数）
+        //       attenuation = f · cosθ / pdf
         //
-        //   ③ 填反射率
-        //        就是构造时传进来、存在成员 albedo 里的那个颜色
+        //   其中：
+        //       f     = albedo / π        （Lambertian 的 BRDF）
+        //       cosθ  = 弹射方向与法线的夹角余弦
+        //       pdf   = 这种采样方式的概率密度（单位立体角）
         //
-        // 三个都写完后，把下面三行占位删掉，并把 return false 改成 return true。
-        // ------------------------------------------------------------
-        // ------------------------------------------------------------
-        // ★ Day 19 对照实验：均匀半球 vs 余弦加权
-        //
-        //   两种采样的【期望完全相同】（画面亮度一致），差的只是方差。
-        //   关键是把 pdf 补偿正确 —— 否则亮度会错。
-        // ------------------------------------------------------------
+        //   ★ 关键：换了采样方式，pdf 就变了，attenuation 也必须跟着变。
+        //     写错的后果是画面整体变亮/变暗，但不会报错 ——
+        //     这是重要性采样最常见的 bug。
+        // ============================================================
+
         if (g_uniform_hemisphere) {
-            // 均匀半球：pdf = 1/(2π)
-            //   估计量权重 w = f·cos/pdf = (albedo/π)·cos / (1/2π) = 2·albedo·cos
+            // ---------- 分支 A：均匀半球采样 ----------
+            //
+            //   采样：random_on_hemisphere(rec.normal)，方向在半球上处处均匀
+            //   pdf 是"单位立体角上的概率密度"：pdf(ω) = 1 / (半球总立体角) = 1 / (2π)
+            //   pdf ：1 / (2π)
+            //
+            // TODO(你填)：把 attenuation 算出来
             Vec3   dir   = random_on_hemisphere(rec.normal);
             double cos_t = dot(dir, rec.normal);     // dir 已经是单位向量
             scattered    = Ray(rec.p, dir);
-            attenuation  = 2.0 * cos_t * albedo;     // ← 补偿 pdf，否则亮度会差 π 倍
+
+            attenuation  = operator*(2 * cos_t, albedo);           // ← 你推
+
             return true;
         }
 
-        // 默认：余弦加权（pdf = cosθ/π）
-        //   权重 w = f·cos/pdf = (albedo/π)·cos / (cos/π) = albedo
-        //   ★ cos 和 π 被【完全约掉】了 —— 这就是为什么这里只写 albedo
+        // ---------- 分支 B：余弦加权采样（默认）----------
+        //
+        //   采样：rec.normal + random_unit_vector()，归一化后
+        //   pdf ：cosθ / π
+        //
+        // TODO(你填)：把 attenuation 算出来
+        //   ⚠️ 提示：这里 cosθ 和 π 都会被约掉，答案很短。
         Vec3 direction = rec.normal + random_unit_vector();
         scattered = Ray(rec.p, direction);
-        attenuation = albedo;
+
+        attenuation  = albedo;               // ← 你推
+
         return true;    // 成功散射
     }
 
