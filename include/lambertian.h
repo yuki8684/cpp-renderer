@@ -34,6 +34,25 @@ public:
         //
         // 三个都写完后，把下面三行占位删掉，并把 return false 改成 return true。
         // ------------------------------------------------------------
+        // ------------------------------------------------------------
+        // ★ Day 19 对照实验：均匀半球 vs 余弦加权
+        //
+        //   两种采样的【期望完全相同】（画面亮度一致），差的只是方差。
+        //   关键是把 pdf 补偿正确 —— 否则亮度会错。
+        // ------------------------------------------------------------
+        if (g_uniform_hemisphere) {
+            // 均匀半球：pdf = 1/(2π)
+            //   估计量权重 w = f·cos/pdf = (albedo/π)·cos / (1/2π) = 2·albedo·cos
+            Vec3   dir   = random_on_hemisphere(rec.normal);
+            double cos_t = dot(dir, rec.normal);     // dir 已经是单位向量
+            scattered    = Ray(rec.p, dir);
+            attenuation  = 2.0 * cos_t * albedo;     // ← 补偿 pdf，否则亮度会差 π 倍
+            return true;
+        }
+
+        // 默认：余弦加权（pdf = cosθ/π）
+        //   权重 w = f·cos/pdf = (albedo/π)·cos / (cos/π) = albedo
+        //   ★ cos 和 π 被【完全约掉】了 —— 这就是为什么这里只写 albedo
         Vec3 direction = rec.normal + random_unit_vector();
         scattered = Ray(rec.p, direction);
         attenuation = albedo;

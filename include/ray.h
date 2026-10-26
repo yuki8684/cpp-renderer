@@ -1,11 +1,12 @@
 #pragma once
 
-#include "vec3.h"
+#include "vec3.h" //项目自己的头文件应该用引号，第三方/系统头文件用尖括号
 
 // 一条光线：起点 + 方向
 class Ray {
 public:
     Ray() {}
+    //在下面的private里类的申明顺序是orig -> dir -> dir_inv,所以初始化列表顺序最好也是如此
     Ray(const Point3& origin, const Vec3& direction)
         : orig(origin), dir(direction), dir_inv(make_inv(direction)) {}
 

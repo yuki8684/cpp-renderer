@@ -88,20 +88,21 @@ static int g_threads = 0;
 //   随机弹射撞上小光源的概率极低 → 绝大多数采样返回 0 → 方差巨大。
 //   NEE 直接对光源面积做积分，把"碰运气"变成"确定性地找"。
 // ============================================================
+// 从场景里所有光源中，随机挑一盏，并记下挑中它的概率
 static Color estimate_direct_light(const Point3& p, const Vec3& n,
                                    const Color& albedo, const Hittable& world) {
     if (g_lights.empty()) return Color(0, 0, 0);
 
     // ---------- 1. 均匀挑一个光源 ----------
-    int    idx        = int(random_double() * double(g_lights.size()));
+    int    idx        = int(random_double() * double(g_lights.size()));// idx属于[0,g_lights.size()]，每个光源被选中的概率是 1/g_light.size()
     if (idx >= int(g_lights.size())) idx = int(g_lights.size()) - 1;
-    const LightRef& L = g_lights[std::size_t(idx)];
+    const LightRef& L = g_lights[std::size_t(idx)];// 引用选中光源
     const double pick_pdf = 1.0 / double(g_lights.size());   // 选中它的概率
 
     // ---------- 2. 在光源上均匀采样一点 ----------
     Point3 lp; 
-    Vec3   ln; 
-    double pdf_area = 0.0;
+    Vec3   ln;// 法线 
+    double pdf_area = 0.0;// 面积
     L.geo->sample_area(lp, ln, pdf_area);
     if (pdf_area <= 0.0) return Color(0, 0, 0);
 
@@ -223,7 +224,7 @@ double seconds_since(Clock::time_point t0) {
 // 阶段 1（并行）：每个线程算自己那一段【连续的行】，结果写进 pixels[]
 // 阶段 2（串行）：主线程按 PPM 要求的顺序统一写文件
 //
-// 为什么必须分两阶段？
+//   为什么必须分两阶段？
 //   多个线程同时往同一个 ofstream 里写 → 行顺序错乱 → PPM 文件损坏。
 //   先算到内存、再统一写出，就不会有这个问题；
 //   而且"结果可复现"也变简单了：线程调度再乱，内存布局都是确定的。
@@ -235,9 +236,9 @@ void render(const Hittable& world, const Camera& camera,
     // ---------- 决定开几个线程 ----------
     unsigned nthreads = (g_threads > 0)
         ? unsigned(g_threads)
-        : std::thread::hardware_concurrency();   // 0 = 自动
-    if (nthreads == 0u) nthreads = 1u;            // 查不到就单线程（规范允许返回 0）
-    if (nthreads > unsigned(height)) nthreads = unsigned(height);
+        : std::thread::hardware_concurrency();   // g_threads == 0(默认) : 调std::thread::hardware_concurrency(),返回硬件支持的线程数
+    if (nthreads == 0u) nthreads = 1u;           // 查不到就单线程（规范允许返回 0）
+    if (nthreads > unsigned(height)) nthreads = unsigned(height); // 如有多出来的线程，销毁开销，钳制到height
 
     if (out) {
         std::cerr << "\n[线程] " << nthreads
@@ -249,7 +250,7 @@ void render(const Hittable& world, const Camera& camera,
     // 每个像素 3 个字节（RGB）。size_t 换算防止 4K 图时 int 溢出。
     std::vector<std::uint8_t> pixels(std::size_t(width) * std::size_t(height) * 3u, 0);
 
-    // 一个线程要干的活：算第 [row_begin, row_end) 行
+    // 一个线程要干的活：算第 [row_begin, row_end) 行，tid是线程编号
     auto worker = [&](unsigned tid) {
         const int row_begin = int(std::uint64_t(height) * tid       / nthreads);
         const int row_end   = int(std::uint64_t(height) * (tid + 1) / nthreads);
@@ -267,7 +268,7 @@ void render(const Hittable& world, const Camera& camera,
             //
             //   2654435761u 是 Knuth 乘法散列常数（黄金比例的 2^32 倍），
             //   把连续的行号打散，避免相邻行拿到相关的随机序列。
-            reset_rng(5489u + 2654435761u * unsigned(j));
+            reset_rng(5489u + 2654435761u * unsigned(j));// 种子只有行数j决定，不管哪个线程算，种子都是hash(j)
 
             for (int i = 0; i < width; ++i) {
 
@@ -288,9 +289,10 @@ void render(const Hittable& world, const Camera& camera,
                 // 平均
                 Color color = pixel_color / double(samples_per_pixel);
 
-                // 写进内存（不是文件！）
+                // 写进内存（不是文件！）pixels是width * height * 3的一维数组，每像素3字节
                 const std::size_t k = (std::size_t(j) * std::size_t(width)
                                        + std::size_t(i)) * 3u;
+                //例：pixels[6030]:R; pixels[6031]:G; piexels[6032]:B;
                 pixels[k + 0] = std::uint8_t(to_byte(color.x()));
                 pixels[k + 1] = std::uint8_t(to_byte(color.y()));
                 pixels[k + 2] = std::uint8_t(to_byte(color.z()));
@@ -303,9 +305,9 @@ void render(const Hittable& world, const Camera& camera,
     std::atomic<int> blocks_done{0};
 
     auto worker_with_progress = [&](unsigned tid) {
-        worker(tid);
+        worker(tid);// 干活
         if (out) {
-            const int d = ++blocks_done;
+            const int d = ++blocks_done;// 原子递增
             std::cerr << "\r[线程] 完成 " << d << '/' << nthreads << ' ' << std::flush;
         }
     };
@@ -313,11 +315,13 @@ void render(const Hittable& world, const Camera& camera,
     std::vector<std::thread> pool;
     if (nthreads > 1u) pool.reserve(nthreads - 1u);
 
+    // t = 1到nthreads - 1：开nthread - 1个线程
     for (unsigned t = 1; t < nthreads; ++t) {
         pool.emplace_back(worker_with_progress, t);
     }
     worker_with_progress(0);          // 主线程也干活，省一个线程的创建开销
 
+    // join():阻塞，等线程结束
     for (auto& th : pool) th.join();   // ★ 必须 join，否则 main 返回时 std::terminate
 
     if (out) std::cerr << "\n";
@@ -749,7 +753,7 @@ int main(int argc, char** argv) {
     // 场景名：random / quads / cube-quads / cube-tris
     std::string scene_name = "random";
 
-    // 解析命令行参数
+    // 解析命令行参数，argv[0]是程序名
     for(int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if(arg == "--grid" && i + 1 < argc) {
@@ -791,6 +795,9 @@ int main(int argc, char** argv) {
             g_threads = std::stoi(argv[i + 1]);
             ++i;
         }
+        else if(arg == "--uniform-hs") {
+            g_uniform_hemisphere = true;   // Day 19 对照：均匀半球采样（“差”的那种）
+        }
         else if(arg == "--spp" && i + 1 < argc) {
             samples_per_pixel = std::stoi(argv[i + 1]);
             ++i;
@@ -798,6 +805,7 @@ int main(int argc, char** argv) {
        
     }
     
+    //--bench时只跑性能测试，不渲染图像，直接返回
     if(bench) {
         run_benchmark();
         return 0;

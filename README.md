@@ -9,6 +9,53 @@
 
 ## 效果展示
 
+### Day 19 · 余弦加权重要性采样：你一直在用，只是不知道
+
+![余弦 vs 均匀](gallery/day19-cosine-vs-uniform.png)
+
+> 天光场景（`--cube-tris`），两边都是 **8 spp**。
+> 左：均匀半球采样，噪声 **12.94**；右：余弦加权，噪声 **5.05**。**差 2.56 倍。**
+
+**先证明：`normal + random_unit_vector()` 就是余弦加权**
+
+> 设 `v` 在球面上均匀，`d = n + v`，两者与 `n` 的夹角分别是 `θ` 和 `α`：
+> ```
+> |d|² = 2(1 + cos α)      n·d = 1 + cos α
+> cos θ = (1+cosα)/sqrt(2(1+cosα)) = cos(α/2)      →   θ = α/2
+> ```
+> 换元后密度恰好是 **`cosθ/π`** —— 余弦加权的定义。
+>
+> **实测（100 万样本，`tools/cosine_sampling_demo.cpp`）：**
+>
+> | | E[cos θ] | 权重标准差 | 掠射区占比 |
+> |---|---|---|---|
+> | 余弦加权 | **0.66639**（理论 2/3） | **0.000000** | **0.99%** |
+> | 均匀半球 | 0.50025（理论 1/2） | 0.576995（理论 1/√3） | 9.95% |
+
+**为什么它好：估计量权重是常数**
+
+```
+w = f · cosθ / pdf
+
+余弦加权  pdf = cosθ/π   →  w = (albedo/π)·cosθ / (cosθ/π) = albedo      ← cos 和 π 全约掉
+均匀半球  pdf = 1/(2π)   →  w = 2·albedo·cosθ                         ← 0~2 之间抖
+```
+
+> **两者的 `E[w]` 都是 albedo ⇒ 画面亮度完全一样，只有噪声不同。**
+> 这就是重要性采样的全部：**不改变答案，只改变抖动。**
+
+**★ 收益取决于场景（很容易说错的一句话）**
+
+| 场景 | 余弦加权 | 均匀半球 | 差距 |
+|---|---|---|---|
+| Cornell Box（已开 NEE） | 8.006 | 10.095 | **1.26×** |
+| 天光场景（单次弹射为主） | 5.049 | 12.936 | **2.56×** |
+
+> **NEE 把直接光接管了**，随机弹射只负责间接光 → 能被采样策略优化的部分被压缩。
+> 天光场景的照明几乎全靠单次弹射，余弦加权直接命中了被积函数的形状。
+>
+> **所以不能笼统地说“余弦加权好 2 倍”——必须说清“在什么场景下、和什么比”。**
+
 ### Day 18 · 多线程：加速比 ≠ 核心数
 
 ![线程扩展曲线](gallery/day18-thread-scaling.svg)
@@ -529,7 +576,8 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 16 | **光源与 `emit()`** —— 第一张 Cornell Box（软阴影 / 颜色渗透）；噪声量化工具 | ✅ |
 | 17 | **光源采样 NEE** —— 噪声 38.38 → 8.05（等效 **16×** 加速）；`1/pdfw = 立体角` 自查恒等式 | ✅ |
 | 18 | **多线程** —— 24 逻辑核 **4.32×**（受功耗墙限制）；`thread_local` + 按行播种；线程数不影响结果 | ✅ |
-| — | 后续：OBJ 网格 / 纹理 / MIS（多重重要性采样）+ 成品大图与视频 | 📋 |
+| 19 | **余弦加权重要性采样** —— 证明 RTIOW 写法已是余弦加权（E[cos]=2/3）；权重标准差 **0 vs 0.577** | ✅ |
+| — | 后续：显式 PDF → MIS / OBJ 网格 / 纹理 + 成品大图与视频 | 📋 |
 
 ---
 
@@ -603,11 +651,13 @@ cpp-renderer/
 │   ├── measure_noise.ps1  **用二阶差分量化高频噪声（不含信号）**
 │   ├── plot_threads.ps1   **自动测量线程扩展性 → 生成加速比曲线 SVG**
 │   ├── emitted_demo.cpp   **把 ray_color 的递归剥光，用真数字跑一遍**
+│   ├── cosine_sampling_demo.cpp **实测 E[cosθ]：证明余弦加权，量权重方差**
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
 ├── docs/
 │   ├── devlog.md          技术日志（逐日原理推导 + 踩坑）
+│   ├── cpp-notes.md       **C++ 笔记（从 devlog 抽出的语言知识点，按 Day + 主题索引）**
 │   └── api.md             函数总览（速查手册）
 ├── gallery/          # 各阶段效果图（入库存档）
 └── output/           # 运行时产物（不入库）
@@ -631,6 +681,7 @@ cmake --build build -j
 ./build/raytracer.exe --cornell       # Cornell Box（Cornell 盒子 + 面光源）
 ./build/raytracer.exe --cornell --no-nee  # 关掉 NEE，回到暴力路径追踪（A/B 对比）
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
+./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
 ./build/raytracer.exe --quads --spp 400   # 自定义采样数
 ./build/raytracer.exe --quads --no-bvh    # 关掉 BVH，用于两步验收
@@ -690,3 +741,4 @@ cmake --build build -j
 
 完整推导（球体求交、Snell 定律、薄透镜成像、弥散圆、相机基向量…）见
 [`docs/devlog.md`](docs/devlog.md)。函数速查见 [`docs/api.md`](docs/api.md)。
+C++ 语言知识点（语法 / 标准库 / 编译期陷阱）单独整理在 [`docs/cpp-notes.md`](docs/cpp-notes.md)。

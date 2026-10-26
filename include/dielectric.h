@@ -32,12 +32,12 @@ public:
         Vec3 unit_direction = unit_vector(r_in.direction());
 
         // 入射角的余弦 / 正弦
-        double cos_theta = std::fmin(dot(-unit_direction, rec.normal), 1.0);
-        double sin_theta = std::sqrt(1.0 - cos_theta * cos_theta);
+        double cos_theta = std::fmin(dot(-unit_direction, rec.normal), 1.0); // -unit_direction是表面指向光源的方向，rec.normal是朝向光线来的一侧
+        double sin_theta = std::sqrt(1.0 - cos_theta * cos_theta); // 三角恒等式：sin² + cos² = 1
 
         // ---------- 2. 全反射判据 ----------
         //   折射定律：sin θ₂ = eta_ratio × sin θ₁
-        //   但 sin 不可能大于 1 —— 一旦超过，说明光根本出不去，全部弹回。
+        //   但 sin 不可能大于 1 —— 一旦超过，说明eta_ratio > 1 光从密到疏，光根本出不去，全部弹回。
         bool cannot_refract = eta_ratio * sin_theta > 1.0;
 
         // ---------- 3. 决定走哪条路 ----------
@@ -67,13 +67,14 @@ public:
         //    先判“物理上必须反射”，再判“概率上该反射”。
         // ------------------------------------------------------------
         Vec3 direction;
+        // 菲涅尔：即便能折射出去，但表面仍会反射一部分光，蒙特卡洛随机选择
         if (cannot_refract || reflectance(cos_theta, eta_ratio) > random_double()) {
 
-            direction = reflect(unit_direction, rec.normal);
+            direction = reflect(unit_direction, rec.normal);// 反射
 
         } else {
 
-            direction = refract(unit_direction, rec.normal, eta_ratio);
+            direction = refract(unit_direction, rec.normal, eta_ratio);// 折射
 
         }
 

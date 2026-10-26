@@ -9,10 +9,12 @@
 // 所以 HittableList 继承 Hittable。
 // 以后做 BVH 加速时，只要替换这个类，main 一行都不用改。
 // ============================================================
+//class默认private继承，所以下面必须显式public
 class HittableList : public Hittable {
 public:
     HittableList() = default;
 
+    //把一个shared_prt<Hittable>加入object数组
     void add(std::shared_ptr<Hittable> object) {
         objects.push_back(std::move(object));
     }
@@ -25,17 +27,17 @@ public:
     bool hit(const Ray& r, double t_min, double t_max,
              HitRecord& rec) const override {
         double    closest      = t_max;   // 当前已知的最近命中上限
-        bool      hit_anything = false;
+        bool      hit_anything = false;   // hit_anything记录这次hit中，有没有任何一个子物体被光线命中。初始值false表示什么都没有命中
         HitRecord temp_rec;               // 临时报告单：只有命中才提交给 rec
 
         for (const auto& obj : objects) {
             if (obj->hit(r, t_min, closest, temp_rec)) {
-                hit_anything = true;
+                hit_anything = true;         // 有一个命中就true
                 closest      = temp_rec.t;   // 收紧上限
                 rec          = temp_rec;     // 提交结果
             }
         }
-        return hit_anything;
+        return hit_anything;                 //返回true or false
     }
 
     // --------------------------------------------------------
@@ -60,7 +62,7 @@ public:
             // TODO(你填 B2)：合并盒子
             //   第一个物体：直接拿来当结果
             //   之后的物体：用 AABB::surrounding(现有的 output, 新来的 temp_box)
-            //             得到一个"刚好装下两者"的大盒
+            //              并集得到大盒
             output = first_box ? temp_box : AABB::surrounding(output, temp_box);
 
             first_box = false;

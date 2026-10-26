@@ -23,25 +23,9 @@ public:
                  Color& attenuation, Ray& scattered) const override {
 
         // ------------------------------------------------------------
-        // TODO(你来实现)：三步
-        //
-        //   ① 算出反射方向
-        //        用 vec3.h 里的 reflect()
-        //        第一个参数 = 入射光线的方向（记得先 unit_vector 归一化）
-        //        第二个参数 = 交点法线 rec.normal
-        //
-        //   ② 造弹射光线
-        //        起点 = 交点
-        //        方向 = ①算出的反射方向  +  fuzz 倍的随机扰动
-        //        （这个随机扰动就是"粗糙度"：方向被抖一下，反射就糊了）
-        //
-        //   ③ 反射率 = 存起来的 albedo
-        //
-        // 填完后把那三行 (void)... 删掉
-        // ------------------------------------------------------------
         Vec3 reflected = reflect(unit_vector(r_in.direction()), rec.normal);
-        scattered = Ray(rec.p, reflected + fuzz * random_unit_vector());
-        attenuation = albedo;
+        scattered      = Ray(rec.p, reflected + fuzz * random_unit_vector());
+        attenuation    = albedo;
 
         // 扰动可能把方向推到表面下面去 —— 那种光线不该存在，返回 false 表示吸收
         return dot(scattered.direction(), rec.normal) > 0;

@@ -110,7 +110,6 @@ public:
                 // ② 内部节点：把两个子节点推进栈
                 //
                 // TODO(你填 F4)：推进 node.left 和 node.right
-                //   写法：stack[sp++] = _____;
                 // ==============================================
                 stack[sp++] = node.left;
                 stack[sp++] = node.right;
@@ -124,7 +123,6 @@ public:
                     int obj = (k == 0) ? node.left : node.right;
 
                     // TODO(你填 F2)：测这个物体是否命中
-                    //     objects[obj]->hit(r, t_min, t_max, rec)  返回 bool
                     if (objects[obj]->hit(r, t_min, t_max, rec)) {
                         // TODO(你填 F3)：命中之后做两件事
                         //   ① 记录"至少中了一个"

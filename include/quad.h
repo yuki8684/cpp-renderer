@@ -50,12 +50,14 @@ public:
         //      （推导见 docs/devlog.md Day 13「原理 4」）
         // ------------------------------------------------------------
 
-        Vec3 n = cross(u, v);//叉积，得到向量，垂直于u，v
+        Vec3 n = cross(u, v);//叉积，得到向量，垂直于u，v，为归一化
 
-        double len2 = dot(n, n);
+        double len2 = dot(n, n);// n = |u * v |，len2等于平行四边行面积平方
         double uu   = dot(u, u);
         double vv   = dot(v, v);
 
+        // 如果u平行于v， 叉积得到的向量为0，unit_vector(n)除以0得到NAN，整个渲染崩溃
+        //len2 = |u|²|v|²sin²θ，uu·vv = |u|²|v|²，len2 / (uu·vv) = sin²θ，因为|sinθ| < 1e-6，所以|sin²θ|小于1e-12
         if(len2 <= 0.0 || len2 < 1e-12 * uu * vv) {
             degenerate = true;
             normal     = Vec3(0, 1, 0);
@@ -68,7 +70,7 @@ public:
         normal = unit_vector(n);
         D      = dot(normal, Q);
         w      = n / len2;
-        area   = std::sqrt(len2);   // 面积 = |u × v|（Day 17：光源采样要用）
+        area   = std::sqrt(len2);   // 面积 = |u × v|
 
 
         set_bounding_box();
@@ -83,8 +85,8 @@ public:
         if(degenerate) return false;
 
         // ---------- 第 1 步：射线 × 无限平面 ----------
-        // 平面方程（隐式）：  normal · P = D
-        // 把 P = O + t·d 代进去：
+        //     平面方程（隐式）：  normal · P = D
+        //     把 P = O + t·d 代进去：
         //     normal · (O + t·d) = D
         //     normal·O + t(normal·d) = D
         //     t = (D − normal·O) / (normal·d)
@@ -92,7 +94,7 @@ public:
         // TODO(你填 Q5)：分母
         double denom = dot(normal, r.direction());
 
-        // TODO(你填 Q6)：平行判定
+        //   TODO(你填 Q6)：平行判定
         //   分母接近 0 → 射线平行于平面 → 永远打不中（或完全躺在平面里）
         //   ⚠️ 要取绝对值：光线也可以朝平面的【反方向】平行
         //   形状：  if (std::fabs(denom) < 1e-8) return false;
@@ -101,9 +103,8 @@ public:
         
 
 
-        // TODO(你填 Q7)：解出 t，并检查它是否落在 (t_min, t_max) 内
-        //   形状：  double t = (D - dot(normal, r.origin())) / denom;
-        //           if (t <= t_min || t >= t_max) return false;
+        //    TODO(你填 Q7)：解出 t，并检查它是否落在 (t_min, t_max) 内
+        //    形状：  double t = (D - dot(normal, r.origin())) / denom;
         double t = (D - dot(normal, r.origin())) / denom;
         if(t <= t_min || t >= t_max) return false;
         
@@ -112,7 +113,7 @@ public:
         // 交点位置
         Point3 intersection = r.at(t);
 
-        // TODO(你填 Q8)：算平面内坐标 α（alpha）和 β（beta）
+        //   TODO(你填 Q8)：算平面内坐标 α（alpha）和 β（beta）
         //
         //   令 p = 交点 − Q
         //   则   alpha = dot(w, cross(p, v))
@@ -122,11 +123,11 @@ public:
         //      写反会得到一个符号相反的坐标
         //
         //   推导见 docs/devlog.md Day 13「原理 4」
-        Vec3 p = intersection - Q;
+        Vec3     p   = intersection - Q;
         double alpha = dot(w, cross(p, v));
         double beta  = dot(w, cross(u, p));
 
-        // TODO(你填 Q9)：调用内部判定
+        //   TODO(你填 Q9)：调用内部判定
         //   形状：  if (!is_interior(alpha, beta)) return false;
         if(!is_interior(alpha, beta)) return false;
         
@@ -172,7 +173,7 @@ public:
     }
 
     // ============================================================
-    // ★ Day 17 新增：在平行四边形上【均匀】采样一个点
+    // ★ Day 17 新增：在平行四边形上【均匀】采样一个点，NEE光源采样
     //
     // 为什么要这个东西？
     //   以前光源是靠"随机乱弹碰巧撞上"。NEE 改成"主动朝光源打"，
@@ -193,6 +194,7 @@ public:
     }
 
     // 这个面发出的光（材质的 emitted()）
+    // 调用材质的emitted（）虚函数，返回发光颜色
     Color emitted_color() const { return mat->emitted(); }
 
 private:

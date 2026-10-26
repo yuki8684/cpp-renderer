@@ -44,6 +44,17 @@ inline void reset_rng(unsigned seed = 5489u) {
     rng().seed(seed);
 }
 
+// ============================================================
+// ★ Day 19 对照实验开关
+//
+//   false（默认）：漫反射用【余弦加权】采样，pdf = cosθ/π
+//   true          ：漫反射用【均匀半球】采样，pdf = 1/(2π)
+//
+// 两者期望完全相同（亮度一样），差的只是方差 —— 这正是余弦加权的价值。
+// 详见 docs/devlog.md Day 19 与 tools/cosine_sampling_demo.cpp
+// ============================================================
+inline bool g_uniform_hemisphere = false;
+
 //---------- [min,max) 区间随机数 ----------
 inline double random_double(double min, double max) {
     return min + (max - min) * random_double(); 

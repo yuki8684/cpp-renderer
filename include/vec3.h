@@ -15,12 +15,14 @@ public:
     double z() const { return e[2]; }
 
     Vec3 operator-() const { return Vec3(-e[0], -e[1], -e[2]); }
-    double  operator[](int i) const { return e[i]; }
-    double& operator[](int i)       { return e[i]; }
+    double  operator[](int i) const { return e[i]; } //只读
+    double& operator[](int i)       { return e[i]; } //可改
 
     Vec3& operator+=(const Vec3& v) {
+        //e[0] += v.e[0]类型是double&, 而函数签名要求返回Vec3&
         e[0] += v.e[0]; e[1] += v.e[1]; e[2] += v.e[2];
-        return *this;
+        //return *this;返回当前对象自身的引用，类型是Vec3&,和签名匹配
+        return *this; 
     }
     Vec3& operator*=(double t) {
         e[0] *= t; e[1] *= t; e[2] *= t;
@@ -143,4 +145,24 @@ inline Vec3 random_in_unit_disk() {
         if (p.length_squared() >= 1.0) continue;   // 落在圆外 → 重取
         return p;
     }
+}
+
+// ============================================================
+// ★ Day 19：均匀半球采样（"坏"的那种）
+//
+// 做法：先在【整个球面】上均匀取一个方向；
+//       如果它朝下（dot < 0），就翻上来。
+//
+// 结果分布是【半球上处处均匀】，pdf = 1/(2π)（常数）。
+//
+// ⚠️ 它和余弦加权的区别：
+//      均匀半球：每个方向一样重要 → 掠射方向也花一样的钱
+//      余弦加权：正对法线的方向更重要 → pdf = cosθ/π
+//    对于漫反射表面，余弦加权是"天生正确"的分布（见下方的理论）
+//
+// 用在：Day 19 的对照实验（证明余弦加权好多少），以及后续做 MIS 的备选策略
+// ============================================================
+inline Vec3 random_on_hemisphere(const Vec3& normal) {
+    Vec3 v = random_unit_vector();
+    return (dot(v, normal) > 0.0) ? v : -v;
 }

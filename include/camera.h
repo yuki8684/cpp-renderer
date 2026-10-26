@@ -21,9 +21,9 @@ public:
 
         // ---------- 第一步：算三个基向量 ----------
         // TODO(你填 C1)：三个基向量
-        Vec3 w = unit_vector(lookfrom - lookat);                       // 相机背后的方向
-        Vec3 u = unit_vector(cross(vup, w));                       // 相机右方向（用 cross）
-        Vec3 v = cross(w,u);                       // 相机上方向（用 cross）
+        Vec3 w = unit_vector(lookfrom - lookat); // 相机背后的方向
+        Vec3 u = unit_vector(cross(vup, w));     // 相机右方向（用 cross）
+        Vec3 v = cross(w,u);                     // 相机上方向（用 cross）
 
         // ---------- 第二步：算视口 ----------
         double theta = degrees_to_radians(vfov);
@@ -34,7 +34,7 @@ public:
         double viewport_height = 2.0 * h * focus_dist;
         double viewport_width  = aspect_ratio * viewport_height;
 
-        origin = lookfrom;                     // ← origin 现在真的有意义了
+        origin     = lookfrom;                 //把相机位置赋给origin
 
         horizontal = viewport_width * u;       // 横边：方向沿相机的右方向
         vertical   = viewport_height * v;      // 竖边：方向沿相机的上方向
@@ -42,9 +42,9 @@ public:
         lower_left_corner = origin
                           - horizontal / 2.0
                           - vertical   / 2.0
-                          - focus_dist * w;   // 往前推 focus_dist 个单位
+                          - focus_dist * w;    // 沿着w（相机背后方向）走focus_dist 个单位
 
-        this->lens_radius = lens_radius;
+        this->lens_radius = lens_radius;       //成员lens_radius和参数lens_radius同名要访问成员必须用this->lens_radius
     }
 
     // ⚠️ 像素坐标参数改名为 s, t，避免和基向量 u, v 冲突

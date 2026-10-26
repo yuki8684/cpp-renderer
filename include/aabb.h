@@ -31,6 +31,7 @@ public:
     // --------------------------------------------------------
     // 用【任意两个对角点】构造。
     // 不要求 a 是"最小"那个、b 是"最大"那个 —— 逐轴取 min/max 会自动纠正。
+    //两个点定义盒子
     // --------------------------------------------------------
     AABB(const Point3& a, const Point3& b) {
         minimum = Point3(std::fmin(a.x(), b.x()),
@@ -48,17 +49,21 @@ public:
     // --------------------------------------------------------
     // 把两个盒子合并成一个"刚好能同时装下两者"的盒子。
     // 用途：HittableList 把所有子物体的包围盒并成一个大盒。
+    //两个盒子求交
     // --------------------------------------------------------
     static AABB surrounding(const AABB& box0, const AABB& box1) {
-        Point3 small(std::fmin(box0.minimum.x(), box1.minimum.x()),
-                     std::fmin(box0.minimum.y(), box1.minimum.y()),
-                     std::fmin(box0.minimum.z(), box1.minimum.z()));
+        // ⚠️ 注意：局部变量不要叫 small / near / far —— <windows.h> 里
+        //    rpcndr.h 有 "#define small char"，MSVC 会把 small 直接替换成 char，
+        //    报出 "Point3 后面接 char 是非法的" 这种莫名其妙的错。
+        Point3 lo(std::fmin(box0.minimum.x(), box1.minimum.x()),
+                  std::fmin(box0.minimum.y(), box1.minimum.y()),
+                  std::fmin(box0.minimum.z(), box1.minimum.z()));
 
-        Point3 big(std::fmax(box0.maximum.x(), box1.maximum.x()),
-                   std::fmax(box0.maximum.y(), box1.maximum.y()),
-                   std::fmax(box0.maximum.z(), box1.maximum.z()));
+        Point3 hi(std::fmax(box0.maximum.x(), box1.maximum.x()),
+                  std::fmax(box0.maximum.y(), box1.maximum.y()),
+                  std::fmax(box0.maximum.z(), box1.maximum.z()));
 
-        return AABB(small, big);
+        return AABB(lo, hi);
     }
 
     // ========================================================
@@ -83,6 +88,7 @@ public:
     //    而 (min-O)*inf 的符号恰好自动给出"永远在板内"或"永远在板外"
     //    这两种正确结果。详见 docs/devlog.md Day 8。
     // ========================================================
+    //slab求交，判断光线在参数区间（t_min,t_max)内是否穿过盒子
     bool hit(const Ray& r, double t_min, double t_max) const {
         for (int axis = 0; axis < 3; ++axis) {
 
@@ -101,6 +107,7 @@ public:
             //   光线起点的某个轴坐标 = r.origin()[axis]
             //   光线方向的某个轴坐标 = r.direction()[axis]
             //   盒子的两个面 = min_axis(axis) / max_axis(axis)
+            //t0 = (min - o) / D, t2 = (max - o) / D;
             double t0 = (min_axis(axis) - r.origin()[axis]) * inv_d;
             double t1 = (max_axis(axis) - r.origin()[axis]) * inv_d;
 
@@ -185,14 +192,14 @@ public:
 
     }
 
-    // 第 axis 轴（0=x, 1=y, 2=z）的两个面
+    //   第 axis 轴（0=x, 1=y, 2=z）的两个面
     double min_axis(int axis) const { return minimum[axis]; }
     double max_axis(int axis) const { return maximum[axis]; }
 
     // --------------------------------------------------------
-    // 三个轴里哪一轴最长？返回 0 / 1 / 2
+    //   三个轴里哪一轴最长？返回 0 / 1 / 2
     //
-    // 用在哪里：BVH 建树时沿【最长的那条轴】切分。
+    //   BVH切分依据
     //   因为物体在那一轴上的分布最分散，切完两半分得最开，
     //   两个子盒子缩得最快 → 树更矮 → 排除更有效。
     // --------------------------------------------------------
@@ -200,9 +207,9 @@ public:
         double dx = maximum.x() - minimum.x();
         double dy = maximum.y() - minimum.y();
         double dz = maximum.z() - minimum.z();
-        if (dx > dy && dx > dz) return 0;
-        if (dy > dz)           return 1;
-        return 2;
+        if (dx > dy && dx > dz) return 0;  //x轴
+        if (dy > dz)           return 1;   //y轴
+        return 2;                          //z轴
     }
 
     Point3 minimum;

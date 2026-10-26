@@ -25,7 +25,7 @@ public:
         const double half_b = dot(oc, r.direction());
         const double c      = dot(oc, oc) - radius * radius;
 
-        const double discriminant = half_b * half_b - a * c;
+        const double discriminant = half_b * half_b - a * c; //判别式
         if (discriminant < 0.0) return false;      // 光线掠过球外
 
         const double sqrt_d = std::sqrt(discriminant);

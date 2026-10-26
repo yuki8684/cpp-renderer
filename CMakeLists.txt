@@ -11,7 +11,9 @@ endif()
 
 # 警告全开：早期踩的坑，后期不用还债
 if(MSVC)
-    add_compile_options(/W4)
+    # /utf-8：源码是 UTF-8（注释里有中文），不加这个 MSVC 会按系统代码页
+    # (CP936) 解码，报 C4819 甚至“常量中有换行符”这类假错误
+    add_compile_options(/W4 /utf-8)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()

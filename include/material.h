@@ -40,6 +40,7 @@ public:
                          Color& attenuation, Ray& scattered) const = 0;
 
 
+    //返回材质发出的光，默认不发光，即黑色
     virtual Color emitted() const {return Color(0, 0, 0);}
 
     // ============================================================
