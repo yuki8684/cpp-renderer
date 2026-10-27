@@ -9,6 +9,64 @@
 
 ## 效果展示
 
+### Day 20 · 读入真实的 OBJ 模型
+
+| 二十面体（20 个三角面） | 圆环（2304 个三角面） |
+|---|---|
+| ![icosahedron](gallery/day20-obj-icosahedron.png) | ![torus](gallery/day20-obj-torus.png) |
+
+> 两个模型都是从 `.obj` 文本文件读进来的，不是代码里写死的几何。
+> 左图能清楚看到 **5 个三角形汇在同一个顶点** —— 那是扇形三角化的直接证据。
+> 二十面体是**故意的对照组**：Day 21 加上顶点法线后，它会从"20 个平面"变成一个球。
+
+**OBJ 只有两种数据**
+
+```
+v -1 -1 -1      ← 顶点位置（positions）
+f 1 2 3 4       ← 面：顶点的【编号】（tri_indices）
+```
+
+**顶点只存一份，三角形存编号** —— 立方体 8 个角要拼出 12 个三角形，
+如果每个三角形自带 3 个顶点要存 36 份。用索引只需 8 份 + 36 个整数。
+
+> 这也是 Day 21 平滑着色能成立的前提：顶点共享，法线才能一次算好、被周围所有面共用。
+
+**三个坑（全都在这一个文件里）**
+
+| 坑 | 说明 |
+|---|---|
+| **索引是 1-based** | 文件里第 1 个 `v` 用索引 `1` 表示 → 读出来必须 `- 1` |
+| **索引全局累积** | 跨行计数不重置，`positions` 必须是贯穿全文的 vector |
+| **`f` 可能是多边形** | 四边形/五边形都要三角化（扇形切分，从 `face[0]` 出发） |
+
+**★ 实测：忘了减 1 会怎样**
+
+```
+positions 有 1152 个顶点  →  合法下标 0 ~ 1151
+文件里最大的索引是 1152（1-based）
+
+减 1 之后：1152 − 1 = 1151  ✓ 正好是合法上限
+忘了减 1：            1152  ✗ 越界
+```
+
+**1-based 的最大索引恰好等于 N，而 0-based 的合法上限是 N−1。差一个，必然越界。**
+
+**★★★ 变异测试：证明测试是真的**
+
+把 `std::stoi(first) - 1` 的 `- 1` 删掉（故意注入 bug），重跑 13 条断言：
+
+| 组 | 断言内容 | 结果 |
+|---|---|---|
+| A / C | 顶点数、索引数、三角形数 | ❌ 全绿 —— **数量是"形状"，平移不改变个数** |
+| B | `positions[0]` / `positions[7]` 的坐标 | ❌ 全绿 —— **`-1` 只动索引，不动顶点** |
+| D2 | 退化三角形数 = 0 | ❌ 绿 —— 索引整体平移后三角形依然非退化 |
+| E | 空文件返回 0 | ❌ 绿 —— 跟索引无关 |
+| **D1** | **所有索引 ∈ [0, 1152)** | ✅ **唯一变红的一条** |
+
+> **结论：数量对 ≠ 内容对。形状对 ≠ 语义对。**
+> 想抓"差一个"这类错误，必须有一条测试**专门检查取值范围**，
+> 而不能只检查数量或几个采样点。
+
 ### Day 19 · 余弦加权重要性采样：你一直在用，只是不知道
 
 ![余弦 vs 均匀](gallery/day19-cosine-vs-uniform.png)
@@ -577,7 +635,8 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 17 | **光源采样 NEE** —— 噪声 38.38 → 8.05（等效 **16×** 加速）；`1/pdfw = 立体角` 自查恒等式 | ✅ |
 | 18 | **多线程** —— 24 逻辑核 **4.32×**（受功耗墙限制）；`thread_local` + 按行播种；线程数不影响结果 | ✅ |
 | 19 | **余弦加权重要性采样** —— 证明 RTIOW 写法已是余弦加权（E[cos]=2/3）；权重标准差 **0 vs 0.577** | ✅ |
-| — | 后续：显式 PDF → MIS / OBJ 网格 / 纹理 + 成品大图与视频 | 📋 |
+| 20 | **OBJ 网格读取** —— `v`/`f` 解析 + 扇形三角化；2304 面的圆环压 BVH；第一次由学员自己写 13 条测试 + **变异测试** | ✅ |
+| — | 后续：OBJ 顶点法线 → 纹理映射 → 显式 PDF / MIS → 成品大图与视频 | 📋 |
 
 ---
 
@@ -630,6 +689,7 @@ cpp-renderer/
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
 │   ├── triangle.h         **三角形 —— 继承 Quad，只重写 is_interior 一行**
 │   ├── mesh.h             球面网格（三角形拼球，可选顶点法线）
+│   ├── obj_loader.h       **OBJ 文本读取（v / f，扇形三角化）**
 │   ├── diffuse_light.h    **纯光源：只发光不散射**
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
@@ -642,7 +702,9 @@ cpp-renderer/
 │   ├── aabb_test.cpp       AABB 单元测试（独立可执行，1 秒反馈）
 │   ├── quad_test.cpp       Quad 单元测试（α/β 手算验算 + BVH 一致性）
 │   ├── triangle_test.cpp   Triangle 单元测试（含 49 条射线对比两种拆法）
-│   └── smooth_test.cpp     光滑着色（含定量：插值法线 vs 解析真法线）
+│   ├── smooth_test.cpp     光滑着色（含定量：插值法线 vs 解析真法线）
+│   └── obj_test.cpp        **OBJ 读取（13 条断言：数量/坐标/不变量/异常路径）**
+├── models/                 **测试用 OBJ 模型（由 tools/gen_obj.ps1 生成）**
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
 │   ├── test.ps1           一键：编译 + 运行所有单元测试
@@ -652,14 +714,15 @@ cpp-renderer/
 │   ├── plot_threads.ps1   **自动测量线程扩展性 → 生成加速比曲线 SVG**
 │   ├── emitted_demo.cpp   **把 ray_color 的递归剥光，用真数字跑一遍**
 │   ├── cosine_sampling_demo.cpp **实测 E[cosθ]：证明余弦加权，量权重方差**
+│   ├── stream_demo.cpp    **流语法演示（istringstream / >> / getline / stoi）**
+│   ├── gen_obj.ps1        生成测试模型 cube / icosahedron / torus
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
 ├── docs/
 │   ├── devlog.md          技术日志（逐日原理推导 + 踩坑）
 │   ├── cpp-notes.md       **C++ 笔记（从 devlog 抽出的语言知识点，按 Day + 主题索引）**
-│   └── api.md             函数总览（速查手册）
-├── gallery/          # 各阶段效果图（入库存档）
+│   └── api.md             函数总览（速查手册）├── gallery/          # 各阶段效果图（入库存档）
 └── output/           # 运行时产物（不入库）
 ```
 
@@ -680,6 +743,8 @@ cmake --build build -j
 ./build/raytracer.exe --sphere-smooth # 球面网格：光滑着色（顶点法线插值）
 ./build/raytracer.exe --cornell       # Cornell Box（Cornell 盒子 + 面光源）
 ./build/raytracer.exe --cornell --no-nee  # 关掉 NEE，回到暴力路径追踪（A/B 对比）
+./build/raytracer.exe --obj-ico       # OBJ 模型：二十面体（20 个三角面，Day 21 的对照组）
+./build/raytracer.exe --obj-torus     # OBJ 模型：圆环（2304 个三角面，压 BVH）
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
 ./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
@@ -692,6 +757,7 @@ cmake --build build -j
 ```powershell
 .\tools\test.ps1                             # 单元测试（1 秒反馈）
 .\tools\run.ps1                              # 编译 + 渲染 + 转 PNG
+.\tools\gen_obj.ps1                          # 生成 models/ 下的测试模型
 .\tools\plot_bench.ps1                       # bench.csv -> 性能曲线图
 .\tools\publish.ps1 -Message "Day 11" -Image day11.png   # 发布到 GitHub
 ```
@@ -725,6 +791,12 @@ cmake --build build -j
 - **多态降本**：`Triangle` 没有 `hit()`、没有包围盒代码，只重写了一个 `is_interior`。
   因为 `Quad::hit()` 里那句 `is_interior(alpha, beta)` 是 virtual 调用 ——
   **同一份求交代码，行为由对象真实类型决定**。加下一个图元（圆盘/椭圆）也只需要一个函数。
+- **索引化网格**：OBJ 只存一份顶点 + 一堆编号，不存重复顶点。
+  立方体只有 8 个角却要拼 12 个三角形，用索引只需 8 份（而不是 36 份）。
+  这同时也是**平滑着色能成立的前提**：顶点共享，法线才能被周围所有面共用。
+- **测试要能证伪**：13 条断言全绿**不代表测试有效**。
+  故意把代码改坏（删掉 `- 1`）后**只有 1 条变红** —— 说明其余 12 条都防不住这类错误。
+  **数量对 ≠ 内容对**：检查取值范围的不变量测试，是唯一能抓“差一个”的手段。
 - **两个虚函数钩子**：`is_interior` 控制**形状**，`set_hit_normal` 控制**法线**。
   这就是模板方法模式：`Quad::hit()` 的流程写死，派生类只填变化的两步。
   Day 16 加圆盘、椭圆还是只写这两个函数。

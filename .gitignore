@@ -15,6 +15,10 @@ output/
 *.obj
 *.exe
 
+# !! Exception: Wavefront OBJ models also use the .obj suffix (same as MSVC object files).
+# Git ignore rules are ORDER-SENSITIVE: a later rule overrides an earlier one.
+!models/*.obj
+
 # ---------- 编译器预处理输出（t2.i = 14 万行 / 6 MB，纯构建产物） ----------
 *.i
 *.ii

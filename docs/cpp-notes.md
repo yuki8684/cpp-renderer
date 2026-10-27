@@ -514,3 +514,25 @@ private:
 | **`std::uint64_t` 避免溢出** | `height * tid / nthreads` 里先转成 64 位，防止 4K 图时中间结果溢出 |
 | **主线程也干活** | 开 `nthreads-1` 个额外线程，主线程算第 0 块，省一次线程创建 |
 | **不用 `std::endl`** | 它每次都 flush，热循环里极慢；用 `'\n'` |
+
+---
+
+## Day 20 · 流 / 字符串 / 逗号运算符
+
+| 知识点 | 要点 |
+|---|---|
+| **`std::ifstream`** | `std::ifstream in(path);` 只读打开；`if (!in)` 判断打开失败（路径错 / 文件不存在） |
+| **`std::getline(in, line)`** | 每次读一整行，**读完返回 false**，所以能直接当 `while` 条件 |
+| **`std::istringstream`** | 把字符串包成"可以逐词读"的流；`line[0] == '#'` 用 `[]` 取字符判注释 |
+| **`>>` 是左结合的** | `ss >> x >> y >> z` 读作 `(((ss>>x)>>y)>>z)`，每个 `>>` 作用在上一个返回的流上 |
+| **★ 逗号不是分隔符** | `ss >> x, y, z` 是**逗号运算符**：只读了 `x`，`y`/`z` 是**未初始化垃圾**。`-Wall` 报 `right operand of comma operator has no effect` |
+| **`getline(ts, s, '/')`** | 按自定义分隔符切；分隔符本身被吃掉不放进 `s`；流会被**消耗**，可以连续调 |
+| **`std::stoi(s)`** | 字符串转 int；**不做边界检查**，`"7abc"` → 7、`" 12 "` → 12；**空串会抛异常**（不是返回 0） |
+| **字符串判空用 `empty()`** | `std::string` 是对象不是指针。**指针判 `nullptr`，字符串判 `empty()`**；`s != nullptr` 是编译错误 |
+| **`push_back` 只收 1 个参数** | 要塞 3 个值就写 3 行。编译器会列一屏 `note:` 说"所有重载都接不了 3 个参数" |
+| **`std::size_t` 做循环变量** | 和 `.size()`（无符号）比较时避免 `-Wsign-compare` |
+| **`i + 2 < v.size()`** | 遍历"每 3 个一组"的安全写法，比 `i < v.size() - 2` 好（后者在空容器时无符号下溢） |
+| **★ 表达式结果被丢弃** | `f(x);` / `ok == false;` / `a, b, c;` —— **没赋值、没副作用 = 白写**。自查：这行 `;` 前面那坨东西，结果去哪儿了？ |
+| **`statement has no effect [-Wunused-value]`** | 这句警告几乎总是"写了比较却忘了赋值"，或"逗号运算符用错了" |
+| **`defined but not used [-Wunused-function]`** | 可以当**待办清单**用：static 函数没被调用 = 对应的测试还没写 |
+| **`Tee-Object -Variable out`** | PowerShell 里既显示输出又留一份副本，用来事后筛 `[FAIL]` 行 |

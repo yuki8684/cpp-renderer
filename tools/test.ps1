@@ -26,6 +26,7 @@ if (-not $tests) {
 }
 
 $totalFail = 0
+$failLines = @()     # collect every [FAIL] line so they can be re-listed at the end
 
 foreach ($t in $tests) {
     $exe = "build\" + $t.BaseName + ".exe"
@@ -35,11 +36,16 @@ foreach ($t in $tests) {
     if ($LASTEXITCODE -ne 0) {
         Write-Host "COMPILE FAILED -- $($t.Name)" -ForegroundColor Red
         $totalFail++
+        $failLines += "COMPILE FAILED  $($t.Name)"
         continue
     }
 
     Write-Host "[run]   $exe" -ForegroundColor Cyan
-    & ".\$exe"
+    # Tee the output: still show it live, but keep a copy to extract [FAIL] lines.
+    & ".\$exe" 2>&1 | Tee-Object -Variable out | Out-Host
+    foreach ($line in $out) {
+        if ("$line" -match '\[FAIL\]') { $failLines += "$($t.BaseName): $line" }
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Host "TEST FAILED -- $($t.Name)" -ForegroundColor Red
         $totalFail++
@@ -51,6 +57,10 @@ if ($totalFail -eq 0) {
     Write-Host "ALL TESTS PASSED" -ForegroundColor Green
     exit 0
 } else {
+    # A single [FAIL] buried among 13 [PASS] lines is easy to miss, so list them again.
+    Write-Host "----- FAILED ITEMS (re-listed) -----" -ForegroundColor Red
+    foreach ($f in $failLines) { Write-Host "  $f" -ForegroundColor Red }
+    Write-Host ""
     Write-Host "$totalFail test file(s) FAILED" -ForegroundColor Red
     exit 1
 }
