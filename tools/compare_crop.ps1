@@ -81,7 +81,7 @@ $g.DrawString($LabelAfter,  $font, $brush, ($W * $Scale * 1.5), ($barH / 2), $sf
 
 $g.Dispose()
 
-$outPath = Join-Path (Get-Location) $Output
+$outPath = if ([System.IO.Path]::IsPathRooted($Output)) { $Output } else { Join-Path (Get-Location) $Output }
 $bmp.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
 $bmp.Dispose()
 $imgB.Dispose()

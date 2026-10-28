@@ -29,6 +29,7 @@
 #include "quad.h"
 #include "lambertian.h"
 #include "hittable_list.h"
+#include <cmath>
 
 static int g_pass = 0;
 static int g_fail = 0;
@@ -77,6 +78,14 @@ static void check_point(const char* name, const Point3& got, const Point3& want)
                   << "    得到=(" << got.x() << ", " << got.y() << ", " << got.z() << ")"
                   << "  期望=(" << want.x() << ", " << want.y() << ", " << want.z() << ")\n";
     }
+}
+
+// 两个向量的夹角（度）。内部先归一化，所以传什么长度都行。
+static double angle_deg(const Vec3& a, const Vec3& b) {
+    double c = dot(unit_vector(a), unit_vector(b));
+    if(c > 1.0) c = 1.0;
+    if(c < -1.0) c = -1.0;
+    return std::acos(c) * 180 / pi;
 }
 
 // 退化三角形计数：面积为零的三角形在渲染里啥也看不到，
@@ -196,7 +205,7 @@ int main() {
 
         // TODO(D2)：退化三角形数必须是 0。
         //   提示：check_int("torus 无退化三角形", (long long)count_degenerate(d), 0);
-        check_int("orus 无退化三角形", (long long)count_degenerate(d), 0);
+        check_int("torus 无退化三角形", (long long)count_degenerate(d), 0);
     }     
 
     // ========================================================
@@ -216,6 +225,64 @@ int main() {
         check_int("索引数 0", (long long)d.tri_indices.size(), 0);
     }
 
+        // ========================================================
+    // 组 F：Day 21 顶点法线（面积加权平均）
+    //
+    // 前面 A~E 测的是"读进来对不对"，F 测的是"算出来的法线对不对"。
+    // F2/F4 是【不变量】：法线的定义就是单位向量。
+    // F3/F5 是【解析对照】：和数学上必然成立的结果比。
+    // ========================================================
+    std::cout << "\n--- 组 F: 顶点法线 ---\n";
+    {
+        ObjData ico = load_obj("models/icosahedron.obj");
+
+        // F1
+        check_int("F1 ico 顶点法线数 = 12", (long long)ico.normals.size(), 12);
+
+        // 所有法线长度都是1
+        bool f2_ok = true;
+        for (const Vec3& n : ico.normals) {
+            if (std::fabs(std::sqrt(dot(n, n)) - 1) > 1e-12) {f2_ok = false;}
+        }
+        check_bool("F2 ico 顶点法线都是单位向量", f2_ok, true);
+
+        double max_ang = 0.0;
+        for (std::size_t i = 0; i < ico.normals.size(); ++i) {
+            double d = angle_deg(ico.normals[i], ico.positions[i]);
+            if (d > max_ang) max_ang = d;
+        }
+        check_bool("F3 ico 顶点法线 == 归一化位置(<0.01 度>)", max_ang < 0.01, true);
+
+        // 圆环的解析法线: 从管心指向表面
+        ObjData tor = load_obj("models/torus.obj");
+        //NU 大圈， NV 小圈
+        const double NU = 48.0, NV = 24.0;
+        
+        bool f4_ok = true;
+        for (const Vec3& n : tor.normals) {
+            if (std::fabs(std::sqrt(dot(n, n)) - 1.0) > 1e-12) { f4_ok = false; }
+        }
+        check_bool("F4 torus 顶点法线都是单位向量", f4_ok, true);
+
+        double max_ang5 = 0.0;
+        for (std::size_t i = 0; i < tor.normals.size(); ++i) {
+            long long ii = (long long)i / 24; // 第几圈 u
+            long long jj = (long long)i % 24; // 管内第几个v
+            double u = 2.0 * pi * (double)ii / NU;
+            double v = 2.0 * pi * (double)jj / NV;
+
+            Vec3 analytic(cos(v) * cos(u), sin(v), cos(v) * sin(u));
+
+            double c = dot(tor.normals[i], unit_vector(analytic));
+            if (c < 0.0) c = -c;                     // ← 关键：取绝对值
+            if (c > 1.0) c = 1.0;
+            double d = std::acos(c) * 180.0 / pi;
+            if (d > max_ang5) max_ang5 = d;
+        }
+        check_bool("F5 torus 顶点法线 == 解析法线（夹角 < 1 度）", max_ang5 < 1.0, true);
+
+    }
+
     // ---------- 汇总 ----------
     std::cout << "\n===== 共 " << (g_pass + g_fail) << " 项测试，"
               << g_pass << " 通过，" << g_fail << " 失败 =====\n";
@@ -227,4 +294,7 @@ int main() {
         std::cout << ">>> 有失败项，看上面的「得到 / 期望」找原因。\n";
     }
     return g_fail == 0 ? 0 : 1;
+
 }
+
+

@@ -30,7 +30,85 @@
 struct ObjData {
     std::vector<Point3> positions;     // 所有 v
     std::vector<int>    tri_indices;   // 每 3 个一组，指向 positions（0-based）
+    std::vector<Vec3>   normals;       // Day 21：每个顶点的法线（由面法线加权平均得到）
 };
+
+// ============================================================
+// Day 21 · 用面法线算出顶点法线（面积加权平均）
+//
+// 为什么需要它：
+//   OBJ 里可以写 `vn`（顶点法线），但大量文件根本没写。
+//   没有顶点法线就只能平面着色 —— 二十面体永远是"20 个平面"。
+//
+// 三个步骤：
+//   ① 每个三角形算一个面法线（未归一化的叉积）
+//   ② 把面法线累加到它的三个顶点上
+//   ③ 每个顶点归一化
+//
+// ★ 关键：步骤 ① 用的是【未归一化】的叉积。
+//   因为 |cross(b-a, c-a)| = 2 × 三角形面积 —— 长度自带面积权重。
+//   所以"累加"这一步本身就是面积加权平均，不需要再乘面积、也不需要除以面积。
+// ============================================================
+inline void compute_vertex_normals(ObjData& d) {
+    // 每个顶点一个累加器，初值全零
+    //   assign(n, v) = 把容器改成"n 个 v"（比 clear + 循环 push 简洁）
+    d.normals.assign(d.positions.size(), Vec3(0.0, 0.0, 0.0));
+
+    if (d.positions.empty()) return;
+
+    for (std::size_t i = 0; i + 2 < d.tri_indices.size(); i += 3) {
+        std::size_t ia = std::size_t(d.tri_indices[i + 0]);
+        std::size_t ib = std::size_t(d.tri_indices[i + 1]);
+        std::size_t ic = std::size_t(d.tri_indices[i + 2]);
+
+        // ------------------------------------------------------
+        // TODO(T3-1)：算这个三角形的【未归一化】面法线
+        //
+        //   三个顶点：
+        //       const Point3& a = d.positions[ia];
+        //       const Point3& b = d.positions[ib];
+        //       const Point3& c = d.positions[ic];
+        //
+        //   面法线 = cross(b - a, c - a)
+        //
+        //   ⚠️ 不要 unit_vector！长度就是权重，归一化会把权重扔掉
+        const Point3& a = d.positions[ia];
+        const Point3& b = d.positions[ib];
+        const Point3& c = d.positions[ic];
+        Vec3 n = cross(b - a, c - a);
+
+        // ------------------------------------------------------
+        // TODO(T3-2)：把 n 累加到三个顶点上
+        //
+        //   ⚠️ 三个都要加，包括等于别人的情况（共享顶点会重复累加，这是对的）
+        //   写法：d.normals[ia] = d.normals[ia] + n;（三行）
+        // ------------------------------------------------------
+        d.normals[ia] = d.normals[ia] + n;
+        d.normals[ib] = d.normals[ib] + n;
+        d.normals[ic] = d.normals[ic] + n;
+
+    }
+
+    // --------------------------------------------------------
+    // TODO(T3-3)：归一化，并防除零
+    //
+    //   for (std::size_t i = 0; i < d.normals.size(); ++i) {
+    //       double L2 = dot(d.normals[i], d.normals[i]);
+    //       if (L2 > 0.0) { ______ }             // 除以长度
+    //       else          { d.normals[i] = Vec3(0.0, 1.0, 0.0); }   // 兜底
+    //   }
+    //
+    //   提示：长度 = std::sqrt(L2)；Vec3 支持 v / double
+    //   为什么要兜底：如果一个顶点不属于任何有效三角形（全是退化面），
+    //   累加结果是零向量，归一化会除零 → NaN → 整个画面变黑/变彩条
+    // --------------------------------------------------------
+    for (std::size_t i = 0; i < d.normals.size(); ++i) {
+        double L2 = dot(d.normals[i], d.normals[i]);
+        if(L2 > 0.0) {d.normals[i] = d.normals[i] / std::sqrt(L2);}
+        else         {(d.normals[i] = Vec3(0.0, 1.0, 0.0));}
+
+    }
+}
 
 // ============================================================
 // 读文件
@@ -132,6 +210,9 @@ inline ObjData load_obj(const std::string& path) {
         // vn / vt / o / g / s / mtllib / usemtl 今天一律跳过
     }
 
+    // Day 21：解析完几何之后，用面法线自己算出顶点法线
+    compute_vertex_normals(data);
+
     return data;
 }
 
@@ -143,16 +224,22 @@ inline ObjData load_obj(const std::string& path) {
 // ============================================================
 inline HittableList obj_mesh(const std::string& path,
                              const Point3& center, double scale,
-                             std::shared_ptr<Material> mat) {
+                             std::shared_ptr<Material> mat,
+                             bool smooth = true) {
     HittableList world;
 
     ObjData d = load_obj(path);
     if (d.tri_indices.size() < 3) return world;
 
     for (std::size_t i = 0; i + 2 < d.tri_indices.size(); i += 3) {
-        Point3 a = center + scale * d.positions[std::size_t(d.tri_indices[i + 0])];
-        Point3 b = center + scale * d.positions[std::size_t(d.tri_indices[i + 1])];
-        Point3 c = center + scale * d.positions[std::size_t(d.tri_indices[i + 2])];
+        std::size_t ia = std::size_t(d.tri_indices[i + 0]);
+        std::size_t ib = std::size_t(d.tri_indices[i + 1]);
+        std::size_t ic = std::size_t(d.tri_indices[i + 2]);
+
+        // 位置要跟着 center / scale 变换
+        Point3 a = center + scale * d.positions[ia];
+        Point3 b = center + scale * d.positions[ib];
+        Point3 c = center + scale * d.positions[ic];
 
         // 退化三角形（面积为零）直接跳过 —— Quad 的退化保护也能兜，
         // 但提前跳过可以少建一个图元
@@ -161,7 +248,25 @@ inline HittableList obj_mesh(const std::string& path,
         double nn = dot(n, n);
         if (nn <= 0.0 || nn < 1e-12 * dot(e1, e1) * dot(e2, e2)) continue;
 
-        world.add(std::make_shared<Triangle>(a, b, c, mat));
+        if (smooth) {
+            // --------------------------------------------------
+            // TODO(T4)：用【顶点法线】构造三角形（Day 15 写的 6 参数版本）
+            //
+            //   顶点法线存在 d.normals[ia] / d.normals[ib] / d.normals[ic]
+            //
+            //   ⚠️ 它们【不需要】跟着 center / scale 变换：
+            //      法线是"方向"，不是"位置"。
+            //      平移不影响方向；等比缩放也不影响方向。
+            //      （只有【非等比】缩放才会改变方向，那时需要乘逆转置矩阵）
+            //
+            //   Triangle 的两个构造函数：
+            //       Triangle(a, b, c, mat)                    平面着色
+            //       Triangle(a, b, c, n0, n1, n2, mat)        顶点法线插值
+            world.add(std::make_shared<Triangle>(a, b, c, d.normals[ia], d.normals[ib], d.normals[ic], mat));
+            // --------------------------------------------------
+        } else {
+            world.add(std::make_shared<Triangle>(a, b, c, mat));
+        }
     }
 
     return world;

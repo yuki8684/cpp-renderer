@@ -743,7 +743,8 @@ HittableList cornell_box() {
 //
 // ⚠️ OBJ 的坐标范围不可控（有的模型半径 0.01，有的 1000），
 //    所以 center / scale 必须能调，不能写死。
-HittableList obj_scene(const std::string& path, const Point3& center, double scale) {
+HittableList obj_scene(const std::string& path, const Point3& center, double scale,
+                       bool smooth) {
     HittableList world;
 
     auto white = std::make_shared<Lambertian>(Color(0.72, 0.72, 0.72));
@@ -754,10 +755,11 @@ HittableList obj_scene(const std::string& path, const Point3& center, double sca
                                      Vec3(18, 0, 0), Vec3(0, 0, -18), white));
 
     // 模型
-    HittableList m = obj_mesh(path, center, scale, metal);
+    HittableList m = obj_mesh(path, center, scale, metal, smooth);
     for (const auto& o : m.objects) world.add(o);
 
-    std::cerr << "[OBJ] " << path << " -> " << m.objects.size() << " 个三角形\n";
+    std::cerr << "[OBJ] " << path << " -> " << m.objects.size() << " 个三角形"
+              << (smooth ? "（顶点法线插值）" : "（平面着色）") << '\n';
     return world;
 }
 
@@ -810,8 +812,14 @@ int main(int argc, char** argv) {
         else if(arg == "--obj-ico") {
             scene_name = "obj-ico";
         }
+        else if(arg == "--obj-ico-flat") {
+            scene_name = "obj-ico-flat";     // Day 21 A/B：平面着色对照
+        }
         else if(arg == "--obj-torus") {
             scene_name = "obj-torus";
+        }
+        else if(arg == "--obj-torus-flat") {
+            scene_name = "obj-torus-flat";   // Day 21 A/B：平面着色对照
         }
         else if(arg == "--normal") {
             g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
@@ -876,9 +884,13 @@ int main(int argc, char** argv) {
     else if (scene_name == "sphere-smooth") world_list = sphere_mesh_scene(true);
     else if (scene_name == "cornell")       world_list = cornell_box();
     else if (scene_name == "obj-ico")
-        world_list = obj_scene("models/icosahedron.obj", Point3(0, -0.03, 0), 1.76);
+        world_list = obj_scene("models/icosahedron.obj", Point3(0, -0.03, 0), 1.76, true);
+    else if (scene_name == "obj-ico-flat")
+        world_list = obj_scene("models/icosahedron.obj", Point3(0, -0.03, 0), 1.76, false);
     else if (scene_name == "obj-torus")
-        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55);
+        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true);
+    else if (scene_name == "obj-torus-flat")
+        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, false);
     else                                    world_list = random_scene(half);
 
     // Cornell Box 是封闭盒子，背景必须纯黑（否则天光从开口漏进来）
@@ -919,9 +931,9 @@ int main(int argc, char** argv) {
         : (scene_name == "cornell")
         ? Camera(Point3(493.5, 277.5, -800), Point3(493.5, 277.5, 0),
                  Vec3(0, 1, 0), 38.3, 800.0, 0.0)
-        : (scene_name == "obj-ico")
+        : (scene_name == "obj-ico" || scene_name == "obj-ico-flat")
         ? Camera(Point3(0, 1.9, 6.3), Point3(0, -0.45, 0), Vec3(0, 1, 0), 37, 6.5, 0.0)
-        : (scene_name == "obj-torus")
+        : (scene_name == "obj-torus" || scene_name == "obj-torus-flat")
         ? Camera(Point3(0, 2.6, 5.6), Point3(0, -1.05, 0), Vec3(0, 1, 0), 34, 5.8, 0.0)
         : Camera(Point3(13, 2, 3),      // 站远一点、高一点
                  Point3(0, 0, 0),       // 看向原点
