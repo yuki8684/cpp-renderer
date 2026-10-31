@@ -17,6 +17,12 @@ struct HitRecord {
     Vec3   normal; // 交点处的法线（必须是单位向量！）
     double t;      // 交点对应的光线参数
 
+    // Day 22：表面参数坐标（纹理用）
+    //   默认 0 —— 不贴图时没人读它
+    //   来源：Quad 的 (α, β)、Triangle 的重心插值
+    double u = 0.0;
+    double v = 0.0;
+
     bool front_face; // 光线是从物体外面打进来的吗？（还是从里面打出来的？）
 
     // 这个交点属于什么材质？由 Sphere::hit 在命中时填上。

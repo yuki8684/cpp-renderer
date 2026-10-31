@@ -3,6 +3,9 @@
 #include "material.h"
 #include "hittable.h"   // ← 这里需要 HitRecord 的【完整定义】，
                         //   因为下面要读 rec.normal 和 rec.p
+#include "texture.h"    // Day 22：albedo 可能是一张贴图
+
+#include <memory>
 
 // ============================================================
 // Lambertian：哑光材质（石膏、纸、未上漆的木头、墙）
@@ -11,11 +14,22 @@
 // ============================================================
 class Lambertian : public Material {
 public:
-    Lambertian(const Color& albedo) : albedo(albedo) {}
+    // Day 22：两种构造方式
+    //   ① 纯色      Lambertian(Color(0.5,0.5,0.5))    ← 自动包成 SolidColor
+    //   ② 贴图      Lambertian(tex)                  ← 任意 Texture
+    // 这样老代码一行都不用改。
+    Lambertian(const Color& albedo)
+        : tex(std::make_shared<SolidColor>(albedo)) {}
+
+    Lambertian(std::shared_ptr<Texture> t) : tex(t) {}
 
     // 参数名省略：哑光散射不看入射方向（金属需要看，所以 Metal 那里留着）
     bool scatter(const Ray&, const HitRecord& rec,
                  Color& attenuation, Ray& scattered) const override {
+
+        // ★ Day 22：每一处用到 albedo 的地方都改成 tex->value(rec.u, rec.v, rec.p)
+        //   —— 同一个材质就能在不同位置反射不同颜色（就是“贴图”）。
+        Color albedo = tex->value(rec.u, rec.v, rec.p);
 
         // ============================================================
         // ★ Day 19：pdf 补偿 —— 你自己推
@@ -68,14 +82,12 @@ public:
 
     // ★ Day 17：哑光是漫反射，可以做 NEE（主动朝光源采样）
     bool is_diffuse() const override { return true; }
-    Color diffuse_albedo() const override { return albedo; }
+    Color diffuse_albedo(const HitRecord& rec) const override {
+        return tex->value(rec.u, rec.v, rec.p);
+    }
 
 private:
-    // 反射率（albedo，拉丁语"白度"）
-    //
-    //   (1, 1, 1)        全反射       -> 白
-    //   (0.5, 0.5, 0.5)  反射一半     -> 灰（就是 Day 3 那个写死的 0.5）
-    //   (0.9, 0.3, 0.3)  只反射红光   -> 红
-    //   (0.2, 0.4, 0.9)  蓝通道占优   -> 蓝
-    Color albedo;
+    // Day 22：从“一个颜色”变成“一张纹理”
+    //   纯色只是纹理的一个特例（SolidColor），所以代码路径只有一条。
+    std::shared_ptr<Texture> tex;
 };

@@ -149,9 +149,15 @@ public:
 
     // 参数名省略掉：签名保留（子类覆盖时对得上），
     // 但不引入变量，天然没有 -Wunused-parameter 警告
+    //
+    // ★ Day 22：平行四边形的【天然 UV 就是 (α, β)】
+    //   因为 P = Q + α·u + β·v —— (α, β) 本来就是这张面上的坐标。
+    //   所以 Quad 不用额外存 UV，直接把 (α, β) 交给 HitRecord 即可。
     virtual void set_hit_normal(const Ray& r, HitRecord& rec,
-                                double /* alpha */, double /* beta */) const {
+                                double alpha, double beta) const {
         rec.set_face_normal(r, normal);
+        rec.u = alpha;
+        rec.v = beta;
     }
 
     // ============================================================

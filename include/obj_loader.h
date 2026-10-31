@@ -31,6 +31,10 @@ struct ObjData {
     std::vector<Point3> positions;     // 所有 v
     std::vector<int>    tri_indices;   // 每 3 个一组，指向 positions（0-based）
     std::vector<Vec3>   normals;       // Day 21：每个顶点的法线（由面法线加权平均得到）
+
+    // Day 22：UV
+    std::vector<UV>     uvs;           // 所有 vt
+    std::vector<UV>     tri_uvs;       // 每 3 个一组，对应 tri_indices（无 vt 时为空）
 };
 
 // ============================================================
@@ -157,6 +161,21 @@ inline ObjData load_obj(const std::string& path) {
             data.positions.push_back(Point3(x, y, z));
             // ------------------------------------------------------
 
+        } else if (tag == "vt") {
+            // ------------------------------------------------------
+            // TODO(T5)：读两个 double，存进 data.uvs
+            //
+            //   这一行长这样：   vt 0.5 0.25     ← u v
+            //   ⚠️ 和 v 一样：ss 已经在 "vt" 之后了，接着 >> 就能读到两个数
+            //   ⚠️ 存成 UV{u, v}（在 triangle.h 里定义）
+            //
+            //   ★ 注意：OBJ 的 v 轴通常是【向上】的，而纹理图的行是自上而下。
+            //     有些加载器会写 1 - v 翻转，我们的棋盘格是对称的，暂不处理。
+            double tu, tv;
+            ss >> tu >> tv;
+            data.uvs.push_back(UV{tu, tv});
+            // ------------------------------------------------------
+
         } else if (tag == "f") {
             // ------------------------------------------------------
             // TODO(T2)：解析一个面
@@ -177,6 +196,7 @@ inline ObjData load_obj(const std::string& path) {
 
             // ------------------------------------------------------
             std::vector<int> face;
+            std::vector<int> face_uv;   // Day 22：每个角的第 2 段（UV 索引）
 
             std::string tok;
             while (ss >> tok) {
@@ -188,10 +208,20 @@ inline ObjData load_obj(const std::string& path) {
                 //   字符串转 int 用 std::stoi(first)
                 //   ⚠️ 先判断 first 非空，某些文件会写 f 1//0 这种
                 if(!first.empty()) {
-                    std::stoi(first);
+
                     face.push_back(std::stoi(first) - 1);
                 }
 
+                // Day 22：继续读第 2 段（UV 索引）
+                //   流 ts 现在停在第一个 '/' 的后面：
+                //     "1/5/7"  → 第 2 段是 "5"
+                //     "1//7"   → 第 2 段是 ""（空）
+                //     "1"      → 流已结束，第 2 段也是 ""
+                std::string second;
+                std::getline(ts, second, '/');
+                if (!second.empty()) {
+                    face_uv.push_back(std::stoi(second) - 1);
+                }
             }
 
             // TODO(T2-2)：扇形三角化，把每三个索引追加到 data.tri_indices
@@ -200,10 +230,20 @@ inline ObjData load_obj(const std::string& path) {
                continue;
             }
 
+            // Day 22：只有 UV 个数和顶点个数对得上，才认为这个面带 UV
+            bool face_has_uv = (face_uv.size() == face.size()) && !data.uvs.empty();
+
             for(std::size_t k = 1; k  + 1 < face.size(); k++) {
                data.tri_indices.push_back(face[0]);
                data.tri_indices.push_back(face[k]);
                data.tri_indices.push_back(face[k + 1]);
+
+               // 三角形第 i 个角 ⇔ 多边形顶点 face[i] ⇔ 多边形 UV 索引 face_uv[i]
+               if (face_has_uv) {
+                   data.tri_uvs.push_back(data.uvs[std::size_t(face_uv[0])]);
+                   data.tri_uvs.push_back(data.uvs[std::size_t(face_uv[k])]);
+                   data.tri_uvs.push_back(data.uvs[std::size_t(face_uv[k + 1])]);
+               }
             }
 
         }
@@ -262,10 +302,20 @@ inline HittableList obj_mesh(const std::string& path,
             //   Triangle 的两个构造函数：
             //       Triangle(a, b, c, mat)                    平面着色
             //       Triangle(a, b, c, n0, n1, n2, mat)        顶点法线插值
-            world.add(std::make_shared<Triangle>(a, b, c, d.normals[ia], d.normals[ib], d.normals[ic], mat));
+            auto tri = std::make_shared<Triangle>(a, b, c,
+                                                  d.normals[ia], d.normals[ib], d.normals[ic], mat);
             // --------------------------------------------------
+            // Day 22：有 UV 就挂上去（三角化后 tri_indices 和 tri_uvs 严格一一对应）
+            if (!d.tri_uvs.empty()) {
+                tri->set_uv(d.tri_uvs[i + 0], d.tri_uvs[i + 1], d.tri_uvs[i + 2]);
+            }
+            world.add(tri);
         } else {
-            world.add(std::make_shared<Triangle>(a, b, c, mat));
+            auto tri = std::make_shared<Triangle>(a, b, c, mat);
+            if (!d.tri_uvs.empty()) {
+                tri->set_uv(d.tri_uvs[i + 0], d.tri_uvs[i + 1], d.tri_uvs[i + 2]);
+            }
+            world.add(tri);
         }
     }
 

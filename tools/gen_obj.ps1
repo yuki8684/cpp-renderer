@@ -91,6 +91,19 @@ for ($i = 0; $i -lt $NU; $i++) {
     }
 }
 # index of vertex (i, j)  ->  i * NV + j + 1   (1-based)
+#
+# !! Day 22: UV needs a (NU+1) x (NV+1) grid -- ONE EXTRA ROW AND COLUMN.
+# !! Reason: at the seam u goes 47/48 -> 0. Interpolating that sweeps the
+# !! whole texture backwards. So the seam corner needs its own vt with u = 1.
+# !! Vertex positions still wrap (modulo), only the vt grid is duplicated.
+for ($i = 0; $i -le $NU; $i++) {
+    $tu = [double]$i / [double]$NU
+    for ($j = 0; $j -le $NV; $j++) {
+        $tv = [double]$j / [double]$NV
+        [void]$sb.AppendLine("vt $(F $tu) $(F $tv)")
+    }
+}
+# vt index of grid point (i, j)  ->  i * (NV+1) + j + 1   (1-based)
 for ($i = 0; $i -lt $NU; $i++) {
     $i2 = ($i + 1) % $NU
     for ($j = 0; $j -lt $NV; $j++) {
@@ -99,9 +112,14 @@ for ($i = 0; $i -lt $NU; $i++) {
         $b = $i2 * $NV + $j  + 1
         $c = $i2 * $NV + $j2 + 1
         $d = $i  * $NV + $j2 + 1
+        # vt indices use the NON-wrapping grid: j+1 goes up to NV
+        $ta = $i      * ($NV + 1) + $j       + 1
+        $tb = ($i + 1) * ($NV + 1) + $j       + 1
+        $tc = ($i + 1) * ($NV + 1) + ($j + 1) + 1
+        $td = $i      * ($NV + 1) + ($j + 1) + 1
         # CCW when viewed from outside
-        [void]$sb.AppendLine("f $a $b $c")
-        [void]$sb.AppendLine("f $a $c $d")
+        [void]$sb.AppendLine("f $a/$ta $b/$tb $c/$tc")
+        [void]$sb.AppendLine("f $a/$ta $c/$tc $d/$td")
     }
 }
 [System.IO.File]::WriteAllText("$PWD\models\torus.obj", $sb.ToString(), (New-Object System.Text.UTF8Encoding($false)))

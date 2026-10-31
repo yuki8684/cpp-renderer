@@ -55,5 +55,6 @@ public:
     // 默认 false / 黑色：纯光源、金属、玻璃都不参与 NEE
     // ============================================================
     virtual bool is_diffuse() const { return false; }
-    virtual Color diffuse_albedo() const { return Color(0, 0, 0); }
+    // Day 22：纹理需要 (u,v) 和位置，所以把整张 HitRecord 传进去
+    virtual Color diffuse_albedo(const HitRecord& /* rec */) const { return Color(0, 0, 0); }
 };

@@ -189,7 +189,7 @@ Color ray_color(const Ray& r, const Hittable& world, int depth, bool skip_emitte
        bool  did_nee = false;
        if (g_nee && rec.mat->is_diffuse()) {
            direct  = estimate_direct_light(rec.p, rec.normal,
-                                           rec.mat->diffuse_albedo(), world);
+                                           rec.mat->diffuse_albedo(rec), world);
            did_nee = true;
        }
 
@@ -743,23 +743,46 @@ HittableList cornell_box() {
 //
 // ⚠️ OBJ 的坐标范围不可控（有的模型半径 0.01，有的 1000），
 //    所以 center / scale 必须能调，不能写死。
+//
+// tex_mode（Day 22）：
+//   0 = 金属（不带贴图）
+//   1 = UV 棋盘（Lambertian + CheckerTextureUV）  ← 用 OBJ 的 vt
+//   2 = 3D 棋盘（Lambertian + CheckerTexture3D）  ← 不需要 UV，做对照
 HittableList obj_scene(const std::string& path, const Point3& center, double scale,
-                       bool smooth) {
+                       bool smooth, int tex_mode = 0) {
     HittableList world;
 
-    auto white = std::make_shared<Lambertian>(Color(0.72, 0.72, 0.72));
-    auto metal = std::make_shared<Metal>(Color(0.78, 0.68, 0.52), 0.05);
+    auto floor_mat = std::make_shared<Lambertian>(Color(0.72, 0.72, 0.72));
+    auto metal     = std::make_shared<Metal>(Color(0.78, 0.68, 0.52), 0.05);
 
     // 地面
     world.add(std::make_shared<Quad>(Point3(-9, -1.8, 9),
-                                     Vec3(18, 0, 0), Vec3(0, 0, -18), white));
+                                     Vec3(18, 0, 0), Vec3(0, 0, -18), floor_mat));
+
+    // 模型材质
+    std::shared_ptr<Material> model_mat = metal;
+    const char* tex_name = "metal";
+    if (tex_mode == 1 || tex_mode == 2) {
+        auto dark  = std::make_shared<SolidColor>(Color(0.06, 0.06, 0.08));
+        auto light = std::make_shared<SolidColor>(Color(0.92, 0.90, 0.85));
+        std::shared_ptr<Texture> tex;
+        if (tex_mode == 1) {
+            tex      = std::make_shared<CheckerTextureUV>(16.0, 8.0, light, dark);
+            tex_name = "UV checker 16x8";
+        } else {
+            tex      = std::make_shared<CheckerTexture3D>(0.35, light, dark);
+            tex_name = "3D checker size 0.35";
+        }
+        model_mat = std::make_shared<Lambertian>(tex);
+    }
 
     // 模型
-    HittableList m = obj_mesh(path, center, scale, metal, smooth);
+    HittableList m = obj_mesh(path, center, scale, model_mat, smooth);
     for (const auto& o : m.objects) world.add(o);
 
     std::cerr << "[OBJ] " << path << " -> " << m.objects.size() << " 个三角形"
-              << (smooth ? "（顶点法线插值）" : "（平面着色）") << '\n';
+              << (smooth ? "（顶点法线插值）" : "（平面着色）")
+              << "  材质: " << tex_name << '\n';
     return world;
 }
 
@@ -820,6 +843,15 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--obj-torus-flat") {
             scene_name = "obj-torus-flat";   // Day 21 A/B：平面着色对照
+        }
+        else if(arg == "--obj-torus-tex") {
+            scene_name = "obj-torus-tex";    // Day 22：UV 棋盘格（用 OBJ 的 vt）
+        }
+        else if(arg == "--obj-torus-checker3d") {
+            scene_name = "obj-torus-checker3d";  // Day 22 对照：3D 棋盘，不需要 UV
+        }
+        else if(arg == "--obj-cube-tex") {
+            scene_name = "obj-cube-tex";     // Day 22：给【没有 vt】的立方体贴 UV 棋盘
         }
         else if(arg == "--normal") {
             g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
@@ -891,6 +923,12 @@ int main(int argc, char** argv) {
         world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true);
     else if (scene_name == "obj-torus-flat")
         world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, false);
+    else if (scene_name == "obj-torus-tex")
+        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true, 1);
+    else if (scene_name == "obj-torus-checker3d")
+        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true, 2);
+    else if (scene_name == "obj-cube-tex")
+        world_list = obj_scene("models/cube.obj",        Point3(0, 0.2, 0),   1.0,  true, 1);
     else                                    world_list = random_scene(half);
 
     // Cornell Box 是封闭盒子，背景必须纯黑（否则天光从开口漏进来）
@@ -933,7 +971,10 @@ int main(int argc, char** argv) {
                  Vec3(0, 1, 0), 38.3, 800.0, 0.0)
         : (scene_name == "obj-ico" || scene_name == "obj-ico-flat")
         ? Camera(Point3(0, 1.9, 6.3), Point3(0, -0.45, 0), Vec3(0, 1, 0), 37, 6.5, 0.0)
-        : (scene_name == "obj-torus" || scene_name == "obj-torus-flat")
+        : (scene_name == "obj-cube-tex")
+        ? Camera(Point3(0, 2.4, 5.0), Point3(0, 0.2, 0), Vec3(0, 1, 0), 32, 5.2, 0.0)
+        : (scene_name == "obj-torus" || scene_name == "obj-torus-flat" ||
+           scene_name == "obj-torus-tex" || scene_name == "obj-torus-checker3d")
         ? Camera(Point3(0, 2.6, 5.6), Point3(0, -1.05, 0), Vec3(0, 1, 0), 34, 5.8, 0.0)
         : Camera(Point3(13, 2, 3),      // 站远一点、高一点
                  Point3(0, 0, 0),       // 看向原点
