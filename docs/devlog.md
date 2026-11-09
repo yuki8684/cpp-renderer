@@ -34,19 +34,9 @@
 
 ### 今天理解的核心概念
 - 光线追踪是「从相机反向射光线」：像素 → (u,v) → 视口点 → 光线
-- Ray: `P(t) = O + tD`
+- Ray: `P(t) = O + tD`，|O→P| = |t|·|D|，即 t = 距离 / |D|
 - Camera: `lower_left_corner + u*horizontal + v*vertical`
 - 颜色 `[0,1]` → PPM `[0,255]`
-
-### 自己写的代码
-- `Vec3::dot`
-  inline double dot(const Vec3& u, const Vec3& v) {
-     return u.x() * v.x() + u.y() * v.y() + u.z() * v.z();
-  }
-
-Vec3 a(1, 2, 3);
-Vec3 b(4, 5, 6);
-double d = dot(a, b); // 1*4 + 2*5 + 3*6 = 32
 
 
 - `unit_vector` 
@@ -99,13 +89,7 @@ t = 0.5 * (unit_dir.y() + 1.0)
 
 
 再经过color = (1-t) * 白 + t * 蓝，得到颜色，总的来讲：y值控制t值，t值决定颜色
-### 还不清楚的地方
-- 编译 cmake --build build -j
-- 运行 .\build\raytracer.exe
-- 看图 .\tools\ppm2png.ps1 -InputPath output\image.ppm -OutputPath output\image.png
-- 整合 cmake --build build -j; if ($?) { .\build\raytracer.exe; .\tools\ppm2png.ps1 -InputPath output\image.ppm -OutputPath output\image.png }
 
-.\tools\run.ps1
 
 ### Markdown
 ## Day 1 小测验
@@ -135,10 +119,6 @@ unit_dir = (-1, 1, -f) / sqrt(2 + f^2)，y 分量 = 1 / sqrt(2 + f²)， f越大
 决定视野的不是"画布多大"，也不是"焦距多长"，而是二者的比值。
 
 
-
-## C++
-
-> 已移到独立文件：[cpp-notes.md](./cpp-notes.md) 的「Day 1 · 头文件 / 构造函数 / 初始化列表 / 运算符重载」。
 
 ### 明日计划
 - 球体求交 + 法线着色

@@ -54,7 +54,10 @@ public:
     //
     // 默认 false / 黑色：纯光源、金属、玻璃都不参与 NEE
     // ============================================================
+    // 判断是否是漫反射材质
     virtual bool is_diffuse() const { return false; }
-    // Day 22：纹理需要 (u,v) 和位置，所以把整张 HitRecord 传进去
+    // 纹理需要 (u,v) 和位置，所以把整张 HitRecord 传进去
+    // 在这个交点处，你的漫反射基础颜色（反照率）是什么，基类默认返回黑色
+    // /* rec */ 就是在告诉编译器：“我知道有这个参数，但我这里故意不用它，别警告我
     virtual Color diffuse_albedo(const HitRecord& /* rec */) const { return Color(0, 0, 0); }
 };

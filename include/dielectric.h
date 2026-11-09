@@ -17,10 +17,11 @@ public:
     Dielectric(double refraction_index)
         : refraction_index(refraction_index) {}
 
+    // 射散光线
     bool scatter(const Ray& r_in, const HitRecord& rec,
                  Color& attenuation, Ray& scattered) const override {
 
-        // 玻璃不吸光：反射率全通道为 1
+        // 衰减，玻璃不吸光：反射率全通道为 1
         attenuation = Color(1.0, 1.0, 1.0);
 
         // ---------- 1. 这次是"进入"还是"离开"？ ----------
@@ -116,6 +117,17 @@ private:
 
 
     // ============================================================
+    // --------------------------------------------------------
+    // Schlick 近似 (Schlick's Approximation) - 菲涅尔反射
+    // 
+    // 物理意义：视线越倾斜（掠射角），表面反射越强。
+    // 数学公式：
+    //   R0 = ((n1 - n2) / (n1 + n2))^2       // 垂直入射时的反射率
+    //   R(θ) = R0 + (1 - R0) * (1 - cosθ)^5  // 任意角度的反射率
+    // 
+    // 参数 cosine: 入射角余弦（即入射光线与法线的点积，cosθ）
+    // 参数 refraction_index: 相对折射率（n1 / n2）
+    // --------------------------------------------------------
     static double reflectance(double cosine, double refraction_index) {
         double base = (1.0 - refraction_index) / (1.0 + refraction_index);
         double R0 = base * base;

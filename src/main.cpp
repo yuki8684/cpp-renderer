@@ -80,7 +80,7 @@ static int g_threads = 0;
 
 
 // ============================================================
-// ★ NEE：从表面点 p 直接朝光源采样（Day 17）
+// ★ NEE：从表面点 p 直接朝光源采样
 //
 // 返回这一点的【直接光照】贡献，单位已经是"辐射亮度"，
 // 可以像 emitted / 间接光一样直接相加。
@@ -96,7 +96,8 @@ static Color estimate_direct_light(const Point3& p, const Vec3& n,
 
     // ---------- 1. 均匀挑一个光源 ----------
     int    idx        = int(random_double() * double(g_lights.size()));// idx属于[0,g_lights.size()]，每个光源被选中的概率是 1/g_light.size()
-    if (idx >= int(g_lights.size())) idx = int(g_lights.size()) - 1;
+    if (idx >= int(g_lights.size())) 
+    idx = int(g_lights.size()) - 1;
     const LightRef& L = g_lights[std::size_t(idx)];// 引用选中光源
     const double pick_pdf = 1.0 / double(g_lights.size());   // 选中它的概率
 
@@ -519,7 +520,7 @@ HittableList random_scene(int half) {
             //   ⚠️ 三种情况的小球半径都是 0.2
             if (choose_mat < 0.80) {
 
-                // 你的代码写在这里
+                
                 Color albedo = Color(random_double(), random_double(), random_double())
                              * Color(random_double(), random_double(), random_double());
 
@@ -528,7 +529,7 @@ HittableList random_scene(int half) {
 
             } else if (choose_mat < 0.95) {
 
-                // 你的代码写在这里
+                
                 Color albedo = Color(random_double(0.5, 1.0), random_double(0.5, 1.0), random_double(0.5, 1.0));
                 double fuzz = random_double(0, 0.5);
 
@@ -537,7 +538,7 @@ HittableList random_scene(int half) {
 
             } else {
 
-                // 你的代码写在这里
+               
                 world.add(std::make_shared<Sphere>(center, 0.2,
                          std::make_shared<Dielectric>(1.5)));
 
@@ -787,6 +788,81 @@ HittableList obj_scene(const std::string& path, const Point3& center, double sca
 }
 
 
+// ============================================================
+// ★ 场景包：世界 + 相机（+ 背景色）成套装好
+//
+// 以前 main 里是两段互不相干的 if/else：
+//   一段按场景名选世界，另一段按场景名选相机 ——
+//   两者靠字符串"隔空对齐"，加一个新场景要改两处，
+//   漏改一处就会出现"新几何配旧机位"的怪画面。
+//
+// 打包成一个函数之后，"场景名 → (世界, 相机, 背景)"只写在一处，
+// main 拿到的永远是一套配好的。
+// ============================================================
+struct Scene {
+    HittableList world;
+    Camera       camera;
+    Color        bg_top;
+    Color        bg_bottom;
+};
+
+// name：命令行开关选出来的场景名；half：只有随机小球阵用得到
+Scene load_scene(const std::string& name, int half) {
+    g_lights.clear();                     // 光源登记表也属于场景：换场景就重建
+
+    HittableList world;
+    Color        bg_top(0.5, 0.7, 1.0);   // 默认背景：蓝白渐变天空
+    Color        bg_bottom(1.0, 1.0, 1.0);
+
+    // 默认相机：随机小球阵（站远一点、20° 长焦、小光圈）
+    Camera camera(Point3(13, 2, 3), Point3(0, 0, 0), Vec3(0, 1, 0), 20, 10.0, 0.1);
+
+    if (name == "quads") {
+        world  = quad_scene();
+        camera = Camera(Point3(0, 0, 9), Point3(0, 0, 0), Vec3(0, 1, 0), 80, 1.0, 0.0);
+    }
+    else if (name == "cube-quads" || name == "cube-tris") {
+        world  = cube_scene(name == "cube-tris");
+        camera = Camera(Point3(0, 4, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0);
+    }
+    else if (name == "sphere-flat" || name == "sphere-smooth") {
+        world  = sphere_mesh_scene(name == "sphere-smooth");
+        camera = Camera(Point3(0, 3.5, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0);
+    }
+    else if (name == "cornell") {
+        world  = cornell_box();
+        camera = Camera(Point3(493.5, 277.5, -800), Point3(493.5, 277.5, 0),
+                        Vec3(0, 1, 0), 38.3, 800.0, 0.0);
+        // 封闭盒子：相机在盒子外面，背景非黑的话"天光"会从开口漏进来
+        bg_top = bg_bottom = Color(0, 0, 0);
+    }
+    else if (name == "obj-ico" || name == "obj-ico-flat") {
+        world  = obj_scene("models/icosahedron.obj", Point3(0, -0.03, 0), 1.76,
+                           name == "obj-ico");
+        camera = Camera(Point3(0, 1.9, 6.3), Point3(0, -0.45, 0), Vec3(0, 1, 0), 37, 6.5, 0.0);
+    }
+    else if (name == "obj-cube-tex") {
+        world  = obj_scene("models/cube.obj", Point3(0, 0.2, 0), 1.0, true, 1);
+        camera = Camera(Point3(0, 2.4, 5.0), Point3(0, 0.2, 0), Vec3(0, 1, 0), 32, 5.2, 0.0);
+    }
+    else if (name == "obj-torus" || name == "obj-torus-flat" ||
+             name == "obj-torus-tex" || name == "obj-torus-checker3d") {
+        // tex_mode：0 金属 / 1 UV 棋盘（用 OBJ 的 vt） / 2 3D 棋盘（对照）
+        const int tex_mode = (name == "obj-torus-tex")       ? 1
+                           : (name == "obj-torus-checker3d") ? 2
+                                                             : 0;
+        world  = obj_scene("models/torus.obj", Point3(0, -1.24, 0), 1.55,
+                           name != "obj-torus-flat", tex_mode);
+        camera = Camera(Point3(0, 2.6, 5.6), Point3(0, -1.05, 0), Vec3(0, 1, 0), 34, 5.8, 0.0);
+    }
+    else {
+        world = random_scene(half);
+    }
+
+    return Scene{ world, camera, bg_top, bg_bottom };
+}
+
+
 int main(int argc, char** argv) {
 #ifdef _WIN32
     // 让 Windows 控制台按 UTF-8 解释输出，避免中文日志变成乱码
@@ -905,37 +981,15 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // ---------- 场景：一个装着所有物体的"世界" ----------
-    // 想换场景只改这一行：simple_scene() / random_scene() / quad_scene() / cube_scene()
-    g_lights.clear();          // 光源表按场景重建
-    HittableList world_list;
-    if      (scene_name == "quads")         world_list = quad_scene();
-    else if (scene_name == "cube-quads")    world_list = cube_scene(false);
-    else if (scene_name == "cube-tris")     world_list = cube_scene(true);
-    else if (scene_name == "sphere-flat")   world_list = sphere_mesh_scene(false);
-    else if (scene_name == "sphere-smooth") world_list = sphere_mesh_scene(true);
-    else if (scene_name == "cornell")       world_list = cornell_box();
-    else if (scene_name == "obj-ico")
-        world_list = obj_scene("models/icosahedron.obj", Point3(0, -0.03, 0), 1.76, true);
-    else if (scene_name == "obj-ico-flat")
-        world_list = obj_scene("models/icosahedron.obj", Point3(0, -0.03, 0), 1.76, false);
-    else if (scene_name == "obj-torus")
-        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true);
-    else if (scene_name == "obj-torus-flat")
-        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, false);
-    else if (scene_name == "obj-torus-tex")
-        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true, 1);
-    else if (scene_name == "obj-torus-checker3d")
-        world_list = obj_scene("models/torus.obj",       Point3(0, -1.24, 0), 1.55, true, 2);
-    else if (scene_name == "obj-cube-tex")
-        world_list = obj_scene("models/cube.obj",        Point3(0, 0.2, 0),   1.0,  true, 1);
-    else                                    world_list = random_scene(half);
+    // ---------- 场景 + 相机：一次装好 ----------
+    // 想换场景只改命令行开关（--cornell / --obj-torus ...），见 load_scene()
+    Scene loaded = load_scene(scene_name, half);
 
-    // Cornell Box 是封闭盒子，背景必须纯黑（否则天光从开口漏进来）
-    if (scene_name == "cornell") {
-        g_bg_top    = Color(0, 0, 0);
-        g_bg_bottom = Color(0, 0, 0);
-    }
+    // 背景色也随场景走：Cornell Box 是封闭盒子，必须纯黑
+    g_bg_top    = loaded.bg_top;
+    g_bg_bottom = loaded.bg_bottom;
+
+    HittableList& world_list = loaded.world;
 
     // ⚠️ BVH 的构造函数是【按值传参】，它拿到的是 world_list 的副本，
     //    所以建完树之后 world_list 仍然完整可用 —— 这正是"两步验收"的前提。
@@ -960,64 +1014,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    Camera camera = (scene_name == "quads")
-        ? Camera(Point3(0, 0, 9), Point3(0, 0, 0), Vec3(0, 1, 0), 80, 1.0, 0.0)
-        : (scene_name == "cube-quads" || scene_name == "cube-tris")
-        ? Camera(Point3(0, 4, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
-        : (scene_name == "sphere-flat" || scene_name == "sphere-smooth")
-        ? Camera(Point3(0, 3.5, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0)
-        : (scene_name == "cornell")
-        ? Camera(Point3(493.5, 277.5, -800), Point3(493.5, 277.5, 0),
-                 Vec3(0, 1, 0), 38.3, 800.0, 0.0)
-        : (scene_name == "obj-ico" || scene_name == "obj-ico-flat")
-        ? Camera(Point3(0, 1.9, 6.3), Point3(0, -0.45, 0), Vec3(0, 1, 0), 37, 6.5, 0.0)
-        : (scene_name == "obj-cube-tex")
-        ? Camera(Point3(0, 2.4, 5.0), Point3(0, 0.2, 0), Vec3(0, 1, 0), 32, 5.2, 0.0)
-        : (scene_name == "obj-torus" || scene_name == "obj-torus-flat" ||
-           scene_name == "obj-torus-tex" || scene_name == "obj-torus-checker3d")
-        ? Camera(Point3(0, 2.6, 5.6), Point3(0, -1.05, 0), Vec3(0, 1, 0), 34, 5.8, 0.0)
-        : Camera(Point3(13, 2, 3),      // 站远一点、高一点
-                 Point3(0, 0, 0),       // 看向原点
-                 Vec3(0, 1, 0),         // 世界上方向
-                 20,                    // 垂直视野角 20°（长焦）
-                 10.0,                  // 对焦距离（随机场景里物体分布很广，取中间值）
-                 0.1);                  // 光圈半径
-
-
+    // 相机和世界是同一套配好的 —— 由 load_scene() 一起给出
+    const Camera& camera = loaded.camera;
 
     render(scene, camera, image_width, image_height, samples_per_pixel, max_depth, &out);
-    // PPM 行序从上到下；渲染时习惯从下往上遍历
-    /*
-    for (int j = image_height - 1; j >= 0; --j) {
-        std::cerr << "\r剩余扫描线: " << (j + 1) << ' ' << std::flush;
-
-        for (int i = 0; i < image_width; ++i) {
-
-            // 累积器：必须在采样循环【外面】，否则每次采样都被清零
-            Color pixel_color(0, 0, 0);
-
-            // 第 3 层循环：同一个像素射 samples_per_pixel 条光线
-            // ⚠️ 计数器叫 sample，不叫 s —— 因为下面像素坐标已经用了 s
-            for (int sample = 0; sample < samples_per_pixel; ++sample) {
-                // 在像素【内部】随机取点 —— 这就是抗锯齿的来源
-                double s = (i + random_double()) / image_width;
-                double t = (j + random_double()) / image_height;
-
-                Ray r = camera.get_ray(s, t);
-                pixel_color += ray_color(r, world, max_depth);
-            }
-
-            // 平均
-            Color color = pixel_color / double(samples_per_pixel);
-
-            // ---------- 写像素 ----------
-            int ir = static_cast<int>(255.999 * color.x());
-            int ig = static_cast<int>(255.999 * color.y());
-            int ib = static_cast<int>(255.999 * color.z());
-
-            out << ir << ' ' << ig << ' ' << ib << '\n';
-        }
-    }*/
 
     std::cerr << "\n渲染完成 -> output/image.ppm\n";
     return 0;

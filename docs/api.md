@@ -32,7 +32,7 @@
 | `include/lambertian.h` | `Lambertian` 类 | 哑光（石膏、纸、墙） |
 | `include/metal.h` | `Metal` 类 | 金属（镜面 + fuzz 粗糙度） |
 | `include/dielectric.h` | `Dielectric` 类 | 玻璃 / 水 / 钻石 |
-| `src/main.cpp` | `ray_color()` + `simple_scene()` + `random_scene()` + `main()` | 主流程 + 两个场景 |
+| `src/main.cpp` | `ray_color()` + `load_scene()` + 各种 `*_scene()` + `main()` | 主流程 + 场景注册表（世界 + 相机成套装好） |
 | `tests/aabb_test.cpp` | 独立单元测试 | 23 条 AABB 求交测试（1 秒反馈，不用等渲染） |
 | `tools/run.ps1` | 一键脚本 | 编译 → 渲染 → 转 PNG（分阶段报耗时） |
 | `tools/test.ps1` | 一键脚本 | 编译 + 运行 `tests/` 下所有单元测试 |
@@ -46,17 +46,18 @@
 ```
 main()
  │
- ├─ random_scene() / simple_scene()     造世界（Day 7 新增）
- │     ├─ make_shared<Sphere>(...)       造球
- │     └─ HittableList::add(...)         装进"世界"
+ ├─ load_scene(name, half)               按场景名一次配好世界 + 相机（返回 Scene）
+ │     ├─ random_scene() / quad_scene() / cornell_box() / obj_scene() ...  造世界
+ │     │     ├─ make_shared<Sphere>(...)       造球
+ │     │     └─ HittableList::add(...)         装进"世界"
+ │     │
+ │     └─ Camera(lookfrom, lookat, vup, vfov, focus_dist, lens_radius)
+ │                                    构造相机：算基向量 u/v/w + 视口左下角/横边/竖边
+ │           └─ unit_vector() / cross()   算相机的右、上、后三个方向
  │
  ├─ HittableList::bounding_box(box)      算整个世界的包围盒（Day 8 新增，验证用）
  │     └─ Sphere::bounding_box(...)      每个球报自己的盒子
  │          └─ AABB::surrounding(...)    把所有盒子并起来
- │
- ├─ Camera(lookfrom, lookat, vup, vfov, focus_dist, lens_radius)
- │                                构造相机：算基向量 u/v/w + 视口左下角/横边/竖边
- │     └─ unit_vector() / cross()   算相机的右、上、后三个方向
  │
  └─ 三层循环（行 j / 列 i / 采样 sample）
       │
@@ -1667,9 +1668,9 @@ Color ray_color(const Ray& r, const Hittable& world, int depth) {
 | 2. 设分辨率、采样数 | `image_width` / `image_height` / `samples_per_pixel` |
 | 3. 打开输出文件 | `std::ofstream out("output/image.ppm")` |
 | 4. 写 PPM 头 | `out << "P3\n" << W << ' ' << H << "\n255\n"` |
-| 5. 建世界 | `HittableList world = random_scene();`（或 `simple_scene()`） |
-| 5.5 打印世界包围盒 | `world.bounding_box(world_box)` → 输出两个角点（验证用） |
-| 6. 建相机 | `Camera camera(lookfrom, lookat, vup, vfov, focus_dist, lens_radius);` |
+| 5. 建世界 + 相机 | `Scene loaded = load_scene(scene_name, half);`（按名字一次配好世界、相机、背景色） |
+| 5.5 打印世界包围盒 | `scene.bounding_box(world_box)` → 输出两个角点（验证用） |
+| 6. 取相机 | `const Camera& camera = loaded.camera;` |
 | 7. **三层循环渲染** | 行 j → 列 i → 采样 sample，累积后取平均 |
 | 8. 关闭文件、报完成 | `return 0` |
 
