@@ -61,6 +61,13 @@ static void check_int(const char* name, long long got, long long want) {
     }
 }
 
+// 计算三角形面积（UV 空间）
+static double uv_area(const UV& a, const UV& b, const UV& c) {
+            double e1u = b.u - a.u, e1v = b.v - a.v;
+            double e2u = c.u - a.u, e2v = c.v - a.v;
+            return 0.5 * std::fabs(e1u * e2v - e1v * e2u);
+        }
+
 // 位置比较（三个分量逐个比，容差 1e-9）
 static void check_point(const char* name, const Point3& got, const Point3& want) {
     double dx = got.x() - want.x();
@@ -281,6 +288,42 @@ int main() {
         }
         check_bool("F5 torus 顶点法线 == 解析法线（夹角 < 1 度）", max_ang5 < 1.0, true);
 
+    }
+
+    std::cout << "\n===== G组 : UV 坐标 =====\n";
+    {
+        ObjData d = load_obj("models/cube_uv.obj");
+
+        check_int("G1 cube_uv 顶点数 = 8", (long long)d.positions.size(), 8);
+        check_int("G2 cube_uv uvs 数 = 24", (long long)d.uvs.size(), 24);
+        check_int("G3 cube_uv tri_indices 数 = 36", (long long)d.tri_indices.size(), 36);
+
+        int zero_zero_count = 0;
+        for (const UV& t : d.uvs) {
+            if (std::fabs(t.u) < 1e-9 && std::fabs(t.v) < 1e-9) ++zero_zero_count;
+        }
+        check_int("G4 uvs里(0,0) 出现次数 = 6", zero_zero_count, 6);
+
+        bool g5_ok = true;
+        for (const UV& uv : d.uvs) {
+            if (uv.u < 0.0 || uv.u > 1.0 || uv.v < 0.0 || uv.v > 1.0) {
+                g5_ok = false;
+                break;
+            }
+        }
+        check_bool("G5 cube_uv 所有 uvs 都在 [0,1]", g5_ok, true);
+
+        
+        double total_area = 0.0;
+        for (std::size_t i = 0; i + 2 < d.tri_uvs.size(); i += 3) {
+            total_area += uv_area(d.tri_uvs[i + 0], d.tri_uvs[i + 1], d.tri_uvs[i + 2]);
+        }
+        check_bool("G6 cube_uv tri_uvs 总面积 = 6.0", std::fabs(total_area - 6.0) < 1e-9, true);
+
+        ObjData plain = load_obj("models/cube.obj");
+        check_int("G7 cube tri_uvs 数 = 0", (long long)plain.tri_uvs.size(), 0);
+
+          
     }
 
     // ---------- 汇总 ----------

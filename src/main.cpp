@@ -841,8 +841,11 @@ Scene load_scene(const std::string& name, int half) {
                            name == "obj-ico");
         camera = Camera(Point3(0, 1.9, 6.3), Point3(0, -0.45, 0), Vec3(0, 1, 0), 37, 6.5, 0.0);
     }
-    else if (name == "obj-cube-tex") {
-        world  = obj_scene("models/cube.obj", Point3(0, 0.2, 0), 1.0, true, 1);
+    else if (name == "obj-cube-tex" || name == "obj-cube-uv") {
+        // obj-cube-tex：cube.obj  没有 vt → 用 (α,β) 兜底 → 斜条纹 + 对角线断裂
+        // obj-cube-uv ：cube_uv.obj 有六视图 vt → 每个面一整张贴图，接缝对齐
+        world  = obj_scene(name == "obj-cube-uv" ? "models/cube_uv.obj" : "models/cube.obj",
+                           Point3(0, 0.2, 0), 1.0, true, 1);
         camera = Camera(Point3(0, 2.4, 5.0), Point3(0, 0.2, 0), Vec3(0, 1, 0), 32, 5.2, 0.0);
     }
     else if (name == "obj-torus" || name == "obj-torus-flat" ||
@@ -928,6 +931,9 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--obj-cube-tex") {
             scene_name = "obj-cube-tex";     // Day 22：给【没有 vt】的立方体贴 UV 棋盘
+        }
+        else if(arg == "--obj-cube-uv") {
+            scene_name = "obj-cube-uv";      // Day 23：六视图 UV 的立方体
         }
         else if(arg == "--normal") {
             g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
