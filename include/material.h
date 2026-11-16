@@ -18,6 +18,9 @@
 // ============================================================
 struct HitRecord;
 
+// 纹理只需要名字（下面要用 shared_ptr<Texture> 返回它）
+class Texture;
+
 // ============================================================
 // 材质抽象基类
 //
@@ -60,4 +63,9 @@ public:
     // 在这个交点处，你的漫反射基础颜色（反照率）是什么，基类默认返回黑色
     // /* rec */ 就是在告诉编译器：“我知道有这个参数，但我这里故意不用它，别警告我
     virtual Color diffuse_albedo(const HitRecord& /* rec */) const { return Color(0, 0, 0); }
+
+    // ★ Day 24：这个材质有没有法线贴图？
+    //   默认 nullptr —— 绝大多数材质没有，几何那边直接跳过扰动。
+    //   几何在命中时调用它，用切线空间把法线"掰"一下，见 Triangle::set_hit_normal()。
+    virtual std::shared_ptr<Texture> normal_map() const { return nullptr; }
 };

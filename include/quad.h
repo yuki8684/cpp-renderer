@@ -203,6 +203,9 @@ public:
     // 调用材质的emitted（）虚函数，返回发光颜色
     Color emitted_color() const { return mat->emitted(); }
 
+    // ★ Day 24：Triangle 需要拿到材质，才能取用法线贴图
+    std::shared_ptr<Material> material_ptr() const { return mat; }
+
 private:
     // 四个角：Q, Q+u, Q+v, Q+u+v
     // 包围盒 = 这两个对角点对各自形成的盒子的【并集】

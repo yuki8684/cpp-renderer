@@ -9,6 +9,56 @@
 
 ## 效果展示
 
+### Day 24 · 图片贴图：第一次读入真实图片文件
+
+![立方体贴图](gallery/day24-cube-image-texture.png)
+
+> 256×256 的 PPM 贴图（`tools/gen_texture.ps1` 生成），8×8 棋盘 + **四角异色**。
+> 四角异色不是为了好看 —— **棋盘格是旋转/翻转对称的，只能证明“贴上去了”，证明不了方向对不对**。
+
+![v 翻转对比](gallery/day24-v-flip.png)
+
+> 左：去掉 `1 − v` → 四个角颜色全反（BLUE 跑到顶端）。
+> 右：正确。逐像素实测 **48% 的分量不同**，最大差 190。
+
+**三段关键代码**
+
+```cpp
+// ① 像素中心：像素是方块不是点，中心在 k+0.5
+double x = u * w - 0.5;
+
+// ② 图片第 0 行在顶部，OBJ 的 v=0 在底部
+double y = (1.0 - v) * h - 0.5;
+
+// ③ 双线性：4 个邻点，先横向插两次再纵向插一次
+Color rowA = (1-fx)*c00 + fx*c10;
+Color rowB = (1-fx)*c01 + fx*c11;
+return (1-fy)*rowA + fy*rowB;
+```
+
+**★★★ 一次实验方法事故**
+
+第一次做 `1 − v` 对比实验时，两份 PPM **270000 个分量零差异**。
+当时的推理是“那说明翻转不重要”—— **这个推理是错的，坏的是实验**。
+
+```powershell
+Copy-Item header.h bk.h      # 备份 (mtime = T1)
+# 修改 → 构建 → exe mtime = T2 > T1
+Move-Item bk.h header.h      # 还原，但保留 T1 的旧 mtime
+cmake --build build          # ← T1 < T2 → 认为没变 → 不重编
+```
+
+> `Move-Item` / `git checkout` 还原文件会**保留原始时间戳**，
+> 而 make 系工具靠 mtime 比较决定要不要重编。
+> **还原后必须 `touch`**，而且**别用 `\| Out-Null` 吞掉构建输出**。
+
+**★ 意外发现：六视图 UV 每个面的朝向都不同**
+
+四角异色的贴图一贴上去就暴露了：六个面的 `(u,v)` 指向全不一样，
+相当于每个面的贴图被旋转了不同角度。**棋盘格看不出来，四角异色一眼就看出来。**
+
+> **教训：测试图案必须不对称，否则验证不了方向性问题。**
+
 ### Day 23 · 六视图 UV：8 个位置 + 24 个 UV
 
 同一份几何，只因为补了 24 行 `vt`。
@@ -802,7 +852,8 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 21 | **OBJ 顶点法线** —— 面积加权平均（= 累加未归一化叉积）；二十面体变成球 | ✅ |
 | 22 | **纹理映射** —— `Texture` 抽象 + UV 重心插值 + `vt` 接缝复制列 | ✅ |
 | 23 | **六视图 UV** —— 8 `v` + 24 `vt`；三套索引的终极解释 | ✅ |
-| — | 后续：图片贴图 → 显式 PDF / MIS → 成品大图与视频 | 📋 |
+| 24 | **图片贴图** —— PPM 读取 + sRGB 解码 + 双线性插值；`1-v` 翻转实测 | ✅ |
+| — | 后续：法线贴图（切线帧）→ 显式 PDF / MIS → 成品大图与视频 | 📋 |
 
 ---
 
@@ -855,7 +906,11 @@ cpp-renderer/
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
 │   ├── triangle.h         **三角形 —— 继承 Quad，只重写 is_interior 一行**
 │   ├── mesh.h             球面网格（三角形拼球，可选顶点法线）
-│   ├── obj_loader.h       **OBJ 文本读取（v / f，扇形三角化）**
+│   ├── obj_loader.h       **OBJ 文本读取（v / vt / f，扇形三角化）**
+│   ├── texture.h          纹理抽象 + SolidColor / 3D 棋盘 / UV 棋盘
+│   ├── image.h            **PPM 读取（P3 文本 / P6 二进制）**
+│   ├── image_texture.h    **图片纹理：wrap 绕回 + 双线性采样**
+│   ├── normal_map.h       **法线贴图骨架（切线帧待补，Day 25）**
 │   ├── diffuse_light.h    **纯光源：只发光不散射**
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
@@ -869,8 +924,9 @@ cpp-renderer/
 │   ├── quad_test.cpp       Quad 单元测试（α/β 手算验算 + BVH 一致性）
 │   ├── triangle_test.cpp   Triangle 单元测试（含 49 条射线对比两种拆法）
 │   ├── smooth_test.cpp     光滑着色（含定量：插值法线 vs 解析真法线）
-│   └── obj_test.cpp        **OBJ 读取（13 条断言：数量/坐标/不变量/异常路径）**
-├── models/                 **测试用 OBJ 模型（由 tools/gen_obj.ps1 生成）**
+│   ├── obj_test.cpp        **OBJ 读取（25 条：数量/坐标/不变量/异常/法线/UV）**
+│   └── image_test.cpp      **图片与纹理（14 条：PPM/sRGB/wrap/双线性/方向）**
+├── models/                 **测试模型与纹理（由 tools/gen_obj.ps1 / gen_texture.ps1 生成）**
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
 │   ├── test.ps1           一键：编译 + 运行所有单元测试
@@ -881,7 +937,8 @@ cpp-renderer/
 │   ├── emitted_demo.cpp   **把 ray_color 的递归剥光，用真数字跑一遍**
 │   ├── cosine_sampling_demo.cpp **实测 E[cosθ]：证明余弦加权，量权重方差**
 │   ├── stream_demo.cpp    **流语法演示（istringstream / >> / getline / stoi）**
-│   ├── gen_obj.ps1        生成测试模型 cube / icosahedron / torus
+│   ├── gen_obj.ps1        生成测试模型 cube / cube_uv / icosahedron / torus
+│   ├── gen_texture.ps1    生成测试纹理 models/uvgrid.ppm（四角异色）
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
@@ -917,6 +974,7 @@ cmake --build build -j
 ./build/raytracer.exe --obj-torus-checker3d  # 对照：3D 棋盘（不用 UV）
 ./build/raytracer.exe --obj-cube-tex   # 给【没有 vt】的立方体贴 UV 棋盘（斜条纹 + 对角线断裂）
 ./build/raytracer.exe --obj-cube-uv    # 六视图 UV：每面一整张规则网格
+./build/raytracer.exe --obj-cube-img   # 图片贴图：读 models/uvgrid.ppm（sRGB 解码 + 双线性）
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
 ./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
@@ -986,6 +1044,12 @@ cmake --build build -j
   圆环是**参数域首尾要复制**（1152 位置 → 1225 UV）。同一个现象，两个机制。
 - **测试要保护对照组**：A/B 实验里“B 组确实是 B”也要断言。
   `G7: cube.obj 没有 UV` 防的就是哪天对照组被悄悄改掉、而所有其他测试仍全绿。
+- **颜色图和数据图要分开解码**：`ImageTexture::load(path, srgb=true/false)`。
+  反照率按 sRGB 解码；**法线图/粗糙度图绝不能解码**（它们已是线性数据），否则法线全部偏斜。
+- **测试图案必须不对称**：棋盘格旋转/翻转后看起来一样，验证不了方向；
+  四角异色的 UV 网格一次采样就锁死了 u、v 两个轴的方向。
+- **互逆函数用往返验**：`decode(encode(x)) == x` 一次验证两个函数。
+  实测往返误差 3.33e-16（浮点极限），容差 1e-9 有 3×10⁶ 倍余量。
 - **两个虚函数钩子**：`is_interior` 控制**形状**，`set_hit_normal` 控制**法线**。
   这就是模板方法模式：`Quad::hit()` 的流程写死，派生类只填变化的两步。
   Day 16 加圆盘、椭圆还是只写这两个函数。

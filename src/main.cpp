@@ -29,6 +29,7 @@
 #include "mesh.h"
 #include "diffuse_light.h"
 #include "obj_loader.h"
+#include "image_texture.h"   // Day 24：图片贴图（顺带拉进 texture.h）
 #include <thread>
 #include <cstdint>
 
@@ -763,16 +764,19 @@ HittableList obj_scene(const std::string& path, const Point3& center, double sca
     // 模型材质
     std::shared_ptr<Material> model_mat = metal;
     const char* tex_name = "metal";
-    if (tex_mode == 1 || tex_mode == 2) {
+    if (tex_mode == 1 || tex_mode == 2 || tex_mode == 3) {
         auto dark  = std::make_shared<SolidColor>(Color(0.06, 0.06, 0.08));
         auto light = std::make_shared<SolidColor>(Color(0.92, 0.90, 0.85));
         std::shared_ptr<Texture> tex;
         if (tex_mode == 1) {
             tex      = std::make_shared<CheckerTextureUV>(16.0, 8.0, light, dark);
             tex_name = "UV checker 16x8";
-        } else {
+        } else if (tex_mode == 2) {
             tex      = std::make_shared<CheckerTexture3D>(0.35, light, dark);
             tex_name = "3D checker size 0.35";
+        } else {
+            tex      = ImageTexture::load("models/uvgrid.ppm", /* srgb = */ true);
+            tex_name = "image models/uvgrid.ppm";
         }
         model_mat = std::make_shared<Lambertian>(tex);
     }
@@ -841,11 +845,15 @@ Scene load_scene(const std::string& name, int half) {
                            name == "obj-ico");
         camera = Camera(Point3(0, 1.9, 6.3), Point3(0, -0.45, 0), Vec3(0, 1, 0), 37, 6.5, 0.0);
     }
-    else if (name == "obj-cube-tex" || name == "obj-cube-uv") {
-        // obj-cube-tex：cube.obj  没有 vt → 用 (α,β) 兜底 → 斜条纹 + 对角线断裂
-        // obj-cube-uv ：cube_uv.obj 有六视图 vt → 每个面一整张贴图，接缝对齐
-        world  = obj_scene(name == "obj-cube-uv" ? "models/cube_uv.obj" : "models/cube.obj",
-                           Point3(0, 0.2, 0), 1.0, true, 1);
+    else if (name == "obj-cube-tex" || name == "obj-cube-uv" || name == "obj-cube-img") {
+        // obj-cube-tex：cube.obj    没有 vt → 用 (α,β) 兜底 → 斜条纹 + 对角线断裂
+        // obj-cube-uv ：cube_uv.obj 有六视图 vt → 程序化棋盘
+        // obj-cube-img：cube_uv.obj 有六视图 vt → 真实 PPM 图片（Day 24）
+        const char* path    = (name == "obj-cube-tex") ? "models/cube.obj" : "models/cube_uv.obj";
+        const int   tex     = (name == "obj-cube-tex") ? 1
+                            : (name == "obj-cube-uv")  ? 1
+                                                       : 3;
+        world  = obj_scene(path, Point3(0, 0.2, 0), 1.0, true, tex);
         camera = Camera(Point3(0, 2.4, 5.0), Point3(0, 0.2, 0), Vec3(0, 1, 0), 32, 5.2, 0.0);
     }
     else if (name == "obj-torus" || name == "obj-torus-flat" ||
@@ -934,6 +942,9 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--obj-cube-uv") {
             scene_name = "obj-cube-uv";      // Day 23：六视图 UV 的立方体
+        }
+        else if(arg == "--obj-cube-img") {
+            scene_name = "obj-cube-img";     // Day 24：六视图 UV + 真实 PPM 图片贴图
         }
         else if(arg == "--normal") {
             g_normal_shading = true;   // 法线着色（确定性，用于几何比对）
