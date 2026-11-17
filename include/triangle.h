@@ -92,8 +92,6 @@ public:
     }
 
     // ============================================================
-    // Day 25：法线贴图扰动
-    //
     // 法线贴图里存的是【切线空间】的法线 (nx, ny, nz)，不是世界空间的。
     // 要变成世界法线，需要三个基向量：
     //     T  切线   = dP/du
@@ -111,29 +109,39 @@ public:
         auto nm = material_ptr()->normal_map();   // 没有法线贴图 → 直接返回（零开销）
         if (!nm) return;
 
-        const Vec3 N = rec.normal;            // 几何法线（已翻向观察者）
+        const Vec3 N = rec.normal;                // 几何法线（已翻向观察者）
 
-        // ---- 把 T 正交化到 N 上（Gram-Schmidt）----
-        //   原始 tangent 是"沿 u 增长方向"，但它不一定垂直于 N
-        //   （因为它是从两条边解出来的，被三角形自身的倾斜带偏了）
+        // ---- ① Gram-Schmidt：把 tangent 里平行于 N 的分量减掉 ----
+        //   tangent 躺在【三角形平面】里，而 N 是【插值顶点法线】，
+        //   两者不一定垂直。切线空间要求 T ⊥ N，所以先正交化。
+        //   dot(tangent, N)·N 就是 tangent 在 N 方向上的投影向量。
         Vec3 T = tangent - dot(tangent, N) * N;
-        double tl2 = dot(T, T);
-        if (tl2 <= 0.0) return;               // 退化，别折腾
+
+        //   减完长度变了（|T|·cosθ），必须重新归一化。
+        //   ★ 兜底：若 T 恰好平行于 N，减完是零向量 → 再除就 NaN。
+        //     这时直接 return（退回几何法线：法线贴图失效，但画面不会崩）。
+        //     写法用 !(x > 0) 而不是 x <= 0：前者对 NaN 也安全。
+        const double tl2 = dot(T, T);
+        if (!(tl2 > 0.0)) return;
         T = T / std::sqrt(tl2);
 
-        // ---- 副切线：用叉积强制右手系 ----
-        //   ★ 不用解出来的 bitangent：它可能和 cross(N,T) 反向（取决于 UV 手性），
-        //     混用会让 G 通道的凹凸方向反掉。统一用 cross(N,T) 才和
-        //     glTF / OpenGL 的 "green up" 约定一致。
+        // ---- ② 副切线：用叉积，不用成员 bitangent ----
+        //   理由有二：
+        //     a) 上面 Gram-Schmidt 改了 T，解出来的 bitangent 不再垂直于新 T；
+        //     b) bitangent 的【符号】取决于 UV 是否镜像，而 cross(N,T) 恒为右手系。
+        //        一旦符号反了，绿通道的凹凸就整体翻过来（凸起变凹坑）。
+        //   记忆：T → B → N → T 是循环序，和 x → y → z → x 一样。
+        //         所以 cross(N,T) = B、cross(T,B) = N。
         const Vec3 B = cross(N, T);
 
-        // ---- 采样切线空间法线并变换到世界空间 ----
+        // ---- ③ 采样切线空间法线，再按 T/B/N 展开到世界空间 ----
+        //   ns 的三个分量就是"沿 T 走多少、沿 B 走多少、沿 N 走多少"。
         const Color ns = nm->value(rec.u, rec.v, rec.p);   // 已经是 −1~1
-        const Vec3 n_world = ns.x() * T + ns.y() * B + ns.z() * N;
+        rec.normal = unit_vector(ns.x() * T + ns.y() * B + ns.z() * N);
 
-        rec.normal = unit_vector(n_world);
-        // ⚠️ 不改 front_face：它记录的是"光线从哪一侧来"这个【几何】事实，
-        //    法线贴图只是着色细节，不该影响它。
+        // ⚠️ 不动 rec.front_face：它记录的是"光线从三角形哪一侧来"这个【几何】
+        //    事实；法线贴图只是着色细节。改了它，所有依赖 front_face 的判断
+        //    （介质进出、背面剔除）都会跟着错乱。
     }
 
     // ============================================================
@@ -156,7 +164,7 @@ public:
     bool has_explicit_uv() const { return has_uv; }
 
     // ============================================================
-    // Day 25：从「位置 + UV」解出切线帧
+    // 从「位置 + UV」解出切线帧
     //
     // 一个三角形的三个顶点有两套坐标：位置（3D）和 UV（2D）。
     // 它们是【同一个曲面的两种参数化】，所以：
@@ -164,14 +172,11 @@ public:
     //     e1 = P1 − P0 = du1·T + dv1·B
     //     e2 = P2 − P0 = du2·T + dv2·B
     //
-    // 这是 2×2 线性方程组，解出：
+    // 这是 2×2 线性方程组 —— 解出来就是 T 和 B。
     //
-    //     det = du1·dv2 − du2·dv1
-    //     T   = ( +dv2·e1 − dv1·e2 ) / det
-    //     B   = ( −du2·e1 + du1·e2 ) / det
-    //
-    // ★ 不需要旋转矩阵、不需要叉积。就是一个 2×2 求解。
-    // ★ e1 / e2 直接就是 Quad 的 edge_u() / edge_v()（因为 Triangle 是 Quad(a, b−a, c−a)）
+    // ★ 不需要旋转矩阵、不需要叉积、不需要三角函数。
+    // ★ e1 / e2 直接就是 Quad 的 edge_u() / edge_v()
+    //   （因为 Triangle 是 Quad(a, b−a, c−a)）
     // ============================================================
     void compute_tangent_frame() {
         has_tangent = false;
@@ -180,19 +185,28 @@ public:
         const Vec3 e1 = edge_u();          // = P1 − P0
         const Vec3 e2 = edge_v();          // = P2 − P0
 
-        const double du1 = uv1.u - uv0.u;
-        const double dv1 = uv1.v - uv0.v;
-        const double du2 = uv2.u - uv0.u;
-        const double dv2 = uv2.v - uv0.v;
+        // UV 增量的四个数，直接用 UV 结构装（它本来就是二维量）
+        //   duv1 = (Δu1, Δv1)，duv2 = (Δu2, Δv2)
+        const UV duv1{ uv1.u - uv0.u, uv1.v - uv0.v };
+        const UV duv2{ uv2.u - uv0.u, uv2.v - uv0.v };
 
-        const double det = du1 * dv2 - du2 * dv1;
+        // 待解的 2×2 方程组：
+        //     e1 = duv1.u·T + duv1.v·B
+        //     e2 = duv2.u·T + duv2.v·B
+        //
+        // det 是二维叉积：|det| = UV 三角形面积的 2 倍，符号 = UV 是否镜像。
+        const double det = duv1.u * duv2.v - duv2.u * duv1.v;
 
-        // 退化：UV 没展开（两个角的 UV 重合）→ 解不出来
+        // 退化：det = 0 ⇔ 三个 UV 共线 ⇔ 这块三角形在纹理上被压成一条线，
+        // 根本没有"u 方向"可言。
+        // ★ 必须写成 !(fabs(det) > eps)：NaN 参与任何比较都是 false，
+        //   写成 fabs(det) < eps 会把 NaN 误判为"有效"，让 NaN 一路传到画面上。
         if (!(std::fabs(det) > 1e-20)) return;
 
+        // 克拉默法则
         const double inv = 1.0 / det;
-        tangent   = ( dv2 * e1 - dv1 * e2) * inv;    // dP/du
-        bitangent = (-du2 * e1 + du1 * e2) * inv;    // dP/dv（只用来判断手性，不直接参与着色）
+        tangent   = ( e1 * duv2.v - e2 * duv1.v ) * inv;   // dP/du（未归一化）
+        bitangent = ( e2 * duv1.u - e1 * duv2.u ) * inv;   // dP/dv（仅作对照；着色用 cross(N,T)）
         has_tangent = true;
     }
 

@@ -48,10 +48,9 @@ public:
         //    ★ 为什么需要兜底：(128,128,128) 解码后是 (0,0,0)，代表"没有起伏"。
         //      不判断就直接除，会得到 NaN —— 而 NaN 会在 BVH / 着色里到处传播，
         //      症状是整块画面全黑或彩色噪点，极难定位。
-        const double L2 = dot(n, n);
-        if (L2 <= 1e-20) return Vec3(0.0, 0.0, 1.0);
+        if (!(n.length_squared() > 1e-20)) return Vec3(0.0, 0.0, 1.0);
 
-        return n / std::sqrt(L2);
+        return n / std::sqrt(n.length_squared());
     }
 
 private:
