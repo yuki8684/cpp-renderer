@@ -1,6 +1,7 @@
 #pragma once
 
 #include "quad.h"
+#include "texture.h"     // Day 25：apply_normal_map 要调 Texture::value()（不能只靠前向声明）
 
 // ============================================================
 // UV 坐标（Day 22）
@@ -81,6 +82,58 @@ public:
             rec.u = w_a * uv0.u + alpha * uv1.u + beta * uv2.u;
             rec.v = w_a * uv0.v + alpha * uv1.v + beta * uv2.v;
         }
+
+        // ------------------------------------------------------
+        // Day 25：法线贴图 —— 用切线空间把法线"掰"一下
+        //
+        // 顺序很关键：必须在 rec.u/v 已经算完之后，因为采样要用它们。
+        // ------------------------------------------------------
+        apply_normal_map(rec);
+    }
+
+    // ============================================================
+    // Day 25：法线贴图扰动
+    //
+    // 法线贴图里存的是【切线空间】的法线 (nx, ny, nz)，不是世界空间的。
+    // 要变成世界法线，需要三个基向量：
+    //     T  切线   = dP/du
+    //     B  副切线 = dP/dv
+    //     N  法线   = rec.normal（几何法线，已经翻向观察者）
+    //
+    //     世界法线 = nx·T + ny·B + nz·N
+    //
+    // ★ T 和 B 是【每个三角形固定的】（只跟顶点位置和 UV 有关），
+    //   所以在 set_uv() 里算一次就够，不用每个交点重算。
+    // ============================================================
+    void apply_normal_map(HitRecord& rec) const {
+        if (!has_tangent) return;
+
+        auto nm = material_ptr()->normal_map();   // 没有法线贴图 → 直接返回（零开销）
+        if (!nm) return;
+
+        const Vec3 N = rec.normal;            // 几何法线（已翻向观察者）
+
+        // ---- 把 T 正交化到 N 上（Gram-Schmidt）----
+        //   原始 tangent 是"沿 u 增长方向"，但它不一定垂直于 N
+        //   （因为它是从两条边解出来的，被三角形自身的倾斜带偏了）
+        Vec3 T = tangent - dot(tangent, N) * N;
+        double tl2 = dot(T, T);
+        if (tl2 <= 0.0) return;               // 退化，别折腾
+        T = T / std::sqrt(tl2);
+
+        // ---- 副切线：用叉积强制右手系 ----
+        //   ★ 不用解出来的 bitangent：它可能和 cross(N,T) 反向（取决于 UV 手性），
+        //     混用会让 G 通道的凹凸方向反掉。统一用 cross(N,T) 才和
+        //     glTF / OpenGL 的 "green up" 约定一致。
+        const Vec3 B = cross(N, T);
+
+        // ---- 采样切线空间法线并变换到世界空间 ----
+        const Color ns = nm->value(rec.u, rec.v, rec.p);   // 已经是 −1~1
+        const Vec3 n_world = ns.x() * T + ns.y() * B + ns.z() * N;
+
+        rec.normal = unit_vector(n_world);
+        // ⚠️ 不改 front_face：它记录的是"光线从哪一侧来"这个【几何】事实，
+        //    法线贴图只是着色细节，不该影响它。
     }
 
     // ============================================================
@@ -97,9 +150,51 @@ public:
         uv1   = t1;
         uv2   = t2;
         has_uv = true;
+        compute_tangent_frame();      // Day 25：UV 一定下来，切线帧也就定了
     }
 
     bool has_explicit_uv() const { return has_uv; }
+
+    // ============================================================
+    // Day 25：从「位置 + UV」解出切线帧
+    //
+    // 一个三角形的三个顶点有两套坐标：位置（3D）和 UV（2D）。
+    // 它们是【同一个曲面的两种参数化】，所以：
+    //
+    //     e1 = P1 − P0 = du1·T + dv1·B
+    //     e2 = P2 − P0 = du2·T + dv2·B
+    //
+    // 这是 2×2 线性方程组，解出：
+    //
+    //     det = du1·dv2 − du2·dv1
+    //     T   = ( +dv2·e1 − dv1·e2 ) / det
+    //     B   = ( −du2·e1 + du1·e2 ) / det
+    //
+    // ★ 不需要旋转矩阵、不需要叉积。就是一个 2×2 求解。
+    // ★ e1 / e2 直接就是 Quad 的 edge_u() / edge_v()（因为 Triangle 是 Quad(a, b−a, c−a)）
+    // ============================================================
+    void compute_tangent_frame() {
+        has_tangent = false;
+        if (!has_uv) return;
+
+        const Vec3 e1 = edge_u();          // = P1 − P0
+        const Vec3 e2 = edge_v();          // = P2 − P0
+
+        const double du1 = uv1.u - uv0.u;
+        const double dv1 = uv1.v - uv0.v;
+        const double du2 = uv2.u - uv0.u;
+        const double dv2 = uv2.v - uv0.v;
+
+        const double det = du1 * dv2 - du2 * dv1;
+
+        // 退化：UV 没展开（两个角的 UV 重合）→ 解不出来
+        if (!(std::fabs(det) > 1e-20)) return;
+
+        const double inv = 1.0 / det;
+        tangent   = ( dv2 * e1 - dv1 * e2) * inv;    // dP/du
+        bitangent = (-du2 * e1 + du1 * e2) * inv;    // dP/dv（只用来判断手性，不直接参与着色）
+        has_tangent = true;
+    }
 
 
     private:
@@ -109,4 +204,8 @@ public:
          // Day 22：顶点 UV（默认 (0,0)；未调用 set_uv 时 has_uv = false）
          UV   uv0, uv1, uv2;
          bool has_uv = false;
+
+         // Day 25：切线帧（set_uv 时算一次，之后不变）
+         Vec3 tangent, bitangent;
+         bool has_tangent = false;
 };

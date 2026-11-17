@@ -608,3 +608,128 @@ private:
 | **颜色图 vs 数据图** | 反照率按 sRGB 解码；**法线图/粗糙度图绝不能解码**（它们已经是线性数据） |
 | **`touch` 才能触发重编** | `Move-Item` / `git checkout` 还原文件会保留旧 mtime → make 认为“没变过” → 不重编 → **实验白做** |
 | **别用 `\| Out-Null` 吞构建输出** | 吞了就看不到“编译了 0 个文件” |
+
+---
+
+## Day 25 · 前向声明 / 分层边界 / 常量替身
+
+### 1. 前向声明只够“提一嘴”，不够“用它”
+
+```cpp
+class Texture;                                  // 前向声明
+
+std::shared_ptr<Texture> t;                     // ✓ 可以
+void f(Texture* p);                             // ✓ 可以
+Texture& g();                                   // ✓ 可以
+p->value(u, v, p);                              // ✗ 不行：complete type required
+std::make_shared<Texture>();                    // ✗ 不行：要 sizeof
+Texture obj;                                    // ✗ 不行：要 sizeof
+```
+
+编译器看到 `p->value(...)` 时才第一次需要知道 **`Texture` 有哪些成员**。
+前向声明里什么成员都没有，于是报：
+
+```
+error: invalid use of incomplete type 'class Texture'
+note:  forward declaration of 'class Texture'
+```
+
+**规则：**
+
+| 头文件里出现的东西 | 需要什么 |
+|---|---|
+| `T*` / `T&` / `shared_ptr<T>` 作为**参数或返回值** | 前向声明够 |
+| 调用 `T` 的**成员函数**、访问成员 | 必须 `#include` |
+| 按值持有 `T`、`make_shared<T>`、`sizeof(T)` | 必须 `#include` |
+
+### 2. “编译过了”不等于“依赖对了”
+
+Day 25 加了 `apply_normal_map()` 后：
+
+- `src/main.cpp` 编译**通过** —— 因为它先 include 了 `image_texture.h`，顺带拉进了 `texture.h`
+- `tests/obj_test.cpp` 编译**失败** —— 它只 include 了 `obj_loader.h`
+
+**同一个头文件、两种结果。** 这说明 `triangle.h` 缺 include，
+只是被 main.cpp 的 include 顺序**碰巧掩盖**了。
+
+> 这种 bug 的特征：**换一个 include 顺序就炸**。
+> 单元测试的价值之一就是它有不同的 include 顺序，能提前引爆。
+
+### 3. 测试替身（stub）：用最简实现替换依赖
+
+要测“切线帧把 (1,0,0) 变成什么”，不需要真的渲染。
+只需要一个**永远返回同一个值**的纹理：
+
+```cpp
+class ConstantTexture : public Texture {
+public:
+    explicit ConstantTexture(const Color& c) : c(c) {}
+    Color value(double, double, const Point3&) const override { return c; }
+private:
+    Color c;
+};
+```
+
+和**只实现被测方法**的材质：
+
+```cpp
+class StubMaterial : public Material {
+public:
+    explicit StubMaterial(std::shared_ptr<Texture> nm) : nm(nm) {}
+    bool scatter(const Ray&, const HitRecord&, Color&, Ray&) const override { return false; }
+    std::shared_ptr<Texture> normal_map() const override { return nm; }
+private:
+    std::shared_ptr<Texture> nm;
+};
+```
+
+好处：
+
+- **速度快**：不用建整个场景
+- **结果可精确比对**：常量输入 → 常数输出，可以直接写 `==`（容差 1e-9）
+- **隔离**：测试失败一定在切线帧，不会怪到光照/BRDF 头上
+
+### 4. 分层边界的自证：解码只在一层做
+
+第一版测试**全部失败**，得到 `(0.408, 0.408, 0.816)`。
+原因是我用了 `ConstantTexture` 直接返回 `(0.5, 0.5, 1.0)`，
+绕过了 `NormalMapTexture` 里的 `2c − 1` 解码。
+
+| 层 | 职责 |
+|---|---|
+| `NormalMapTexture` | 解码：0~1 颜色 → −1~1 单位法线 |
+| `Triangle::apply_normal_map` | 变换：TBN 局部 → 世界 |
+
+**解码只在这一层做**，所以绕过它就会拿到编码值。
+如果当初把 `2c − 1` 也复制进 `Triangle`（“省一次调用”），
+这个 bug 就永远暴露不出来，只会表现为“渲染光照怪怪的”。
+
+> 分层清晰的一个副产品：**你能用测试精确指出错在哪一层。**
+> 分层混乱的副产品：只能靠眼睛猜。
+
+### 5. 退化判断用 `!(x > eps)` 而不是 `x < eps`
+
+```cpp
+if (!(std::fabs(det) > 1e-20)) return;   // ✓ NaN 会进入 if（正确拒绝）
+if (std::fabs(det) < 1e-20) return;      // ✗ NaN 比较永远 false（误判为有效）
+```
+
+NaN 参与任何比较都是 `false`。取反之后，`!(false) == true`，
+所以 NaN 会走“退化”分支 —— 这才是我们要的。
+
+### 6. 一条来自画面之外的教训
+
+变异 `cross(N,T)` → `cross(T,N)`：
+
+```
+单元测试：9 项中 2 项红（N3、N8）
+渲染：63% 的像素分量变了，平均差仅 3.74，最大 92
+观感：凸起变凹坑 —— 但“看起来不坏”
+```
+
+**平均差小 ≠ 没 bug。** 这个 bug 恰好是“整体规律性改变”，
+大量像素各变一点点，平均值被摊薄了。
+
+正确的判据不是“差多少”，而是**“有没有一条断言专门盯这个位置/含义”**。
+N3 就是那条断言：`副切线 (0,1,0) → B`。
+

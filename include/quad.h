@@ -206,6 +206,13 @@ public:
     // ★ Day 24：Triangle 需要拿到材质，才能取用法线贴图
     std::shared_ptr<Material> material_ptr() const { return mat; }
 
+    // ★ Day 25：给 Triangle 算【切线帧】用 —— 它需要自己的三个顶点
+    //   三角形 = Quad(Q, b−a, c−a)，所以 a = origin()，b = origin()+edge_u()，c = origin()+edge_v()
+    //   用 const& 返回引用：不拷贝，也不允许外面改
+    const Point3& origin() const { return Q; }
+    const Vec3&   edge_u() const { return u; }
+    const Vec3&   edge_v() const { return v; }
+
 private:
     // 四个角：Q, Q+u, Q+v, Q+u+v
     // 包围盒 = 这两个对角点对各自形成的盒子的【并集】

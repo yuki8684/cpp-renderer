@@ -9,6 +9,41 @@
 
 ## 效果展示
 
+### Day 25 · 法线贴图：12 个三角形画出 16 个凸起
+
+![立方体法线贴图](gallery/day25-cube-normal-mapped.png)
+
+> 几何**一根线都没动**（还是 `cube_uv.obj` 的 8 顶点 / 12 三角形），
+> 凸起全部来自一张 256×256 的法线图。
+
+![法线贴图前后对比](gallery/day25-normal-map-before-after.png)
+
+> 左：普通贴图，纯平。右：+ 法线贴图。
+> 单元测试 N6/N7 断言两者的**命中距离 t 和命中位置 p 完全一致** ——
+> “假几何”这件事是可执行的断言，不是“应该吧”。
+
+**核心：切线帧就是一个 2×2 方程**
+
+```
+e1 = P1 − P0 = du1·T + dv1·B
+e2 = P2 − P0 = du2·T + dv2·B
+
+det = du1·dv2 − du2·dv1
+T   = ( +dv2·e1 − dv1·e2 ) / det
+B   = ( −du2·e1 + du1·e2 ) / det
+```
+
+没有旋转矩阵、没有三角函数，纯 2×2 求解。
+
+**最危险的一行：手性**
+
+![手性反转 bug](gallery/day25-handedness-bug.png)
+
+> 左：`B = cross(T, N)`（错）。右：`B = cross(N, T)`（对）。
+> **视觉上不是“崩了”，而是凸起变凹坑** —— 人眼依赖光照方向判读凹凸，
+> 而观者不知道光源在哪，所以看不出反常。
+> 单元测试 9 项中 N3、N8 变红；渲染上 63% 的像素分量变化，平均差却只有 3.74。
+
 ### Day 24 · 图片贴图：第一次读入真实图片文件
 
 ![立方体贴图](gallery/day24-cube-image-texture.png)
@@ -853,7 +888,8 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 22 | **纹理映射** —— `Texture` 抽象 + UV 重心插值 + `vt` 接缝复制列 | ✅ |
 | 23 | **六视图 UV** —— 8 `v` + 24 `vt`；三套索引的终极解释 | ✅ |
 | 24 | **图片贴图** —— PPM 读取 + sRGB 解码 + 双线性插值；`1-v` 翻转实测 | ✅ |
-| — | 后续：法线贴图（切线帧）→ 显式 PDF / MIS → 成品大图与视频 | 📋 |
+| 25 | **法线贴图** —— 切线帧（2×2 方程 + Gram-Schmidt）+ 绿通道手性变异测试 | ✅ |
+| — | 后续：六视图 UV 朝向修正 → 显式 PDF / MIS → 成品大图与视频 | 📋 |
 
 ---
 
@@ -904,13 +940,13 @@ cpp-renderer/
 │   ├── hittable.h         HitRecord + Hittable 抽象接口（hit / bounding_box）
 │   ├── sphere.h           球体求交 + 包围盒
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
-│   ├── triangle.h         **三角形 —— 继承 Quad，只重写 is_interior 一行**
+│   ├── triangle.h         **三角形 —— 继承 Quad + 切线帧（Day 25）**
 │   ├── mesh.h             球面网格（三角形拼球，可选顶点法线）
 │   ├── obj_loader.h       **OBJ 文本读取（v / vt / f，扇形三角化）**
 │   ├── texture.h          纹理抽象 + SolidColor / 3D 棋盘 / UV 棋盘
 │   ├── image.h            **PPM 读取（P3 文本 / P6 二进制）**
 │   ├── image_texture.h    **图片纹理：wrap 绕回 + 双线性采样**
-│   ├── normal_map.h       **法线贴图骨架（切线帧待补，Day 25）**
+│   ├── normal_map.h       **法线贴图：解码 + `NormalMappedMaterial` 装饰器**
 │   ├── diffuse_light.h    **纯光源：只发光不散射**
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
 │   ├── material.h         Material 抽象接口
@@ -925,7 +961,8 @@ cpp-renderer/
 │   ├── triangle_test.cpp   Triangle 单元测试（含 49 条射线对比两种拆法）
 │   ├── smooth_test.cpp     光滑着色（含定量：插值法线 vs 解析真法线）
 │   ├── obj_test.cpp        **OBJ 读取（25 条：数量/坐标/不变量/异常/法线/UV）**
-│   └── image_test.cpp      **图片与纹理（14 条：PPM/sRGB/wrap/双线性/方向）**
+│   ├── image_test.cpp      **图片与纹理（14 条：PPM/sRGB/wrap/双线性/方向）**
+│   └── normal_map_test.cpp **法线贴图/切线帧（9 条：TBN 精确比对 + 几何不变）**
 ├── models/                 **测试模型与纹理（由 tools/gen_obj.ps1 / gen_texture.ps1 生成）**
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
@@ -939,6 +976,7 @@ cpp-renderer/
 │   ├── stream_demo.cpp    **流语法演示（istringstream / >> / getline / stoi）**
 │   ├── gen_obj.ps1        生成测试模型 cube / cube_uv / icosahedron / torus
 │   ├── gen_texture.ps1    生成测试纹理 models/uvgrid.ppm（四角异色）
+│   ├── gen_normal_map.ps1 **生成法线图 models/bumps_normal.ppm（4×4 圆凸起）**
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
@@ -975,6 +1013,7 @@ cmake --build build -j
 ./build/raytracer.exe --obj-cube-tex   # 给【没有 vt】的立方体贴 UV 棋盘（斜条纹 + 对角线断裂）
 ./build/raytracer.exe --obj-cube-uv    # 六视图 UV：每面一整张规则网格
 ./build/raytracer.exe --obj-cube-img   # 图片贴图：读 models/uvgrid.ppm（sRGB 解码 + 双线性）
+./build/raytracer.exe --obj-cube-normal # 法线贴图：图片贴图 + models/bumps_normal.ppm（切线帧）
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
 ./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
@@ -1048,6 +1087,20 @@ cmake --build build -j
   反照率按 sRGB 解码；**法线图/粗糙度图绝不能解码**（它们已是线性数据），否则法线全部偏斜。
 - **测试图案必须不对称**：棋盘格旋转/翻转后看起来一样，验证不了方向；
   四角异色的 UV 网格一次采样就锁死了 u、v 两个轴的方向。
+- **切线帧是一个 2×2 方程，不是旋转矩阵**：
+  `e1 = du1·T + dv1·B`、`e2 = du2·T + dv2·B` → 克拉默法则直接解出 T、B。
+  解出的 T/B 躺在三角形平面里，而 N 是插值顶点法线，所以还需一步 Gram-Schmidt。
+- **`B = cross(N, T)` 而不是用解出来的 B**：①保证正交 ②保证右手系。
+  写成 `cross(T, N)` 不报错、不崩溃，只是**把凸起变成凹坑**
+  （单元测试 N3 抓到；渲染上 63% 像素分量变化，平均差仅 3.74）。
+- **法线图的解码只在一层做**：`NormalMapTexture` 负责 `2c−1`，
+  `Triangle` 只负责 TBN 变换。测试绕过前者就会拿到编码值 ——
+  这个“错误”恰好证明分层边界是对的。
+- **前向声明不够调用成员函数**：`class Texture;` 只够声明 `Texture*` / `shared_ptr<Texture>`，
+  调用 `->value()` 必须 `#include "texture.h"`。
+  “在 main.cpp 里编译通过”可能只是 include 顺序碰巧对。
+- **退化判断用 `!(x > eps)`**：NaN 参与任何比较都是 `false`，
+  写成 `x < eps` 会把 NaN 误判为“有效”。
 - **互逆函数用往返验**：`decode(encode(x)) == x` 一次验证两个函数。
   实测往返误差 3.33e-16（浮点极限），容差 1e-9 有 3×10⁶ 倍余量。
 - **两个虚函数钩子**：`is_interior` 控制**形状**，`set_hit_normal` 控制**法线**。
