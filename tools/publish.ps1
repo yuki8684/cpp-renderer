@@ -107,8 +107,24 @@ while ($code -ne 0 -and $attempt -lt 3) {
 if ($code -ne 0) {
     Write-Host ""
     Write-Host "PUSH FAILED -- commit saved locally, nothing lost." -ForegroundColor Red
-    Write-Host "  1. Make sure your proxy (v2rayN, port 10808) is running." -ForegroundColor Yellow
-    Write-Host "  2. Then just run this script again (any -Message); it will skip the commit and push." -ForegroundColor Yellow
+
+    # Diagnose the proxy instead of guessing which app/port is in use.
+    $cfg = (git config --get http.proxy)
+    Write-Host "  git http.proxy = $cfg" -ForegroundColor Yellow
+    if ($cfg -match ':(\d+)\s*$') {
+        $port = [int]$Matches[1]
+        $listening = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
+        if (-not $listening) {
+            Write-Host "  -> NOTHING is listening on port $port." -ForegroundColor Yellow
+            Write-Host "  -> Start your proxy, or point git at the port it actually uses:" -ForegroundColor Yellow
+            Write-Host "       git config --local http.proxy  http://127.0.0.1:<port>" -ForegroundColor Yellow
+            Write-Host "       git config --local https.proxy http://127.0.0.1:<port>" -ForegroundColor Yellow
+        } else {
+            Write-Host "  -> port $port IS listening, but the push still failed." -ForegroundColor Yellow
+            Write-Host "  -> Check the proxy's routing rules, or switch to another node." -ForegroundColor Yellow
+        }
+    }
+    Write-Host "  Then run this script again (any -Message): it skips the commit and only pushes." -ForegroundColor Yellow
     exit 1
 }
 
