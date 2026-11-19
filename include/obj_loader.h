@@ -35,6 +35,10 @@ struct ObjData {
     // Day 22：UV
     std::vector<UV>     uvs;           // 所有 vt
     std::vector<UV>     tri_uvs;       // 每 3 个一组，对应 tri_indices（无 vt 时为空）
+
+    // Day 27：每个顶点一个切线（由面切线加权平均得到）
+    //   ★ 和 normals 完全同理，只是"面切线"要先从 UV 解出来
+    std::vector<Vec3>   tangents;
 };
 
 // ============================================================
@@ -111,6 +115,77 @@ inline void compute_vertex_normals(ObjData& d) {
         if(L2 > 0.0) {d.normals[i] = d.normals[i] / std::sqrt(L2);}
         else         {(d.normals[i] = Vec3(0.0, 1.0, 0.0));}
 
+    }
+}
+
+// ============================================================
+// Day 27 · 用面切线算出顶点切线（和 Day 21 的顶点法线 完全同理）
+//
+// 为什么需要它：
+//   Day 25 的切线帧是【每个三角形独立】解出来的。
+//   相邻两个三角形对 "+u 方向" 的理解略有不同 → 切线帧在边上跳变 →
+//   法线贴图 / 各向异性高光会在三角形边界上出现接缝。
+//
+// 三个步骤（对照 compute_vertex_normals）：
+//   ① 每个三角形用 Day 25 的 2×2 解出未归一化的 T
+//   ② 把 T 累加到它的三个顶点上（长度自带权重）
+//   ③ 每个顶点：先对顶点法线做 Gram-Schmidt，再归一化
+//
+// ★ 为什么步骤③要先做 Gram-Schmidt：
+//   累加出来的 T 是"一堆躺在各自三角形平面里的向量之和"，
+//   它一般【不垂直于】顶点的平均法线。而切线帧要求 T ⊥ N。
+//
+// ⚠️ 前提：UV 必须连续。立方体每个角被 3 个面共享而 UV 各不相同，
+//   这种顶点累加出来没有意义 —— 所以只在模型有 UV 时才值得用。
+// ============================================================
+inline void compute_vertex_tangents(ObjData& d) {
+    d.tangents.clear();
+    if (d.positions.empty())     return;
+    if (d.tri_uvs.empty())       return;   // 没 UV 就没有切线
+    if (d.normals.empty())       return;   // 必须先调 compute_vertex_normals
+
+    d.tangents.assign(d.positions.size(), Vec3(0.0, 0.0, 0.0));
+
+    for (std::size_t i = 0; i + 2 < d.tri_indices.size(); i += 3) {
+        std::size_t ia = std::size_t(d.tri_indices[i + 0]);
+        std::size_t ib = std::size_t(d.tri_indices[i + 1]);
+        std::size_t ic = std::size_t(d.tri_indices[i + 2]);
+
+        const Point3& a = d.positions[ia];
+        const Point3& b = d.positions[ib];
+        const Point3& c = d.positions[ic];
+
+        const UV& u0 = d.tri_uvs[i + 0];
+        const UV& u1 = d.tri_uvs[i + 1];
+        const UV& u2 = d.tri_uvs[i + 2];
+
+        // ---- T1-1：用 Day 25 的 2×2 解出这个三角形的切线 ----
+        //   ⚠️ 不要 unit_vector：长度就是权重（和 Day 21 同一个道理）
+        const Vec3 e1 = b - a;
+        const Vec3 e2 = c - a;
+        const double du1 = u1.u - u0.u, dv1 = u1.v - u0.v;
+        const double du2 = u2.u - u0.u, dv2 = u2.v - u0.v;
+        const double det = du1 * dv2 - du2 * dv1;
+        if (!(std::fabs(det) > 1e-20)) continue;
+
+        const Vec3 T = (dv2 * e1 - dv1 * e2) / det;
+
+        // ---- T1-2：累加到三个顶点 ----
+        d.tangents[ia] = d.tangents[ia] + T;
+        d.tangents[ib] = d.tangents[ib] + T;
+        d.tangents[ic] = d.tangents[ic] + T;
+    }
+
+    // ---- T1-3：每个顶点 —— 先 Gram-Schmidt，再归一化 ----
+    //   Gram-Schmidt 是必须的：累加出来的是“一堆躺在各自三角形平面里的向量之和”，
+    //   它不垂直于顶点的平均法线，而切线帧要求 T ⊥ N。
+    for (std::size_t i = 0; i < d.tangents.size(); ++i) {
+        Vec3 t = d.tangents[i];
+        const Vec3 n = d.normals[i];
+        t = t - dot(t, n) * n;
+        const double L2 = dot(t, t);
+        if (L2 > 0.0) { d.tangents[i] = t / std::sqrt(L2); }
+        else          { d.tangents[i] = Vec3(0.0, 1.0, 0.0); }
     }
 }
 
@@ -252,6 +327,7 @@ inline ObjData load_obj(const std::string& path) {
 
     // Day 21：解析完几何之后，用面法线自己算出顶点法线
     compute_vertex_normals(data);
+    compute_vertex_tangents(data);   // Day 27：（需要 normals，必须放后面）
 
     return data;
 }
@@ -309,11 +385,19 @@ inline HittableList obj_mesh(const std::string& path,
             if (!d.tri_uvs.empty()) {
                 tri->set_uv(d.tri_uvs[i + 0], d.tri_uvs[i + 1], d.tri_uvs[i + 2]);
             }
+            // Day 27：有顶点切线就挂上（会让法线贴图的切线帧变光滑）
+            if (!d.tangents.empty()) {
+                tri->set_vertex_tangents(d.tangents[ia], d.tangents[ib], d.tangents[ic]);
+            }
             world.add(tri);
         } else {
             auto tri = std::make_shared<Triangle>(a, b, c, mat);
             if (!d.tri_uvs.empty()) {
                 tri->set_uv(d.tri_uvs[i + 0], d.tri_uvs[i + 1], d.tri_uvs[i + 2]);
+            }
+            // Day 27：平面着色也可以有光滑切线（切线和着色是两件事）
+            if (!d.tangents.empty()) {
+                tri->set_vertex_tangents(d.tangents[ia], d.tangents[ib], d.tangents[ic]);
             }
             world.add(tri);
         }

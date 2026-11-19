@@ -9,6 +9,50 @@
 
 ## 效果展示
 
+### Day 27 · 切线帧跨三角形共享：分片常数 → 光滑
+
+![圆环 + 法线贴图](gallery/day27-torus-normal-map.png)
+
+> 圆环 1152 顶点 / 2304 三角形。法线贴图的切线帧不再按三角形各算一份，
+> 而是**每个顶点算一个、面内插值** —— 和 Day 15 插值法线、Day 22 插值 UV 同一组权重。
+
+**做法和 Day 21 的顶点法线完全同构：**
+
+```
+① 每个三角形用 2×2 解出切线 T（未归一化，长度自带权重）
+② 累加到三个顶点
+③ 每个顶点：先 Gram-Schmidt 到顶点法线，再归一化
+```
+
+**唯一多出来的一步是 Gram-Schmidt，因为：**
+
+```
+每个 T_i ⊥ n_i       但  ΣT_i  ⊥̸  Σn_i
+（二维反例：T₁=(1,0)⊥n₁=(0,1)，T₂=(0,1)⊥n₂=(1,0)，
+  但 T₁+T₂=(1,1) 恰好平行于 n₁+n₂=(1,1)）
+```
+
+**实测（圆环有解析解 ∂P/∂u，可以硬碰硬）：**
+
+| 做法 | 与解析真值的最大夹角 |
+|---|---|
+| 每三角形独立解 | **3.7559°** |
+| 顶点共享 | **0.2154°** |
+
+**17.4 倍。** 而且独立解的误差恰好 = 半格角（Δu=7.50° → 3.7500°），
+因为三角形用的是**弦方向**而真值是**切线方向**。
+
+**⚠️ 诚实的结论：这个改进在 400×225 下看不出来。**
+
+```
+72.2% 的像素变了，平均差 1.5/通道，10 倍放大并排对比肉眼完全一样
+（每个三角形只有 2~3 像素，3.76° 摊上去是亚像素误差）
+```
+
+> 这是「正确性」改进，不是「观感」改进。
+> 它在低模 / 高频法线贴图 / 各向异性材质 / 高分辨率出图时才会显现。
+> **价值必须用数字说明，不能用图吹。**
+
 ### Day 26 · 六视图 UV 朝向：从「碰巧对」到「显式声明」
 
 ![UV 朝向修正前后对比](gallery/day26-uv-orient-before-after.png)
@@ -947,7 +991,8 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 24 | **图片贴图** —— PPM 读取 + sRGB 解码 + 双线性插值；`1-v` 翻转实测 | ✅ |
 | 25 | **法线贴图** —— 切线帧（2×2 方程 + Gram-Schmidt）+ 绿通道手性变异测试 | ✅ |
 | 26 | **六视图 UV 朝向** —— 显式世界轴 + 点积投影；发现并修正六面镜像 | ✅ |
-| — | 后续：切线帧跨三角形共享 → 显式 PDF / MIS → 成品大图与视频 | 📋 |
+| 27 | **切线帧跨三角形共享** —— 顶点切线累加 + Gram-Schmidt；误差 3.756° → 0.215° | ✅ |
+| — | 后续：P6 二进制 PPM → 显式 PDF / MIS → 成品大图与视频 | 📋 |
 
 ---
 
@@ -998,7 +1043,7 @@ cpp-renderer/
 │   ├── hittable.h         HitRecord + Hittable 抽象接口（hit / bounding_box）
 │   ├── sphere.h           球体求交 + 包围盒
 │   ├── quad.h             平行四边形（第二个图元；三角形只需覆盖 is_interior）
-│   ├── triangle.h         **三角形 —— 继承 Quad + 切线帧（Day 25）**
+│   ├── triangle.h         **三角形 —— 继承 Quad + 切线帧 + 顶点切线插值（Day 25/27）**
 │   ├── mesh.h             球面网格（三角形拼球，可选顶点法线）
 │   ├── obj_loader.h       **OBJ 文本读取（v / vt / f，扇形三角化）**
 │   ├── texture.h          纹理抽象 + SolidColor / 3D 棋盘 / UV 棋盘
@@ -1021,7 +1066,8 @@ cpp-renderer/
 │   ├── obj_test.cpp        **OBJ 读取（25 条：数量/坐标/不变量/异常/法线/UV）**
 │   ├── image_test.cpp      **图片与纹理（14 条：PPM/sRGB/wrap/双线性/方向）**
 │   ├── normal_map_test.cpp **法线贴图/切线帧（9 条：TBN 精确比对 + 几何不变）**
-│   └── uv_orient_test.cpp  **六视图 UV 朝向（15 条：每面 +u/+v + 手性 + 面积）**
+│   ├── uv_orient_test.cpp  **六视图 UV 朝向（15 条：每面 +u/+v、不镜像、面积）**
+│   └── tangent_share_test.cpp **切线帧共享（12 条：对比解析真值 ∂P/∂u）**
 ├── models/                 **测试模型与纹理（由 tools/gen_obj.ps1 / gen_texture.ps1 / gen_normal_map.ps1 生成）**
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
@@ -1069,10 +1115,12 @@ cmake --build build -j
 ./build/raytracer.exe --obj-torus-flat # 对照：平面着色
 ./build/raytracer.exe --obj-torus-tex  # UV 棋盘格（用 OBJ 的 vt，无接缝）
 ./build/raytracer.exe --obj-torus-checker3d  # 对照：3D 棋盘（不用 UV）
+./build/raytracer.exe --obj-torus-normal     # 圆环 + 法线贴图（Day 27：共享切线帧）
 ./build/raytracer.exe --obj-cube-tex   # 给【没有 vt】的立方体贴 UV 棋盘（斜条纹 + 对角线断裂）
 ./build/raytracer.exe --obj-cube-uv    # 六视图 UV：每面一整张规则网格
 ./build/raytracer.exe --obj-cube-img   # 图片贴图：读 models/uvgrid.ppm（sRGB 解码 + 双线性）
 ./build/raytracer.exe --obj-cube-normal # 法线贴图：图片贴图 + models/bumps_normal.ppm（切线帧）
+./build/raytracer.exe --obj-torus-normal # 圆环 + 法线贴图（Day 27：共享切线帧）
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
 ./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）

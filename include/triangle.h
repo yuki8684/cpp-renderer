@@ -87,8 +87,25 @@ public:
         // Day 25：法线贴图 —— 用切线空间把法线"掰"一下
         //
         // 顺序很关键：必须在 rec.u/v 已经算完之后，因为采样要用它们。
+        // Day 27：把 (α, β) 也传进去，因为切线帧现在要插值。
         // ------------------------------------------------------
-        apply_normal_map(rec);
+        apply_normal_map(rec, alpha, beta);
+    }
+
+    // ============================================================
+    // Day 27：在面内插值出这个点的切线
+    //
+    // 和 Day 15 插值法线、Day 22 插值 UV 用的是【同一组权重】：
+    //     w_a = 1 − α − β      w_b = α      w_c = β
+    //
+    // ★ 注意返回的可能是【未归一化】的向量（三个单位向量加权和），
+    //   调用方会做 Gram-Schmidt + 归一化。
+    // ============================================================
+    Vec3 tangent_at(double alpha, double beta) const {
+        if (!smooth_tangent) return tangent;   // 没顶点切线 → 退回每三角形版本
+
+        const double w_a = 1.0 - alpha - beta;
+        return w_a * tan0 + alpha * tan1 + beta * tan2;
     }
 
     // ============================================================
@@ -100,22 +117,23 @@ public:
     //
     //     世界法线 = nx·T + ny·B + nz·N
     //
-    // ★ T 和 B 是【每个三角形固定的】（只跟顶点位置和 UV 有关），
-    //   所以在 set_uv() 里算一次就够，不用每个交点重算。
+    // ★ Day 27：T 现在由【顶点切线插值】得到（光滑），
+    //   不再是每个三角形一个常数。
     // ============================================================
-    void apply_normal_map(HitRecord& rec) const {
-        if (!has_tangent) return;
+    void apply_normal_map(HitRecord& rec, double alpha, double beta) const {
+        if (!has_tangent && !smooth_tangent) return;
 
         auto nm = material_ptr()->normal_map();   // 没有法线贴图 → 直接返回（零开销）
         if (!nm) return;
 
         const Vec3 N = rec.normal;                // 几何法线（已翻向观察者）
 
-        // ---- ① Gram-Schmidt：把 tangent 里平行于 N 的分量减掉 ----
-        //   tangent 躺在【三角形平面】里，而 N 是【插值顶点法线】，
+        // ---- ① Gram-Schmidt：把 T 里平行于 N 的分量减掉 ----
+        //   T 躺在【三角形平面】里，而 N 是【插值顶点法线】，
         //   两者不一定垂直。切线空间要求 T ⊥ N，所以先正交化。
-        //   dot(tangent, N)·N 就是 tangent 在 N 方向上的投影向量。
-        Vec3 T = tangent - dot(tangent, N) * N;
+        //   dot(T, N)·N 就是 T 在 N 方向上的投影向量。
+        const Vec3 t_raw = tangent_at(alpha, beta);
+        Vec3 T = t_raw - dot(t_raw, N) * N;
 
         //   减完长度变了（|T|·cosθ），必须重新归一化。
         //   ★ 兜底：若 T 恰好平行于 N，减完是零向量 → 再除就 NaN。
@@ -162,6 +180,20 @@ public:
     }
 
     bool has_explicit_uv() const { return has_uv; }
+
+    // ============================================================
+    // Day 27：挂上【顶点切线】（由 obj_loader 的 compute_vertex_tangents 算好）
+    //
+    // ⚠️ 为什么又是 setter 而不是再加一个构造函数？
+    //    构造函数已经 7 个参数了，再加 3 个切线就是 10 个。
+    //    和 Day 22 的 set_uv 同理：参数过多是设计信号。
+    // ============================================================
+    void set_vertex_tangents(const Vec3& t0, const Vec3& t1, const Vec3& t2) {
+        tan0 = t0;
+        tan1 = t1;
+        tan2 = t2;
+        smooth_tangent = true;
+    }
 
     // ============================================================
     // 从「位置 + UV」解出切线帧
@@ -222,4 +254,8 @@ public:
          // Day 25：切线帧（set_uv 时算一次，之后不变）
          Vec3 tangent, bitangent;
          bool has_tangent = false;
+
+         // Day 27：顶点切线（光滑，面内插值）
+         Vec3 tan0, tan1, tan2;
+         bool smooth_tangent = false;
 };

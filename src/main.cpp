@@ -868,10 +868,13 @@ Scene load_scene(const std::string& name, int half) {
         camera = Camera(Point3(0, 2.4, 5.0), Point3(0, 0.2, 0), Vec3(0, 1, 0), 32, 5.2, 0.0);
     }
     else if (name == "obj-torus" || name == "obj-torus-flat" ||
-             name == "obj-torus-tex" || name == "obj-torus-checker3d") {
+             name == "obj-torus-tex" || name == "obj-torus-checker3d" ||
+             name == "obj-torus-normal") {
         // tex_mode：0 金属 / 1 UV 棋盘（用 OBJ 的 vt） / 2 3D 棋盘（对照）
+        //           4 图片贴图 + 法线贴图（Day 27：展示共享切线帧）
         const int tex_mode = (name == "obj-torus-tex")       ? 1
                            : (name == "obj-torus-checker3d") ? 2
+                           : (name == "obj-torus-normal")    ? 4
                                                              : 0;
         world  = obj_scene("models/torus.obj", Point3(0, -1.24, 0), 1.55,
                            name != "obj-torus-flat", tex_mode);
@@ -947,6 +950,9 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--obj-torus-checker3d") {
             scene_name = "obj-torus-checker3d";  // Day 22 对照：3D 棋盘，不需要 UV
+        }
+        else if(arg == "--obj-torus-normal") {
+            scene_name = "obj-torus-normal";     // Day 27：图片 + 法线贴图（共享切线帧）
         }
         else if(arg == "--obj-cube-tex") {
             scene_name = "obj-cube-tex";     // Day 22：给【没有 vt】的立方体贴 UV 棋盘

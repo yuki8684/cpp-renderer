@@ -837,3 +837,98 @@ function Triples {
 ```
 
 同一个坑 Day 20 在 `gen_obj.ps1` 的 `$icoNorm` 那里踩过一次。
+
+---
+
+## Day 27 · `[[maybe_unused]]` / 遮蔽 / 累加键
+
+### 1. `[[maybe_unused]]`：给「暂时还没用到」的东西开口子
+
+留空骨架时常见两个警告：
+
+```
+warning: unused parameter 'alpha' [-Wunused-parameter]
+warning: unused variable 'a'     [-Wunused-variable]
+```
+
+以前的做法是加一行 `(void)alpha;` —— 但它**在代码写完之后就变成死代码**，得记得删。
+
+C++17 的写法：
+
+```cpp
+void f([[maybe_unused]] double alpha) { /* 还没实现 */ }
+[[maybe_unused]] const Point3& a = ...;
+```
+
+实现之后它自动失效，不用回头清。**留填空题时用它最省事。**
+
+### 2. 局部变量遮蔽了 `std::tan`
+
+```cpp
+double w_a = 1.0 - alpha - beta;
+Vec3 tan = w_a * tan0 + alpha * tan1 + beta * tan2;   // ⚠️
+```
+
+`tan` 是 `<cmath>` 里的函数名。局部变量叫 `tan` **合法**，但在这个作用域内 `tan(x)` 就调不动了（`std::tan(x)` 还是可以的）。
+
+**规则：别用标准库函数名当变量名。** 同理要避开的：`abs` `div` `left` `right` `distance` `count` `min` `max` `data` `size` `time` `exp` `log` `pow` `gamma` `beta`。
+
+> 改一个字母的事：`Vec3 t`、`Vec3 tan_v`。
+
+### 3. 累加时要选对「键」
+
+Day 21 的顶点法线按 `position` 索引累加，没问题 —— 因为法线只跟位置有关。
+
+Day 27 的顶点切线按 `position` 索引累加，**在 UV 不连续的模型上就错了**：
+
+```
+立方体：8 个位置，24 个 UV
+每个角被 3 个面共享，3 个面给它 3 个不同的 UV
+→ 3 个面的切线被加到一起 → 无意义的平均
+```
+
+**正确的键是 `(position, uv)` 配对。** OBJ 的 `v` / `vt` 双索引就是为这件事准备的。
+
+> **通用教训：累加器按什么分组，取决于「什么变了这个量就该变」。**
+> 法线只依赖位置 → 按位置分组；
+> 切线依赖位置 **和** UV → 按 (位置, UV) 分组。
+
+### 4. 空实现自查法：一条断言是不是假绿
+
+写测试时最怕「数据是垃圾，断言却绿」。最快的自查：
+
+```
+把被测函数体改成 return;（或直接 return 默认值）
+重新跑测试
+```
+
+**还绿的每一条都是假绿。**
+
+Day 27 实测抓到三条：
+
+| 断言 | 为什么空实现还绿 |
+|---|---|
+| `全部是单位向量` | 循环里 `continue` 跳过了零向量，最大值一直是 0 |
+| `全部垂直于法线` | `dot(零向量, n)` 恒等于 0 |
+| `夹角 ≤ 0.5°` | 除零产生 NaN，`std::fmax` **忽略 NaN**，最大值停在 0 |
+
+修法：把「有没有垃圾数据」本身也写进判据。
+
+```cpp
+check_bool("S4 全部垂直于顶点法线（且无零向量）",
+           !any_zero && max_perp_err <= 1e-9);
+```
+
+### 5. `std::fmax` / `std::fmin` 会忽略 NaN
+
+```cpp
+std::fmax(0.0, std::nan(""))   // → 0.0    不是 NaN！
+std::fmax(std::nan(""), 5.0)   // → 5.0
+```
+
+这是 C 标准规定的：`fmax` 返回「另一个参数」当其中一个是 NaN。
+
+**好处**：NaN 不会污染「求最大值」的结果。
+**坏处**：**NaN 会被静默吞掉** —— 上面第 4 节的三条假绿就有一条是它造成的。
+
+> 想让 NaN 冒出来：用 `a > b ? a : b`（NaN 参与比较恒为 false，会选 b），或者显式 `std::isnan` 检查。
