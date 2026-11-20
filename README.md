@@ -9,6 +9,44 @@
 
 ## 效果展示
 
+### Day 28 · P6 二进制 PPM：同一张图，两种编码
+
+> 这一课没有渲染图 —— 它的产物是「读得快 3.5 倍、且像素完全一样」。
+
+同一张 256×256 图的开头：
+
+```
+models/uvgrid.ppm      (686,802 B)   P3 文本
+  50 33 0D 0A 32 35 36 20 32 35 36 0D 0A 32 35 35 0D 0A 32 33 30 20 34 30 20 34 30
+  P  3 \r \n 2  5  6     2  5  6 \r \n 2  5  5 \r \n 2  3  0     4  0     4  0
+
+models/uvgrid_p6.ppm   (196,623 B)   P6 二进制
+  50 36 0A 32 35 36 20 32 35 36 0A 32 35 35 0A E6 28 28 E6 28 28 E6 28 28
+  P  6 \n 2  5  6     2  5  6 \n 2  5  5 \n ·  (  (  ·  (  (  ·  (  (
+```
+
+> 头部四个字段完全一样，只是数据从 `230 40 40`（7 个字符）变成 `E6 28 28`（3 个字节）。
+> 230 = 0xE6，40 = 0x28，**同一个红色**。
+
+**四个坑：**
+
+| 坑 | 后果 |
+|---|---|
+| `get()` 吃的空白不是「恰好一个」 | 整张图错位一位 → **斜向颜色污迹** |
+| `maxval > 255` 时每样本 2 字节 | 用 1 字节读 → 全乱 |
+| 2 字节是**大端**，`memcpy` 到 `uint16_t` 会读反 | `256` 变 `1`，`1` 变 `256` |
+| `read()` 不检查 `gcount()` | 截断文件静默留黑 |
+
+**三步验收：**
+
+| 层 | 判据 | 结果 |
+|---|---|---|
+| 单元 | P3 与 P6 逐像素相同 | **最大差 = 0** |
+| 素材 | P6 比 P3 小 3 倍 | 3.493× |
+| **端到端** | 贴图换成 P6 重渲 | **PPM 逐字节相同** |
+
+> 第三条一次性验证「读文件 → 纹理采样 → 着色 → 写文件」整条链。
+
 ### Day 27 · 切线帧跨三角形共享：分片常数 → 光滑
 
 ![圆环 + 法线贴图](gallery/day27-torus-normal-map.png)
@@ -992,7 +1030,8 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 25 | **法线贴图** —— 切线帧（2×2 方程 + Gram-Schmidt）+ 绿通道手性变异测试 | ✅ |
 | 26 | **六视图 UV 朝向** —— 显式世界轴 + 点积投影；发现并修正六面镜像 | ✅ |
 | 27 | **切线帧跨三角形共享** —— 顶点切线累加 + Gram-Schmidt；误差 3.756° → 0.215° | ✅ |
-| — | 后续：P6 二进制 PPM → 显式 PDF / MIS → 成品大图与视频 | 📋 |
+| 28 | **P6 二进制 PPM** —— 错位保护 / 大端 / `gcount()`；端到端渲染逐字节相同 | ✅ |
+| — | 后续：显式 PDF / MIS → 成品大图与视频 | 📋 |
 
 ---
 
@@ -1067,7 +1106,8 @@ cpp-renderer/
 │   ├── image_test.cpp      **图片与纹理（14 条：PPM/sRGB/wrap/双线性/方向）**
 │   ├── normal_map_test.cpp **法线贴图/切线帧（9 条：TBN 精确比对 + 几何不变）**
 │   ├── uv_orient_test.cpp  **六视图 UV 朝向（15 条：每面 +u/+v、不镜像、面积）**
-│   └── tangent_share_test.cpp **切线帧共享（12 条：对比解析真值 ∂P/∂u）**
+│   ├── tangent_share_test.cpp **切线帧共享（12 条：对比解析真值 ∂P/∂u）**
+│   └── ppm_p6_test.cpp     **P6 二进制（9 条：P3/P6 逐像素相同 + 大端）**
 ├── models/                 **测试模型与纹理（由 tools/gen_obj.ps1 / gen_texture.ps1 / gen_normal_map.ps1 生成）**
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
@@ -1079,6 +1119,7 @@ cpp-renderer/
 │   ├── emitted_demo.cpp   **把 ray_color 的递归剥光，用真数字跑一遍**
 │   ├── cosine_sampling_demo.cpp **实测 E[cosθ]：证明余弦加权，量权重方差**
 │   ├── stream_demo.cpp    **流语法演示（istringstream / >> / getline / stoi）**
+│   ├── ppm_p6_demo.cpp    **P6 的“样本号 ↔ 字节下标”对照演示（假数据）**
 │   ├── gen_obj.ps1        生成测试模型 cube / cube_uv / icosahedron / torus
 │   ├── gen_texture.ps1    生成测试纹理 models/uvgrid.ppm（四角异色）
 │   ├── gen_normal_map.ps1 **生成法线图 models/bumps_normal.ppm（4×4 圆凸起）**

@@ -932,3 +932,108 @@ std::fmax(std::nan(""), 5.0)   // → 5.0
 **坏处**：**NaN 会被静默吞掉** —— 上面第 4 节的三条假绿就有一条是它造成的。
 
 > 想让 NaN 冒出来：用 `a > b ? a : b`（NaN 参与比较恒为 false，会选 b），或者显式 `std::isnan` 检查。
+
+---
+
+## Day 28 · 二进制 I/O / 端序 / 编译警告
+
+### 1. `>>` 只适合文本，二进制必须用 `read()`
+
+```cpp
+in >> x;                 // ✗ 对二进制：会跳过空白、试数字解析、受 locale 影响
+in.read(ptr, n);         // ✓ 原样搬 n 个字节
+```
+
+`read()` 的签名：
+
+```cpp
+std::istream& read(char* s, std::streamsize n);
+```
+
+注意参数是 `char*` —— 所以 `unsigned char` 缓冲区要 `reinterpret_cast`：
+
+```cpp
+std::vector<unsigned char> buf(n);
+in.read(reinterpret_cast<char*>(buf.data()), static_cast<std::streamsize>(buf.size()));
+```
+
+### 2. `read()` 不抛异常，用 `gcount()` 检查
+
+```cpp
+if (in.gcount() != static_cast<std::streamsize>(buf.size())) {
+    // 文件被截断了
+}
+```
+
+`gcount()` 返回**上一次非格式化输入操作实际读到的字节数**。
+不检查的后果：剩下的缓冲区保持初值（`vector<unsigned char>` 是 0），
+表现为"加载成功、但下半张图全黑"。
+
+> **对比**：`std::vector::at()` 越界抛异常、`[]` 不检查。
+> C++ 的 I/O 也是这个风格 —— **默认不检查，检查是你的事**。
+
+### 3. 端序（endianness）
+
+```
+大端（big-endian）：高字节在前      256 = 0x01 0x00
+小端（little-endian）：低字节在前   256 = 0x00 0x01
+```
+
+- **x86 / x86-64 / ARM（默认）：小端**
+- **网络协议（TCP/IP）、PPM/PNG 等多字节整数：大端**
+
+所以：
+
+```cpp
+uint16_t v;
+std::memcpy(&v, buf + p, 2);        // ✗ 在 x86 上读出反的值
+s = (buf[p] << 8) | buf[p + 1];     // ✓ 显式拼，跨平台正确
+```
+
+> **`0x01 0x00` vs `0x00 0x01` 是最省事的端序测试用例** ——
+> 两个值（256 和 1）互为字节交换，一眼就能看出有没有读反。
+
+### 4. `unsigned char` 才能安全左移
+
+```cpp
+char  c = 0xE6;              // 有符号 → -26
+c << 8;                      // ✗ 负数左移是 UB
+unsigned char u = 0xE6;      // 230
+u << 8;                      // ✓ 整数提升成 int，230*256 = 58880
+```
+
+**处理二进制数据一律用 `unsigned char`。**
+
+### 5. `compile=0` 不代表代码对
+
+```cpp
+Image f() {
+    // 忘了 return
+}                            // → warning: control reaches end of non-void function
+                             // → 退出码依然是 0
+```
+
+C++ 标准说这是 **UB（未定义行为）**，不要求编译器报错。GCC/Clang 给
+`-Wreturn-type` 警告，MSVC 给 `C4715` 警告 —— 都**不是错误**。
+
+> **习惯：把 `warning:` 当 `error:` 处理。**
+> 项目长期保持 0 warning，就是为了让"新冒出来的那一条"永远醒目。
+
+### 6. 不要用 PowerShell 改写带中文的源码
+
+```powershell
+$s = Get-Content src\main.cpp -Raw                 # ✗ 无 BOM 的 UTF-8 被当 GBK 读
+Set-Content src\main.cpp -Value $s -Encoding utf8  # ✗ 写出带 BOM 的 UTF-8
+```
+
+结果：中文全变乱码 + 文件多了 BOM，编译报
+`extended character ... is not valid in an identifier`。
+
+**正确做法**：
+
+```powershell
+$s = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
+[System.IO.File]::WriteAllText($p, $s, (New-Object System.Text.UTF8Encoding($false)))
+```
+
+或者干脆用编辑器 / 编辑工具改，别用 PowerShell 碰源码。
