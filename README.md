@@ -9,6 +9,57 @@
 
 ## 效果展示
 
+### Day 29 · 显式 PDF：一张图都没变，这才是好消息
+
+> 这一课**没有新渲染图** —— 三个场景的 PPM 与改动前**逐字节相同**（MD5 一致）。
+> 把 `attenuation` 从「含 pdf 补偿」拆成「纯 BRDF」，同时让积分器补上补偿，
+> 是一次数学恒等变换。**恒等重构的正确性只能用字节级对比证明，不能用图。**
+
+被拆掉的那行「看起来天经地义」的代码：
+
+```cpp
+attenuation = albedo;          // Day 19 写的
+```
+
+展开看它为什么成立：
+
+```
+attenuation = f · cosθ / pdf
+            = (albedo/π) · cosθ / (cosθ/π)     ← 余弦采样的 pdf
+            = albedo                            ← cosθ 和 π 被配平掉了
+```
+
+换到均匀半球（`pdf = 1/(2π)`）就必须乘 `2·cosθ`：
+
+```
+attenuation = (albedo/π) · cosθ / (1/(2π)) = 2·cosθ·albedo
+```
+
+**同一个公式，两种采样方式，两个不同答案。** 所以 Day 29 把 `pdf` 单独暴露：
+
+```cpp
+double scattering_pdf(...) const override;   // 余弦：cosθ/π   均匀半球：1/(2π)
+attenuation = albedo / pi;                   // 只剩 BRDF，与采样无关
+// 积分器统一做：attenuation * cosθ / pdf
+```
+
+| 验收层 | 判据 | 结果 |
+|---|---|---|
+| 单元测试 | `∫ pdf dω == 1`（两个分布都积出 1） | `pdf_test` **10/10** |
+| 解耦 | U7（余弦）与 U8（均匀半球）的 `attenuation` **相等** | 均 `0.190986 = 0.6/π` |
+| 端到端 | 三场景 MD5 与改动前对比 | **全部相同** |
+
+三个场景覆盖三条路径：`--cornell`（余弦 + NEE）、`--cube-tris --no-nee`（纯随机弹射）、
+`--cube-tris --uniform-hs`（均匀半球）。
+
+**踩到的坑（症状 → 病因）：**
+
+| 症状 | 病因 |
+|---|---|
+| `error: a function-definition is not allowed here` | `scattering_pdf` 写进了 `scatter()` 里（Day 23 同款） |
+| 金属、玻璃**全黑**，Cornell 亮度 90 → **56.559** | `pdf == 0` 分支写成 `throughput = Color(0,0,0)`，应传 `attenuation` |
+| U8 实测 `0.150058` 而非 `0.190986`，比值 0.7857 | 漏了 `/π`，比值里恰好带着那个方向的 `cosθ` |
+
 ### Day 28 · P6 二进制 PPM：同一张图，两种编码
 
 > 这一课没有渲染图 —— 它的产物是「读得快 3.5 倍、且像素完全一样」。
@@ -1031,7 +1082,10 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 26 | **六视图 UV 朝向** —— 显式世界轴 + 点积投影；发现并修正六面镜像 | ✅ |
 | 27 | **切线帧跨三角形共享** —— 顶点切线累加 + Gram-Schmidt；误差 3.756° → 0.215° | ✅ |
 | 28 | **P6 二进制 PPM** —— 错位保护 / 大端 / `gcount()`；端到端渲染逐字节相同 | ✅ |
-| — | 后续：显式 PDF / MIS → 成品大图与视频 | 📋 |
+| 29 | **显式 PDF** —— `attenuation == albedo` 只是巧合；`∫pdf dω = 1` 数值验证；δ 分布约定 | ✅ |
+| — | 后续：MIS → 成品大图与视频 | 📋 |
+
+> 全套单元测试：**197 项断言，全部通过，0 warning**（`pdf_test` 10 条是本日新增）。
 
 ---
 
@@ -1091,8 +1145,8 @@ cpp-renderer/
 │   ├── normal_map.h       **法线贴图：解码 + `NormalMappedMaterial` 装饰器**
 │   ├── diffuse_light.h    **纯光源：只发光不散射**
 │   ├── hittable_list.h    物体列表（组合模式，将来换 BVH 只需改这里）
-│   ├── material.h         Material 抽象接口
-│   ├── lambertian.h       哑光
+│   ├── material.h         Material 抽象接口（**含 `scattering_pdf()`，Day 29**）
+│   ├── lambertian.h       哑光（**显式余弦 / 均匀半球 pdf**）
 │   ├── metal.h            金属（镜面 + fuzz）
 │   └── dielectric.h       玻璃 / 水 / 钻石（折射 + 全反射 + **Schlick 菲涅尔**）
 ├── src/
@@ -1107,7 +1161,8 @@ cpp-renderer/
 │   ├── normal_map_test.cpp **法线贴图/切线帧（9 条：TBN 精确比对 + 几何不变）**
 │   ├── uv_orient_test.cpp  **六视图 UV 朝向（15 条：每面 +u/+v、不镜像、面积）**
 │   ├── tangent_share_test.cpp **切线帧共享（12 条：对比解析真值 ∂P/∂u）**
-│   └── ppm_p6_test.cpp     **P6 二进制（9 条：P3/P6 逐像素相同 + 大端）**
+│   ├── ppm_p6_test.cpp     **P6 二进制（9 条：P3/P6 逐像素相同 + 大端）**
+│   └── pdf_test.cpp        **显式 PDF（10 条：∫pdf dω = 1 + attenuation 与采样无关）**
 ├── models/                 **测试模型与纹理（由 tools/gen_obj.ps1 / gen_texture.ps1 / gen_normal_map.ps1 生成）**
 ├── tools/
 │   ├── run.ps1            一键：编译 -> 渲染 -> 转 PNG（分阶段报耗时）
@@ -1164,6 +1219,7 @@ cmake --build build -j
 ./build/raytracer.exe --obj-torus-normal # 圆环 + 法线贴图（Day 27：共享切线帧）
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
 ./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
+./build/raytracer.exe --uniform-hs --no-nee  # 纯暴力路径追踪 + 均匀半球（验证 pdf 显式化）
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
 ./build/raytracer.exe --quads --spp 400   # 自定义采样数
 ./build/raytracer.exe --quads --no-bvh    # 关掉 BVH，用于两步验收
@@ -1267,6 +1323,20 @@ cmake --build build -j
   引用做不到这件事，因为**引用不能为空**。
 - **递归深度限制**：玻璃的全反射会让递归无限深入（曾造成栈溢出 `0xC00000FD`），
   用 `max_depth` 作保险丝。
+- **`attenuation == albedo` 只是巧合**：余弦加权采样的 `pdf = cosθ/π`，
+  代进 `f·cosθ/pdf` 后 cosθ 和 π 全被约掉。换采样方式（均匀半球 `pdf = 1/(2π)`）
+  就必须乘 `2·cosθ`。所以 Day 29 把 `scattering_pdf()` 单独暴露出来，
+  `attenuation` 降格为**纯 BRDF** `albedo/π`，`cosθ/pdf` 由积分器统一补。
+- **pdf 有硬判据可测**：`∫ pdf dω = 1`（`dω = sinθ dθ dφ`）。
+  这条在单元测试里能用数值求积直接验证，而「attenuation 恰好等于 albedo」
+  这种巧合写错了只能靠肉眼看图变亮变暗。**能被测试的公式比看起来对的代码值钱。**
+- **δ 分布没有 pdf**：镜面 / 玻璃只有一个散射方向，概率密度无穷大。
+  `Material::scattering_pdf()` 默认返回 `0`（合法的语义，不是"未实现"），
+  积分器约定 `pdf == 0` 时 `cosθ/pdf = 1`。
+  写成 `throughput = Color(0,0,0)` 会让**所有金属和玻璃全黑**（实测 Cornell 亮度 90 → 56.6）。
+- **恒等重构的验收是字节级不变**：显式化 PDF 前后，三个场景（余弦+NEE / 纯随机弹射 /
+  均匀半球）的 PPM MD5 全部相同 —— 说明数学恒等、随机数消耗顺序也没变。
+  **只差几个像素 = 随机数顺序变了；整体亮度差 = 公式错。** 两种症状判别价值很高。
 
 ---
 

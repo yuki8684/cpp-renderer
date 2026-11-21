@@ -64,6 +64,36 @@ public:
     // /* rec */ 就是在告诉编译器：“我知道有这个参数，但我这里故意不用它，别警告我
     virtual Color diffuse_albedo(const HitRecord& /* rec */) const { return Color(0, 0, 0); }
 
+    // ============================================================
+    // ★ Day 29：显式的概率密度函数 pdf
+    //
+    // 问题：scatter() 填出来的 attenuation 到底代表什么？
+    //
+    //   正确答案：attenuation = f · cosθ / pdf
+    //     f     = BRDF
+    //     cosθ  = 散射方向与法线的余弦
+    //     pdf   = 【这个采样策略】抽到该方向的概率密度（立体角测度）
+    //
+    //   以前 pdf 被"藏"在 scatter() 里面 —— 因为余弦采样时
+    //   cosθ 和 π 恰好约掉，attenuation 就等于 albedo，看起来像是"不需要 pdf"。
+    //   这是一种巧合，不是物理。
+    //
+    // 为什么必须显式拿出来：
+    //   ① 要和别的采样策略合并（MIS）时，你必须能回答
+    //      "方向 w 用这套策略被抽到的概率是多大"
+    //   ② 换采样策略时不用再手推 attenuation（Day 19 就是手推的）
+    //
+    // 返回值单位是【单位立体角】，和 pdf_ω 一致。
+    //
+    // ★ 镜面 / 玻璃返回 0：它们是 δ 分布，只有一个方向，
+    //   "概率密度"是无穷大 —— 没有有限的 pdf 可言。
+    //   积分器对 pdf == 0 的材质按约定取 cosθ/pdf = 1。
+    // ============================================================
+    virtual double scattering_pdf(const Ray& /* r_in */, const HitRecord& /* rec */,
+                                  const Ray& /* scattered */) const {
+        return 0.0;
+    }
+
     // ★ Day 24：这个材质有没有法线贴图？
     //   默认 nullptr —— 绝大多数材质没有，几何那边直接跳过扰动。
     //   几何在命中时调用它，用切线空间把法线"掰"一下，见 Triangle::set_hit_normal()。

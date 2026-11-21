@@ -1037,3 +1037,159 @@ $s = [System.IO.File]::ReadAllText($p, [System.Text.Encoding]::UTF8)
 ```
 
 或者干脆用编辑器 / 编辑工具改，别用 PowerShell 碰源码。
+
+---
+
+## Day 29 · 嵌套函数 / 虚函数默认实现 / 恒等重构
+
+### 1. C++ 函数只能定义在「文件作用域」或「类作用域」
+
+这个坑 Day 23 已经踩过一次（`uv_area` 写在 `main()` 里），今天原样重演：
+
+```cpp
+bool scatter(...) const override {
+    ...
+    double scattering_pdf(...) const override {   // ✗ 函数里定义函数
+        ...
+    }
+}
+```
+
+```
+error: a function-definition is not allowed here before '{' token
+```
+
+合法位置只有两处：
+
+```cpp
+// ① 文件作用域（顶格）
+double helper(double x) { return x * 2; }
+
+class Lambertian : public Material {
+public:
+    // ② 类作用域（4 空格，和别的成员平级）
+    double scattering_pdf(...) const override { ... }
+
+    bool scatter(...) const override {
+        auto f = [](double x) { return x * 2; };   // 想在函数里建小函数 → lambda
+    }
+};
+```
+
+> **自查口诀**：在函数体内部看到「8 空格的返回类型 + `override` + `{`」，
+> 位置一定错了。**成员函数之间是平级的。**
+
+顺便：`.h` 里的内联成员函数，编译器通常不会把错误定位到「嵌套」这件事上，
+只报 `a function-definition is not allowed here`，容易误以为是括号不配对。
+**看到这句话先往上找最近的 `{` 属于谁。**
+
+### 2. 虚函数可以有默认实现 —— 用来表达「这一类没有这个概念」
+
+```cpp
+class Material {
+public:
+    virtual bool scatter(...) const = 0;                    // 纯虚：必须实现
+    virtual double scattering_pdf(...) const { return 0.0; } // 默认：大多数不用管
+};
+```
+
+设计意图很重要：这里 `0` **不是**「还没实现」，而是一个有物理含义的返回值 ——
+
+```
+δ 分布（镜面 / 玻璃）只有一个散射方向
+→ 该方向的概率密度是无穷大，其余方向是 0
+→ 不存在有限的 pdf
+```
+
+于是积分器约定：`pdf == 0` 时 `cosθ/pdf = 1`。
+
+```cpp
+if (pdf > 0.0) throughput = attenuation * (cos_theta / pdf);
+else           throughput = attenuation;      // δ 分布
+```
+
+> **经验**：给虚函数写默认实现时，问自己「这个默认值是不是一个**合法的语义**」。
+> 是 → 好设计；只是想偷懒 → 改成纯虚。
+> 这里 `0.0` 是合法的（表示无有限密度），所以合适。
+
+### 3. 把「常数被约掉」的结果还原成公式
+
+Day 19 的代码：
+
+```cpp
+attenuation = albedo;      // 余弦采样
+attenuation = operator*(2, albedo) * cos_t;   // 均匀半球（另一个分支）
+```
+
+前者看起来像「反射率」，其实是：
+
+```
+(albedo/π) · cosθ / (cosθ/π)  =  albedo
+```
+
+cosθ 和 π 是被**采样策略配平**掉的。今天拆开成：
+
+```cpp
+attenuation = albedo / pi;                 // 只是 BRDF，与采样无关
+scattering_pdf(...) { return cos_t / pi; } // pdf 单独一个函数
+// 积分器统一做 attenuation * cosθ / pdf
+```
+
+**判断一个量该不该拆开的标准：它是否依赖别的东西。**
+`attenuation` 依赖采样方式，说明采样方式的信息混进来了。
+
+### 4. 恒等重构的验收标准：输出逐字节相同
+
+把 `attenuation` 从「含 pdf 补偿」改成「纯 BRDF」，同时让积分器补上补偿。
+数学上恒等，实际呢？
+
+**必须用字节级对比，不能用「看起来一样」。**
+
+```powershell
+--cornell --spp 64                 → C61F1512...
+--cube-tris --spp 64 --no-nee      → 32258571...
+--cube-tris --spp 64 --uniform-hs  → 5C0D9F0C...
+```
+
+三个场景覆盖三条路径，MD5 全部不变。
+
+**如果结果差了几个像素而不是整体偏差，最可能的原因：**
+
+```
+消耗随机数的顺序变了
+  → 每条光线的随机序列错位
+  → 画面结构正确但每个像素的噪声不同
+```
+
+**如果整体亮度变了**，那是公式错，不是随机数错。**两种症状的判别价值很高。**
+
+### 5. 数值断言能反推出错误位置
+
+学员把 `attenuation` 写成了 `albedo`（漏掉 `/π`），U8 实测：
+
+```
+期望 0.190986      实际 0.150058
+比值 0.150058 / 0.190986 = 0.7857 ≈ cos(38.2°)
+```
+
+`albedo·cosθ / albedo/π = π·cosθ`… 比值里带着一个 cosθ，
+立刻说明「多乘/少乘了一个 cosθ」。**一个数字就能定位到哪一项错了**，
+比肉眼看图快得多。
+
+> 这也是为什么测试里要用 `albedo(0.6, 0.4, 0.2)` 这种**可手算**的值，
+> 而不是随机数 —— 期望值要能当场算出来。
+
+### 6. 求积公式：半球上的 `dω = sinθ dθ dφ`
+
+数值验证 `∫ pdf dω = 1` 时，必须有 `sinθ`：
+
+```cpp
+// 中点法则，θ ∈ [0, π/2]，φ ∈ [0, 2π]
+sum += pdf(θ, φ) * std::sin(theta) * dtheta * dphi;
+```
+
+`sinθ` 来自球坐标的雅可比行列式 —— **立体角不是 θ-φ 平面上的均匀面积**，
+越靠近极点（θ→0）同样的 dθ 对应的立体角越小。
+
+丢了 `sinθ` 会积出 `2`（对 `cosθ/π` 而言），
+`∫pdf dω` 变成 2 —— 一个概率密度积分出 2，说明没归一化，测试立刻抓到。

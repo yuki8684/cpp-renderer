@@ -196,9 +196,29 @@ Color ray_color(const Ray& r, const Hittable& world, int depth, bool skip_emitte
            did_nee = true;
        }
 
+       const double pdf = rec.mat->scattering_pdf(r, rec, scattered);
+       Color throughput;
+         if (pdf > 0.0) {
+              // ★ Day 29：显式 pdf
+              //   以前 pdf 被"藏"在 scatter() 里面 —— 因为余弦采样时
+              //   cosθ 和 π 恰好约掉，attenuation 就等于 albedo，看起来像是"不需要 pdf"。
+              //   这是一种巧合，不是物理。
+              //
+              //   正确答案：attenuation = f · cosθ / pdf
+              //     f     = BRDF
+              //     cosθ  = 散射方向与法线的余弦
+              //     pdf   = 【这个采样策略】抽到该方向的概率密度（立体角测度）
+              //
+              //   Day 29 改成显式 pdf 后，scatter() 填出来的 attenuation 就是 BRDF f，
+              //   所以要手动乘上 cosθ / pdf。
+              double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
+              throughput = attenuation * (cos_theta / pdf);
+         } else {
+              throughput = attenuation;   // 退化成以前的"不需要 pdf"的情况
+         }
        return emitted
             + direct
-            + attenuation * ray_color(scattered, world, depth - 1, did_nee);
+            + throughput * ray_color(scattered, world, depth - 1, did_nee);
     }
 
     // 没命中：返回背景色
