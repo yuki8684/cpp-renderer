@@ -5,6 +5,9 @@
 #include <thread>      // Day 18：std::thread / hardware_concurrency
 #include <atomic>      // Day 18：进度计数
 #include <cstdint>     // Day 18：std::uint8_t
+#include <filesystem>  // Day 30：create_directories（帧序列目录）
+#include <cstdio>      // Day 30：snprintf（帧文件名）
+#include <system_error>// Day 30：std::error_code
 
 #ifdef _WIN32
 #include <windows.h>
@@ -702,7 +705,8 @@ HittableList sphere_mesh_scene(bool smooth) {
 //
 // 开口在 z = 0 一侧朝向相机。
 // ⚠️ 相机在盒子外面，所以背景【必须是纯黑】——否则天光会从开口漏进来。
-HittableList cornell_box() {
+// hero = true 时给"交付用"的机位做一点摆位修正（见 docs/devlog.md Day 30）
+HittableList cornell_box(bool hero = false) {
     HittableList world;
 
     auto red   = std::make_shared<Lambertian>(Color(0.65, 0.05, 0.05));
@@ -719,10 +723,17 @@ HittableList cornell_box() {
     // 左墙（红） 法线 +x
     // ⚠️ 相机在 z = -800 朝 +z 看，所以"世界 +x 方向"出现在【画面左侧】：
     //    面向 +z、头顶 +y 时，你的右手指向 -x。
-    //    按 RTIOW 原版，红在左、绿在右。
+    //    推导：w = unit(lookfrom − lookat) = (0,0,−1)，
+    //          u = unit(cross(vup, w)) = unit(cross((0,1,0),(0,0,−1))) = (−1,0,0)
+    //          → 屏幕右方向 u 指向 −x，所以 +x 在画面【左】，−x（x=0 那面）在画面【右】。
+    //    ★ Day 30 勘误：下面这条注释以前写反了。
+    //      x=0 这面（红）实际渲染出来在【画面右侧】，x=W 那面（绿）在左侧。
+    //      也就是说本项目的结果是「绿左红右」，与经典 Cornell Box「红左绿右」镜像相反。
+    //      几何/光照没有任何问题，只是构图左右相反 —— 影响观感不影响正确性，
+    //      所以没有为此推翻所有历史验收哈希（理由见 docs/devlog.md Day 30 第六节）。
     world.add(std::make_shared<Quad>(Point3(0, 0, 0),
                                      Vec3(0, H, 0), Vec3(0, 0, H), red));
-    // 右墙（绿） 法线 -x
+    // 另一面墙（绿） 法线 −x（画面上出现在左侧）
     world.add(std::make_shared<Quad>(Point3(W, 0, 0),
                                      Vec3(0, 0, H), Vec3(0, H, 0), green));
     // 地板（白） 法线 +y
@@ -737,7 +748,13 @@ HittableList cornell_box() {
 
     // 天花板上的方形光源 —— 法线朝下（-y）
     // ★ Day 17：同时把它登记进光源表，NEE 才知道该往哪里采样
-    auto light_quad = std::make_shared<Quad>(Point3(W / 2 + 130, H - 1, 370),
+    //
+    // ★ Day 30 修正（hero）：原来光源 z ∈ [190, 370]，而高盒子的正面在 z = 180。
+    //   光源整体在那面墙的【背后】→ 直接光 cosθ < 0 → 正面只剩间接光 → 几乎全黑。
+    //   物理上完全正确，但作为封面图不好看。把光源前移到 z ∈ [150, 330]，
+    //   让它有一小半落在正面之前，正面就能吃到擦射光。
+    const double light_z = hero ? 300.0 : 370.0;
+    auto light_quad = std::make_shared<Quad>(Point3(W / 2 + 130, H - 1, light_z),
                                              Vec3(-260, 0, 0), Vec3(0, 0, -180), light);
     world.add(light_quad);
     g_lights.push_back({ light_quad.get(), Color(15.0, 15.0, 15.0) });
@@ -754,8 +771,12 @@ HittableList cornell_box() {
         world.add(std::make_shared<Quad>(Point3(x0, y0, z0), Vec3(0, sy, 0), Vec3(sx, 0, 0), m)); // -z
     };
 
-    add_box(330, 590,   0, 330, 180, 440, white);   // 高盒子
-    add_box(650, 880,   0, 190, 300, 540, white);   // 矮盒子
+    // ★ Day 30 修正（hero）：高盒子原来 y 到 330，而相机在 y = 277.5 —— 
+    //   顶面比相机高，看不到；能看到的只有那一片背光的前面。
+    //   降到 240 后顶面进入视野，被天花板光源直接照亮，画面立刻有层次。
+    add_box(330, 590,   0, hero ? 240.0 : 330.0, hero ? 250.0 : 180.0,
+                                       hero ? 530.0 : 440.0, white);   // 高盒子
+    add_box(650, 880,   0, 190, 300, 540, white);                   // 矮盒子
 
     return world;
 }
@@ -861,8 +882,10 @@ Scene load_scene(const std::string& name, int half) {
         world  = sphere_mesh_scene(name == "sphere-smooth");
         camera = Camera(Point3(0, 3.5, 11), Point3(0, 0, 0), Vec3(0, 1, 0), 32, 12.0, 0.0);
     }
-    else if (name == "cornell") {
-        world  = cornell_box();
+    else if (name == "cornell" || name == "cornell-hero") {
+        // cornell-hero：Day 30 交付用的变体（光源前移 + 高盒子降低）。
+        // 特意另开一个名字而不改 cornell —— 否则所有历史验收哈希全部作废。
+        world  = cornell_box(name == "cornell-hero");
         camera = Camera(Point3(493.5, 277.5, -800), Point3(493.5, 277.5, 0),
                         Vec3(0, 1, 0), 38.3, 800.0, 0.0);
         // 封闭盒子：相机在盒子外面，背景非黑的话"天光"会从开口漏进来
@@ -908,6 +931,42 @@ Scene load_scene(const std::string& name, int half) {
 }
 
 
+// ============================================================
+// ★ Day 30：相机动画 —— 给一个帧号，返回那一刻的相机
+//
+//   两种运动都是“只换位置”，其余参数（vfov / 光圈 / 看向哪）全部不变：
+//
+//   orbit（环绕）：绕 y 轴匀速转一整圈。用 i/n 而不是 i/(n-1)，
+//                  这样最后一帧的下一帧正好回到第一帧 —— 视频可以无缝循环。
+//   dolly（推近）：从起点匀速推进到 55% 的距离，同时略微抬升。
+//                  Cornell Box 是封闭盒子，绕到侧面就会穿墙，
+//                  所以只能沿开口方向进退。
+// ============================================================
+Camera animated_camera(const Camera& base, const std::string& mode, int i, int n) {
+    const Point3& pivot = base.target();          // 支点 = 一直看着的那个点
+    const Vec3    v     = base.position() - pivot; // 从支点指向相机
+
+    if (mode == "orbit") {
+        // 绕 y 轴旋转：(x, z) 顺时针转 a 弧度
+        //   标准旋转矩阵： x' = x·cos − z·sin ， z' = x·sin + z·cos
+        //   这里取反号，让相机从右侧开始往左绕（视角方向与直觉一致）
+        const double a = 2.0 * pi * double(i) / double(n);
+        const double c = std::cos(a);
+        const double s = std::sin(a);
+        const Vec3   r(v.x() * c + v.z() * s, v.y(), -v.x() * s + v.z() * c);
+        return base.moved_to(pivot + r);
+    }
+
+    // dolly（默认）
+    const double t     = (n > 1) ? double(i) / double(n - 1) : 0.0;
+    const double scale = 1.0 - 0.45 * t;           // 距离收缩到 55%
+    const double rise  = 0.08 * v.length() * t;    // 抬升量按距离比例算，换场景也能用
+
+    return base.moved_to(Point3(pivot.x() + v.x() * scale,
+                                pivot.y() + v.y() * scale + rise,
+                                pivot.z() + v.z() * scale));
+}
+
 int main(int argc, char** argv) {
 #ifdef _WIN32
     // 让 Windows 控制台按 UTF-8 解释输出，避免中文日志变成乱码
@@ -920,6 +979,15 @@ int main(int argc, char** argv) {
     bool bench = false; // 是否只跑性能测试（不输出图片）
     bool use_bvh = true;    // 是否用 BVH（--no-bvh 关闭，用于两步验收）
     int  samples_per_pixel = 32;   // 每像素采样数（--spp 覆盖）
+
+    // ★ Day 30：分辨率 / 输出路径 / 动画（以前全是写死的常量）
+    int         image_width  = 400;
+    int         image_height = 225;
+    std::string out_path     = "output/image.ppm";
+    std::string outdir       = "output/frames";       // --outdir：帧序列目录
+    std::string anim_mode;                             // --anim orbit|dolly（空 = 静帧）
+    int         frames       = 1;                      // --frames N
+    int         frame_start  = 0;                      // --frame-start（多段镜头拼成一个目录时用）
 
     // 场景名：random / quads / cube-quads / cube-tris
     std::string scene_name = "random";
@@ -952,6 +1020,9 @@ int main(int argc, char** argv) {
         }
         else if(arg == "--cornell") {
             scene_name = "cornell";
+        }
+        else if(arg == "--cornell-hero") {
+            scene_name = "cornell-hero";    // Day 30：交付用摆位（光源前移 + 高盒子降低）
         }
         else if(arg == "--obj-ico") {
             scene_name = "obj-ico";
@@ -1006,7 +1077,36 @@ int main(int argc, char** argv) {
             samples_per_pixel = std::stoi(argv[i + 1]);
             ++i;
         }
-       
+        // ★ Day 30：出大图 / 出视频需要的四个开关
+        else if(arg == "--width" && i + 1 < argc) {
+            image_width = std::stoi(argv[i + 1]);
+            ++i;
+        }
+        else if(arg == "--height" && i + 1 < argc) {
+            image_height = std::stoi(argv[i + 1]);
+            ++i;
+        }
+        else if(arg == "--out" && i + 1 < argc) {
+            out_path = argv[i + 1];
+            ++i;
+        }
+        else if(arg == "--anim" && i + 1 < argc) {
+            anim_mode = argv[i + 1];       // orbit | dolly
+            ++i;
+        }
+        else if(arg == "--frames" && i + 1 < argc) {
+            frames = std::stoi(argv[i + 1]);
+            ++i;
+        }
+        else if(arg == "--outdir" && i + 1 < argc) {
+            outdir = argv[i + 1];
+            ++i;
+        }
+        else if(arg == "--frame-start" && i + 1 < argc) {
+            frame_start = std::stoi(argv[i + 1]);
+            ++i;
+        }
+
     }
     
     //--bench时只跑性能测试，不渲染图像，直接返回
@@ -1020,23 +1120,16 @@ int main(int argc, char** argv) {
 
     // ---------- 图像参数 ----------
     // ⚠️ 随机场景有 ~480 个球，比 Day 6 慢约 100 倍！
-    //    第一次先用小图验证：image_width = 160, image_height = 90, samples = 8
-    //    确认没问题，再改回 400 / 225 / 32 正式渲染
-    const int image_width  = 400;
-    const int image_height = 225;
-    
-    // 每个像素采样次数（越大越平滑，但越慢）
-    // —— 由 --spp 覆盖，默认 32
+    //    调试时先用小图：--width 160 --height 90 --spp 8
+    //    ★ Day 30：400 / 225 从【编译期常量】变成了变量，由 --width / --height 覆盖。
+    //      以前写 const 是因为不需要改；要改就必须去掉 const（const 是编译期常量，运行时赋不了值）
 
     // 一条光线最多弹射多少次（防止递归无限深入 → 栈溢出）
     const int max_depth = 50;
 
-    // ---------- 打开输出文件（P3 文本 PPM，便于肉眼检查） ----------
-    std::ofstream out("output/image.ppm");
-    if (!out) {
-        std::cerr << "无法创建 output/image.ppm，请确认 output/ 目录存在\n";
-        return 1;
-    }
+    // ---------- 输出文件（P3 文本 PPM，便于肉眼检查） ----------
+    //   静帧：只开一个文件；动画：每帧一个文件（frame_0000.ppm ...）
+    //   ★ 注意：ofstream 不会自动建目录 —— 帧序列目录必须先存在
 
     // ---------- 场景 + 相机：一次装好 ----------
     // 想换场景只改命令行开关（--cornell / --obj-torus ...），见 load_scene()
@@ -1074,9 +1167,61 @@ int main(int argc, char** argv) {
     // 相机和世界是同一套配好的 —— 由 load_scene() 一起给出
     const Camera& camera = loaded.camera;
 
+    // ============================================================
+    // ★ Day 30：静帧 / 动画
+    // ============================================================
+    if (!anim_mode.empty() && frames > 0) {
+
+        // ---------- 动画：逐帧渲染 ----------
+        std::error_code ec;
+        std::filesystem::create_directories(outdir, ec);   // 目录已存在不算错
+        if (ec) {
+            std::cerr << "无法创建目录 " << outdir << "：" << ec.message() << '\n';
+            return 1;
+        }
+
+        std::cerr << "\n[动画] 模式=" << anim_mode << "，共 " << frames << " 帧 → "
+                  << outdir << "\n";
+
+        for (int f = 0; f < frames; ++f) {
+            const Camera cam = animated_camera(camera, anim_mode, f, frames);
+
+            char name[64];
+            std::snprintf(name, sizeof(name), "frame_%04d.ppm", f + frame_start);
+            const std::string path = outdir + "/" + name;
+
+            std::ofstream fout(path);
+            if (!fout) {
+                std::cerr << "无法创建 " << path << '\n';
+                return 1;
+            }
+
+            // 每帧单独进度：帧耗时 × 剩余帧数 就是预估总时长
+            const auto t0 = std::chrono::steady_clock::now();
+            render(scene, cam, image_width, image_height, samples_per_pixel,
+                   max_depth, &fout);
+            fout.close();
+            const auto t1 = std::chrono::steady_clock::now();
+            const double sec = std::chrono::duration<double>(t1 - t0).count();
+
+            std::cerr << "[帧 " << (f + 1) << '/' << frames << "] " << name
+                      << "  " << sec << " s"
+                      << "   预估剩余 " << (sec * (frames - f - 1) / 60.0) << " 分钟\n";        }
+
+        std::cerr << "\n动画渲染完成 -> " << outdir << '\n';
+        return 0;
+    }
+
+    // ---------- 静帧 ----------
+    std::ofstream out(out_path);
+    if (!out) {
+        std::cerr << "无法创建 " << out_path << "，请确认目录存在\n";
+        return 1;
+    }
+
     render(scene, camera, image_width, image_height, samples_per_pixel, max_depth, &out);
 
-    std::cerr << "\n渲染完成 -> output/image.ppm\n";
+    std::cerr << "\n渲染完成 -> " << out_path << '\n';
     return 0;
 }
 

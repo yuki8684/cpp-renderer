@@ -798,6 +798,34 @@ Ray get_ray(double s, double t) const {
 }
 ```
 
+### ★ Day 30 新增：第 7 个参数 `aspect_ratio` + 动画接口
+
+```cpp
+Camera(Point3 lookfrom, Point3 lookat, Vec3 vup,
+       double vfov, double focus_dist, double lens_radius,
+       double aspect_ratio = 16.0 / 9.0);   // 带默认值，老调用点不用改
+```
+
+| 成员 | 作用 |
+|---|---|
+| `moved_to(p)` → `Camera` | **同一套机位参数，只把位置换掉**（相机动画的基础）|
+| `position()` → `const Point3&` | 当前机位 |
+| `target()` → `const Point3&` | 看向的点（动画的**支点**）|
+| `fov()` → `double` | 垂直视野角（度）|
+
+`moved_to` 的存在是为了避免这种写法：
+
+```cpp
+// ✗ 六个参数手抄一遍，抄错任何一个画面就会莫名糊掉
+camera = Camera(new_pos, Point3(493.5,277.5,0), Vec3(0,1,0), 38.3, 800.0, 0.0);
+
+// ✓ 只关心真正变化的那一个量
+camera = base.moved_to(new_pos);
+```
+
+所以构造函数会把 `lookfrom / lookat / vup / vfov / focus_dist / lens_radius /
+aspect_ratio` **都存一份成员**，供 `moved_to()` 重建。
+
 ### 构造函数干了什么（两步）
 
 **第一步：算相机自己的坐标系**

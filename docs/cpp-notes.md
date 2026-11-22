@@ -1165,19 +1165,40 @@ scattering_pdf(...) { return cos_t / pi; } // pdf 单独一个函数
 
 ### 5. 数值断言能反推出错误位置
 
-学员把 `attenuation` 写成了 `albedo`（漏掉 `/π`），U8 实测：
+学员把分支 A 写成了：
+
+```cpp
+attenuation = (2.0 / (2.0 * pi)) * cos_t * albedo;   // ✗
+```
+
+`2.0/(2.0*pi)` 就是 `1/π`，所以这一行等于 `(albedo/π)·cosθ` —— 
+即 **f·cosθ 忘了除以 pdf**（pdf 已经在 `1/π` 里被"用"过一次了，但方式错了）。
+
+U8 实测：
 
 ```
-期望 0.190986      实际 0.150058
-比值 0.150058 / 0.190986 = 0.7857 ≈ cos(38.2°)
+期望 0.190986  (= albedo.r/π)
+实际 0.150058
+比值 0.150058 / 0.190986 = 0.7857
 ```
 
-`albedo·cosθ / albedo/π = π·cosθ`… 比值里带着一个 cosθ，
-立刻说明「多乘/少乘了一个 cosθ」。**一个数字就能定位到哪一项错了**，
-比肉眼看图快得多。
+**比值的判读表：**
+
+| 比值 | 说明 |
+|---|---|
+| **1.0** | 对 |
+| **0.3183 (= 1/π)** | 漏了常数因子 `1/π` |
+| **3.1416 (= π)** | 多乘了一个 `π` |
+| **随运行变化、且等于某个 cosθ** | 多/少乘了一个**随方向变化的**因子（cosθ）|
+
+实测比值 0.7857 落在最后一行（θ≈38.2°），立刻定位到「多乘了一个 cosθ」。
+**一个数字就能区分「常数错」和「方向相关项错」，比肉眼看图快得多。**
 
 > 这也是为什么测试里要用 `albedo(0.6, 0.4, 0.2)` 这种**可手算**的值，
 > 而不是随机数 —— 期望值要能当场算出来。
+>
+> ⏰ 注意：涉及随机采样的断言只有在**固定随机序列**时才可复现，
+> 否则同一个 bug 每次跑出来的数字都不一样，判读表就用不上了。
 
 ### 6. 求积公式：半球上的 `dω = sinθ dθ dφ`
 
@@ -1193,3 +1214,117 @@ sum += pdf(θ, φ) * std::sin(theta) * dtheta * dphi;
 
 丢了 `sinθ` 会积出 `2`（对 `cosθ/π` 而言），
 `∫pdf dω` 变成 2 —— 一个概率密度积分出 2，说明没归一化，测试立刻抓到。
+
+---
+
+## Day 30 · `const` 不是只读 / 默认参数 / `std::filesystem` / PS 脚本编码
+
+### 1. 内置类型的 `const` + 立即初始化 = **编译期常量**
+
+```cpp
+const int w = 400;      // 编译期常量
+w = 800;                // ✗ error: assignment of read-only variable
+
+int w = 400;            // ✓ 变成普通变量，运行时可以覆盖
+w = 800;
+```
+
+`const` 在这里有两层含义，容易混：
+
+| 说法 | 含义 |
+|---|---|
+| "只读" | 初始化之后不能再赋值 |
+| "编译期常量" | 值在编译时就确定，可以用于 `case` 标签、数组大小 |
+
+对 `int` / `double` 这类内置类型，**用字面量初始化的 `const` 两者兼具**。
+所以"想让它可配置"必须先把 `const` 去掉。
+
+> 对比：类类型（比如 `const std::string s = "x";`）一般只是"只读"，不是编译期常量。
+
+### 2. 默认参数：给老调用点留后路
+
+```cpp
+Camera(Point3 lookfrom, Point3 lookat, Vec3 vup,
+       double vfov, double focus_dist, double lens_radius,
+       double aspect_ratio = 16.0 / 9.0);      // ← 新增，带默认值
+```
+
+这样**8 个已有的 `Camera(...)` 调用点一个字都不用改**，需要时再传第 7 个参数。
+
+**规则：**
+- 默认参数只能从**最右边**开始连续给
+- 默认值写在**声明**里，不要同时又写在定义里（否则重定义错误）
+- 虚函数的默认参数**按静态类型取**（和虚函数本身的动态绑定相反）—— 这是个坑，本项目没用到但要知道
+
+### 3. `std::filesystem::create_directories` 不抛异常的版本
+
+```cpp
+std::error_code ec;
+std::filesystem::create_directories(dir, ec);   // ✓ 不抛，用 ec 查
+if (ec) { /* 失败 */ }
+
+std::filesystem::create_directories(dir);       // 会抛 filesystem_error
+```
+
+**为什么用 `ec` 版本：** 目录已存在不算错（返回 false），但**权限不足会抛异常**。
+在 `main()` 里让异常飞出去等于直接崩，而 `ofstream` 失败本来是有干净处理路径的。
+**能被正常处理的失败，就不要用异常。**
+
+> 顺带：`ofstream` **不会**自动建目录。
+> 写 `output/frames/frame_0000.ppm` 之前，`output/frames` 必须已经存在。
+
+### 4. `snprintf` 生成编号文件名
+
+```cpp
+char name[64];
+std::snprintf(name, sizeof(name), "frame_%04d.ppm", f);   // frame_0007.ppm
+```
+
+`%04d` = 至少 4 位、不足补 0。**视频帧文件名必须是定宽的**，
+否则 `frame_9.ppm` 和 `frame_10.ppm` 排序会乱，ffmpeg 的 `frame_%04d` 也对不上。
+
+> C++20 有 `std::format`，但 MinGW 14 的实现还不完整，这里用 C 的 `snprintf` 更稳。
+
+### 5. `std::chrono::steady_clock` 测单帧耗时
+
+```cpp
+const auto t0 = std::chrono::steady_clock::now();
+// ... 干活 ...
+const auto t1 = std::chrono::steady_clock::now();
+const double sec = std::chrono::duration<double>(t1 - t0).count();
+```
+
+**为什么用 `steady_clock` 而不是 `system_clock`：**
+`system_clock` 可以被用户改时间、被 NTP 校准 —— 会得到负数或跳变。
+`steady_clock` 保证**单调不减**，专门用来测时间间隔。
+
+`duration<double>` 的 `count()` 单位是**秒**（因为是 `duration<double>` 默认 ratio 为 1）。
+
+### 6. 又一个 PowerShell 5.1 编码坑（第三次，形态不同）
+
+写了个带中文提示的 `.ps1`，运行直接解析失败：
+
+```
+字符串缺少终止符: '。
+ParserError: TerminatorExpectedAtEndOfString
+```
+
+**根因链：**
+
+```
+.ps1 存成【无 BOM 的 UTF-8】
+  → PowerShell 5.1 按 GBK 解码
+  → GBK 是双字节：汉字 = 首字节 + 尾字节
+  → 某个汉字的尾字节恰好是 0x27（'）
+  → 那个 ' 被当成字符串结束符 → 引号被"吃"掉 → 语法错
+```
+
+前两次（Day 19、Day 28）是**写文件时**编码错；
+这一次是**读脚本时**解码错。**同一台机器，同一个编码问题，第三种表现。**
+
+**对策（本项目已定为规矩）：`tools/*.ps1` 里的输出文字一律用 ASCII。**
+脚本内部逻辑、注释可以用中文，但**别让中文字符进入字符串字面量**。
+
+> 更普遍的一条：**PowerShell 5.1 会在 GBK 与 UTF-8 之间猜**。
+> 任何"中文 + 引号 / 中文 + 变量名"的组合都可能坏。
+> 能用 ASCII 就用 ASCII，不能用就用 `[System.IO.File]::WriteAllText` 显式指定编码。

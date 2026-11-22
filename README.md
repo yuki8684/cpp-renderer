@@ -9,6 +9,40 @@
 
 ## 效果展示
 
+### Day 30 · 阶段一"毕业"：成品图 + 演示视频
+
+**封面图**：Cornell Box，1920×1080，1024 spp，NEE + 余弦加权重要性采样。
+
+![Day 30 成品图](gallery/day30-cornell-1080p.png)
+
+**演示视频**（4 段镜头，20 fps）：[`gallery/day30-demo.mp4`](gallery/day30-demo.mp4)
+
+| 镜头 | 场景 | 展示什么 | 相机运动 |
+|:--:|---|---|---|
+| 1 | Cornell Box | 面光源、软阴影、颜色渗透 | 推镜（dolly）|
+| 2 | 圆环 + 法线贴图 | 共享切线帧、sRGB 解码 | 环绕（orbit）|
+| 3 | 立方体 + 六视图 UV | `vt` 接缝、图片贴图、双线性 | 环绕 |
+| 4 | 二十面体 | 面积加权顶点法线（低模看起来像球）| 环绕 |
+
+**两处工程判断：**
+
+| 决定 | 理由 |
+|---|---|
+| 视频用 **960×540 渲染、1280×720 输出** | 成本 = 帧数 × 每帧成本，每帧成本正比于像素数。960×540 换来 4 倍帧数预算；动起来后人眼对单帧细节不敏感 |
+| 编码时加 **`hqdn3d=40:32:60:40`** | 12 spp 单帧噪声大。注意真正起作用的是**空间**那两个参数：相机在动时，运动检测会把时域平均关掉（实测：强时域 32.6 MB 仍然脏，强空间 **6.0 MB** 干净）|
+
+**一个必须记住的教训：验收基准 ≠ 交付物。**
+
+第一版封面图里高盒子几乎全黑 —— 排查后发现**物理上完全正确**（光源在盒子正面背后，
+直接光 `cosθ < 0`）。为了让交付图好看，需要挪光源、降低盒高。
+但**不能改 `--cornell` 本身**，因为前面几十天的验收哈希全基于它：
+
+```
+--cornell --spp 64  →  C61F1512153ED6B9D2EEF4E2A850397C
+```
+
+所以新增了 `--cornell-hero`。**想改进交付物就加开关，不要动别人用来对账的那一版。**
+
 ### Day 29 · 显式 PDF：一张图都没变，这才是好消息
 
 > 这一课**没有新渲染图** —— 三个场景的 PPM 与改动前**逐字节相同**（MD5 一致）。
@@ -1083,9 +1117,11 @@ g++ -std=c++17 -O2 -o build/emitted_demo.exe tools/emitted_demo.cpp
 | 27 | **切线帧跨三角形共享** —— 顶点切线累加 + Gram-Schmidt；误差 3.756° → 0.215° | ✅ |
 | 28 | **P6 二进制 PPM** —— 错位保护 / 大端 / `gcount()`；端到端渲染逐字节相同 | ✅ |
 | 29 | **显式 PDF** —— `attenuation == albedo` 只是巧合；`∫pdf dω = 1` 数值验证；δ 分布约定 | ✅ |
-| — | 后续：MIS → 成品大图与视频 | 📋 |
+| 30 | **阶段一"毕业"** —— 分辨率参数化 + 相机动画（orbit/dolly）+ ffmpeg 编码；**成品图与视频** | ✅ |
+| — | 后续：阶段二（软光栅 → OpenGL/GLSL → PBR → RenderDoc） | 📋 |
 
-> 全套单元测试：**197 项断言，全部通过，0 warning**（`pdf_test` 10 条是本日新增）。
+> 全套单元测试：**197 项断言，全部通过，0 warning**。
+> 阶段一总复盘工作台见 [`docs/review-02.md`](docs/review-02.md)。
 
 ---
 
@@ -1179,11 +1215,15 @@ cpp-renderer/
 │   ├── gen_texture.ps1    生成测试纹理 models/uvgrid.ppm（四角异色）
 │   ├── gen_normal_map.ps1 **生成法线图 models/bumps_normal.ppm（4×4 圆凸起）**
 │   ├── compare_crop.ps1   **同区域裁切放大对照（调试用）**
+│   ├── day30_render.ps1   **阶段一交付物：成品静帧 + 4 段镜头帧序列**
+│   ├── make_video.ps1     **帧序列 -> MP4（ffmpeg，含时域降噪）**
 │   ├── publish.ps1        一键：效果图归档 -> commit -> push
 │   └── ppm2png.ps1        PPM(P3) -> PNG 转换
 ├── docs/
 │   ├── devlog.md          技术日志（逐日原理推导 + 踩坑）
 │   ├── cpp-notes.md       **C++ 笔记（从 devlog 抽出的语言知识点，按 Day + 主题索引）**
+│   ├── review-01.md       **复盘 01：阶段一前半（Day 1–22）自评表 + 串联题**
+│   ├── review-02.md       **复盘 02：阶段一总复盘（Day 1–30）+ 简历素材表**
 │   └── api.md             函数总览（速查手册）├── gallery/          # 各阶段效果图（入库存档）
 └── output/           # 运行时产物（不入库）
 ```
@@ -1220,6 +1260,10 @@ cmake --build build -j
 ./build/raytracer.exe --threads 8     # 指定线程数（默认 = 硬件线程数）
 ./build/raytracer.exe --uniform-hs    # 对照：均匀半球采样（“差”的那种，用于演示重要性采样）
 ./build/raytracer.exe --uniform-hs --no-nee  # 纯暴力路径追踪 + 均匀半球（验证 pdf 显式化）
+./build/raytracer.exe --width 1920 --height 1080 --spp 1024 --out output/hero.ppm   # 出大图
+./build/raytracer.exe --cornell --anim dolly --frames 300 --outdir output/frames    # 相机推镜
+./build/raytracer.exe --obj-torus-normal --anim orbit --frames 300 --frame-start 300 --outdir output/frames
+./tools/make_video.ps1 -Frames output/frames -Out gallery/day30-demo.mp4 -Fps 20 -Denoise
 ./build/raytracer.exe --normal        # 法线着色（确定性，用于几何比对）
 ./build/raytracer.exe --quads --spp 400   # 自定义采样数
 ./build/raytracer.exe --quads --no-bvh    # 关掉 BVH，用于两步验收
@@ -1337,6 +1381,24 @@ cmake --build build -j
 - **恒等重构的验收是字节级不变**：显式化 PDF 前后，三个场景（余弦+NEE / 纯随机弹射 /
   均匀半球）的 PPM MD5 全部相同 —— 说明数学恒等、随机数消耗顺序也没变。
   **只差几个像素 = 随机数顺序变了；整体亮度差 = 公式错。** 两种症状判别价值很高。
+- **先测吞吐，再排预算**：出大图/视频前先量 `s/spp`（Cornell 24 线程 1920×1080 = 0.936 s/spp），
+  任何组合的耗时都能当场算出来。不测就开渲，最常见的结局是跑到一半被迫砍需求。
+- **视频分辨率可以低于静帧**：成本 = 帧数 × 每帧成本，而每帧成本正比于像素数。
+  960×540 渲染 + 1280×720 输出，换来 4 倍帧数预算；动起来后人眼对单帧细节不敏感。
+- **动画只换位置**：`Camera::moved_to(p)` 保留 vfov / 对焦距离 / 光圈 / 看向哪，
+  避免在动画循环里手抄六个构造参数（抄错一个画面就糊了）。
+- **无缝循环用 `i/n`，单向运动用 `i/(n-1)`**：前者最后一帧不等于第 0 帧，接回去正好连续；
+  后者才是「从起点匀速走到终点」。
+- **降噪的时域部分依赖“画面静止”**：`hqdn3d` 带运动检测，相机一移动就把时域平均关掉。
+  实测同一段素材：强时域 **32.6 MB 仍然脏**，强空间 **6.0 MB 干净**。
+  ⚠️ 这条结论我一开始写反了（以为靠时域累积），被一次 219 MB 的试验推翻。
+- **噪点是码率杀手**：crf 18 + 12 spp 噪点 → **219 MB**（30.6 Mb/s）。
+  噪声是高频随机信号，x264 完全压不动 —— 码率花在“忠实地记录噪声”上。
+- **`-pix_fmt yuv420p` 必须加**：H.264 的 4:4:4 / 高色深格式在自己机器上能播，
+  在浏览器 / 微信 / 很多播放器里直接放不出来。
+- **验收基准（reference）和交付物（deliverable）必须分开**：交付图需要挪光源、降低盒高，
+  但那就破坏了 `--cornell --spp 64 → C61F1512…` 这条用了很多天的对账链。
+  所以新增 `--cornell-hero`，`--cornell` 一个字节不动。
 
 ---
 

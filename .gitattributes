@@ -18,6 +18,8 @@
 *.jpg   -text
 *.jpeg  -text
 *.gif   -text
+*.mp4   -text
+*.webm  -text
 *.bmp   -text
 
 # 本仓库受版本控制的 .obj 只是 models/ 下的 Wavefront 模型（纯文本）。

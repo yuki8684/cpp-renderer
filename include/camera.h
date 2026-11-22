@@ -13,11 +13,22 @@ public:
     // vfov     : 垂直视野角（度）。90 = 广角，30 = 长焦
     // focus_dist : 对焦距离。只有在这个距离上的物体会【完全清晰】
     // lens_radius : 光圈半径。0 = 针孔（全清晰），越大越糊
+    // aspect_ratio : 画面宽高比。默认 16:9，Day 30 起可以在出大图时覆盖
     // ------------------------------------------------------------
     Camera(Point3 lookfrom, Point3 lookat, Vec3 vup,
-           double vfov, double focus_dist, double lens_radius) {
+           double vfov, double focus_dist, double lens_radius,
+           double aspect_ratio = 16.0 / 9.0) {
 
-        const double aspect_ratio = 16.0 / 9.0;
+        // ★ Day 30：把机位参数存下来，动画时"只换位置、其余不变"
+        //   —— 这比在动画循环里重新手写一遍构造参数安全得多：
+        //     漏抄一个数（比如 lens_radius）画面就会莫名其妙地糊掉。
+        this->lookfrom     = lookfrom;
+        this->lookat       = lookat;
+        this->vup          = vup;
+        this->vfov         = vfov;
+        this->focus_dist   = focus_dist;
+        this->lens_radius  = lens_radius;
+        this->aspect_ratio = aspect_ratio;
 
         // ---------- 第一步：算三个基向量 ----------
         // TODO(你填 C1)：三个基向量
@@ -43,9 +54,16 @@ public:
                           - horizontal / 2.0
                           - vertical   / 2.0
                           - focus_dist * w;    // 沿着w（相机背后方向）走focus_dist 个单位
-
-        this->lens_radius = lens_radius;       //成员lens_radius和参数lens_radius同名要访问成员必须用this->lens_radius
     }
+
+    // ★ Day 30：同一个机位参数，只把位置换掉 —— 相机动画的基础
+    Camera moved_to(const Point3& p) const {
+        return Camera(p, lookat, vup, vfov, focus_dist, lens_radius, aspect_ratio);
+    }
+
+    const Point3& position() const { return lookfrom; }   // 现在在哪
+    const Point3& target()   const { return lookat; }     // 看向哪（动画的支点）
+    double        fov()      const { return vfov; }
 
     // ⚠️ 像素坐标参数改名为 s, t，避免和基向量 u, v 冲突
     Ray get_ray(double s, double t) const {
@@ -62,4 +80,12 @@ private:
     Vec3   horizontal;
     Vec3   vertical;
     double lens_radius;
+
+    // Day 30：留一份原始参数，供 moved_to() 重建相机
+    Point3 lookfrom      = Point3(0, 0, 0);
+    Point3 lookat        = Point3(0, 0, -1);
+    Vec3   vup           = Vec3(0, 1, 0);
+    double vfov          = 90.0;
+    double focus_dist    = 1.0;
+    double aspect_ratio  = 16.0 / 9.0;
 };
